@@ -63,6 +63,7 @@ initDatabase();
 
 // Mount Customer APIs
 app.use('/api/auth', authRoutes);
+app.use('/api', authRoutes); // Alias mount for direct /api/login, /api/admin-login, /api/register
 app.use('/api', productsRoutes);
 app.use('/api', ordersRoutes);
 app.use('/api/categories', categoriesRoutes);

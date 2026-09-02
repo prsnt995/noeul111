@@ -85,8 +85,8 @@ router.post('/login', (req, res) => {
   }
 });
 
-// Dedicated Admin Login
-router.post('/admin-login', (req, res) => {
+// Dedicated Admin Login Handler
+const handleAdminLogin = (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -116,9 +116,12 @@ router.post('/admin-login', (req, res) => {
     res.json({ success: true, token, user: safeUser });
   } catch (error) {
     console.error('Admin login error:', error);
-    res.status(500).json({ success: false, message: '관리자 로그인 중 오류가 발생했습니다.' });
+    res.status(500).json({ success: false, message: '관리자 로그인 처리 중 오류가 발생했습니다.' });
   }
-});
+};
+
+router.post('/admin-login', handleAdminLogin);
+router.post('/admin/login', handleAdminLogin);
 
 // Get Current User Profile
 router.get('/me', verifyToken, (req, res) => {
