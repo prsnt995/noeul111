@@ -95,7 +95,7 @@ router.post('/admin-login', (req, res) => {
     }
 
     const user = query.get('SELECT * FROM users WHERE email = ?', email.trim().toLowerCase());
-    if (!user || user.role !== 'admin') {
+    if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
       return res.status(403).json({ success: false, message: '관리자 권한이 없거나 계정 정보가 일치하지 않습니다.' });
     }
 
