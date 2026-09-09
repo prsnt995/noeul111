@@ -113,12 +113,8 @@ router.get('/content/settings', (req, res) => {
           payment_instructions_en: 'Please transfer the exact order amount to the bank account above, then upload your transfer screenshot / receipt. Once verified by our team, your order will be prepared for delivery.'
         },
         business_info: settings.business_info || {
-          company_name: '(주)노을패션코리아 (NOEUL Fashion Korea)',
-          ceo: '박기삼',
-          business_number: '120-88-94821',
-          ecommerce_number: '제 2026-서울강남-04821호',
-          address: '서울특별시 강남구 압구정로 165 노을 빌딩 4층',
-          cs_phone: '010-1234-5678',
+          company_name: '노을 (NOEUL )',
+          ceo: '노을',
           cs_email: 'noeulenterprise@gmail.com',
           bank_account: '우리은행 1002340390276 박기삼'
         },

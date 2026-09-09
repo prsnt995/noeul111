@@ -26,8 +26,10 @@ router.get('/dashboard/stats', (req, res) => {
     const todaySales = Number(todayRow?.today_sales || 0);
     const todayOrders = Number(todayRow?.today_orders || 0);
 
-    // 3. Total Counts
+    // 3. Total Counts & Specific Stats
     const totalProducts = Number(query.get("SELECT COUNT(*) as count FROM products WHERE status != 'archived'")?.count || 0);
+    const womensProducts = Number(query.get("SELECT COUNT(*) as count FROM products WHERE (gender = 'women' OR category_id IN (SELECT id FROM categories WHERE slug = 'women')) AND status != 'archived'")?.count || 0);
+    const newArrivalsCount = Number(query.get("SELECT COUNT(*) as count FROM products WHERE is_new = 1 AND status != 'archived'")?.count || 0);
     const totalCustomers = Number(query.get("SELECT COUNT(*) as count FROM users WHERE role = 'customer'")?.count || 0);
     const totalOrders = Number(query.get("SELECT COUNT(*) as count FROM orders")?.count || 0);
 
@@ -39,6 +41,7 @@ router.get('/dashboard/stats', (req, res) => {
     `);
     const orderStatuses = {
       pending: 0,
+      pending_verification: 0,
       confirmed: 0,
       processing: 0,
       shipped: 0,
@@ -52,6 +55,9 @@ router.get('/dashboard/stats', (req, res) => {
       }
     });
 
+    const pendingOrdersCount = (orderStatuses.pending || 0) + (orderStatuses.pending_verification || 0);
+    const completedOrdersCount = (orderStatuses.delivered || 0) + (orderStatuses.confirmed || 0);
+
     // 5. Low Stock Products (< 15 items)
     const lowStockItems = query.all(`
       SELECT id, sku, name_ko, name_en, stock, price, images
@@ -63,6 +69,8 @@ router.get('/dashboard/stats', (req, res) => {
       ...p,
       images: typeof p.images === 'string' ? JSON.parse(p.images || '[]') : p.images
     }));
+
+    const lowStockCount = Number(query.get("SELECT COUNT(*) as count FROM products WHERE stock <= 15 AND status = 'active'")?.count || 0);
 
     // 6. Recent 8 Orders
     const recentOrders = query.all(`
@@ -90,10 +98,14 @@ router.get('/dashboard/stats', (req, res) => {
         todaySales,
         todayOrders,
         totalProducts,
+        womensProducts,
+        newArrivalsCount,
         totalCustomers,
         totalOrders,
+        pendingOrdersCount,
+        completedOrdersCount,
         orderStatuses,
-        lowStockCount: lowStockItems.length
+        lowStockCount
       },
       lowStockItems,
       recentOrders,

@@ -5,6 +5,7 @@ import { paymentService } from '../services/paymentService.js';
 import { notificationService } from '../services/notificationService.js';
 import { CONFIG } from '../config.js';
 import { upload } from '../utils/uploader.js';
+import { supabaseSync } from '../lib/supabaseSync.js';
 
 const router = express.Router();
 
@@ -30,6 +31,7 @@ router.post('/orders', optionalAuth, async (req, res) => {
       detail_address,
       shipping_memo,
       items,
+      coupon_code,
       payment_method = 'bank_transfer',
       payment_sender_name,
     } = req.body;
@@ -82,12 +84,60 @@ router.post('/orders', optionalAuth, async (req, res) => {
       });
     }
 
-    // 2. Compute Shipping Fee based on threshold (₩70,000)
+    // 2. Validate Coupon & Calculate Server-side Discount
+    let discount_amount = 0;
+    let appliedCoupon = null;
+
+    if (coupon_code && typeof coupon_code === 'string' && coupon_code.trim()) {
+      const cleanCode = coupon_code.toUpperCase().trim();
+      const coupon = query.get('SELECT * FROM coupons WHERE code = ? AND is_active = 1', cleanCode);
+      if (!coupon) {
+        return res.status(400).json({ success: false, message: '유효하지 않거나 비활성화된 쿠폰 코드입니다.' });
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      if (coupon.start_date && coupon.start_date > todayStr) {
+        return res.status(400).json({ success: false, message: '아직 사용할 수 없는 쿠폰 코드입니다.' });
+      }
+
+      if (coupon.end_date && coupon.end_date < todayStr) {
+        return res.status(400).json({ success: false, message: '만료된 쿠폰 코드입니다.' });
+      }
+
+      if (coupon.usage_limit !== null && coupon.usage_limit !== undefined && coupon.usage_limit > 0) {
+        if (coupon.times_used >= coupon.usage_limit) {
+          return res.status(400).json({ success: false, message: '쿠폰 사용 수량이 모두 소진되었습니다.' });
+        }
+      }
+
+      if (coupon.min_order_amount && computedSubtotal < coupon.min_order_amount) {
+        return res.status(400).json({
+          success: false,
+          message: `해당 쿠폰은 최소 ₩${coupon.min_order_amount.toLocaleString('ko-KR')} 이상 주문 시 사용 가능합니다.`
+        });
+      }
+
+      if (coupon.discount_type === 'percentage') {
+        discount_amount = Math.round((computedSubtotal * coupon.discount_value) / 100);
+        if (coupon.max_discount_amount && discount_amount > coupon.max_discount_amount) {
+          discount_amount = coupon.max_discount_amount;
+        }
+      } else {
+        discount_amount = coupon.discount_value;
+      }
+
+      discount_amount = Math.min(computedSubtotal, discount_amount);
+      appliedCoupon = coupon;
+    }
+
+    // 3. Compute Shipping Fee based on threshold (₩70,000) & Final Payable Total
+    const discountedSubtotal = Math.max(0, computedSubtotal - discount_amount);
     const shipping_fee = computedSubtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : CONFIG.DEFAULT_SHIPPING_FEE;
-    const total_amount = computedSubtotal + shipping_fee;
+    const total_amount = Math.max(0, discountedSubtotal + shipping_fee);
     const order_number = generateOrderNumber();
 
-    // 3. Determine Payment & Order Status
+    // 4. Determine Payment & Order Status
     let payment_status = 'pending_payment';
     let order_status = 'pending_verification';
 
@@ -105,14 +155,14 @@ router.post('/orders', optionalAuth, async (req, res) => {
     const userId = req.user ? req.user.id : null;
     const senderName = payment_sender_name ? payment_sender_name.trim() : customer_name.trim();
 
-    // 4. Save order to database & update stock atomically
+    // 5. Save order to database & update stock atomically
     const insertOrderStmt = db.prepare(`
       INSERT INTO orders (
         order_number, user_id, customer_name, customer_email, customer_phone,
         postal_code, address, detail_address, shipping_memo,
-        subtotal, discount_amount, shipping_fee, total_amount,
+        subtotal, discount_amount, coupon_code, shipping_fee, total_amount,
         payment_method, payment_status, order_status, payment_sender_name, paid_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const orderRes = insertOrderStmt.run(
@@ -126,7 +176,8 @@ router.post('/orders', optionalAuth, async (req, res) => {
       detail_address ? detail_address.trim() : '',
       shipping_memo ? shipping_memo.trim() : '',
       computedSubtotal,
-      0,
+      discount_amount,
+      appliedCoupon ? appliedCoupon.code : null,
       shipping_fee,
       total_amount,
       payment_method,
@@ -137,6 +188,11 @@ router.post('/orders', optionalAuth, async (req, res) => {
     );
 
     const orderId = Number(orderRes.lastInsertRowid);
+
+    // Update coupon usage count if coupon was applied
+    if (appliedCoupon) {
+      db.prepare('UPDATE coupons SET times_used = times_used + 1 WHERE id = ?').run(appliedCoupon.id);
+    }
 
     const insertItemStmt = db.prepare(`
       INSERT INTO order_items (
@@ -171,6 +227,9 @@ router.post('/orders', optionalAuth, async (req, res) => {
 
     const createdOrder = query.get('SELECT * FROM orders WHERE id = ?', orderId);
     createdOrder.items = validatedItems;
+
+    // Sync order to Supabase
+    supabaseSync.createOrder(createdOrder).catch(err => console.error('Supabase order sync error:', err));
 
     // 5. Send order confirmation notification asynchronously
     notificationService.sendOrderConfirmation(createdOrder).catch(err => console.error(err));

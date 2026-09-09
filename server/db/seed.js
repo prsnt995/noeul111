@@ -35,7 +35,8 @@ export function seed() {
     { slug: 'pants', name_ko: '팬츠/데님', name_en: 'Pants & Denim', image_url: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=900&auto=format&fit=crop', sort_order: 5 },
     { slug: 'skirts', name_ko: '스커트', name_en: 'Skirts', image_url: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?q=80&w=900&auto=format&fit=crop', sort_order: 6 },
     { slug: 'dresses', name_ko: '원피스', name_en: 'Dresses', image_url: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=900&auto=format&fit=crop', sort_order: 7 },
-    { slug: 'accessories', name_ko: '악세사리/가방', name_en: 'Accessories & Bags', image_url: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?q=80&w=900&auto=format&fit=crop', sort_order: 8 }
+    { slug: 'accessories', name_ko: '악세사리/가방', name_en: 'Accessories & Bags', image_url: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?q=80&w=900&auto=format&fit=crop', sort_order: 8 },
+    { slug: 'socks', name_ko: '양말/삭스', name_en: 'Socks', image_url: 'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?q=80&w=900&auto=format&fit=crop', sort_order: 9 }
   ];
 
   for (const cat of categoriesData) {
@@ -221,7 +222,94 @@ export function seed() {
   };
 
   query.run('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', 'payment_info', JSON.stringify(paymentInfo));
-  query.run('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', 'business_info', JSON.stringify(businessInfo));
+  // 6. Ensure products have 5 curated editorial images
+  const productFiveImages = [
+    {
+      id: 1,
+      images: [
+        'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=1000&auto=format&fit=crop'
+      ]
+    },
+    {
+      id: 2,
+      images: [
+        'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1529374255404-311a2a4f1fd9?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1618354691373-d851c5c3a990?q=80&w=1000&auto=format&fit=crop'
+      ]
+    },
+    {
+      id: 3,
+      images: [
+        'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1576566588028-4147f3842f27?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1584273143981-41c073dfe8f8?q=80&w=1000&auto=format&fit=crop'
+      ]
+    },
+    {
+      id: 4,
+      images: [
+        'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1582418702059-97ebafb35d09?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1516762689617-e1cffcef479d?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=1000&auto=format&fit=crop'
+      ]
+    },
+    {
+      id: 5,
+      images: [
+        'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1603252109303-2751441dd157?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?q=80&w=1000&auto=format&fit=crop'
+      ]
+    },
+    {
+      id: 6,
+      images: [
+        'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1584917865442-de89df76afd3?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?q=80&w=1000&auto=format&fit=crop'
+      ]
+    },
+    {
+      id: 7,
+      images: [
+        'https://images.unsplash.com/photo-1544441893-675973e31985?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=1000&auto=format&fit=crop'
+      ]
+    },
+    {
+      id: 8,
+      images: [
+        'https://images.unsplash.com/photo-1506629082955-511b1aa562c8?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1479064555552-3ef4979f8908?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1516762689617-e1cffcef479d?q=80&w=1000&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1582418702059-97ebafb35d09?q=80&w=1000&auto=format&fit=crop'
+      ]
+    }
+  ];
+  for (const item of productFiveImages) {
+    try {
+      query.run('UPDATE products SET images = ? WHERE id = ?', JSON.stringify(item.images), item.id);
+    } catch {}
+  }
 
   console.log('✅ NOEUL Korean K-Fashion Mall database seeded successfully!');
 }

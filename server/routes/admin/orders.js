@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../../db/database.js';
 import { verifyAdmin } from '../../middleware/auth.js';
 import { notificationService } from '../../services/notificationService.js';
+import { supabaseSync } from '../../lib/supabaseSync.js';
 
 const router = express.Router();
 router.use(verifyAdmin);
@@ -103,6 +104,8 @@ router.patch('/orders/:id/verify-payment', (req, res) => {
     const updated = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     const items = query.all('SELECT * FROM order_items WHERE order_id = ?', updated.id);
 
+    supabaseSync.updateOrderStatus(updated.id, updated.order_status, updated.payment_status).catch(err => console.error('Supabase order sync error:', err));
+
     res.json({
       success: true,
       message: action === 'approve' ? '입금이 성공적으로 승인 확인되었습니다. 주문이 확정되었습니다.' : '입금 확인이 반려 처리되었습니다.',
@@ -136,6 +139,8 @@ router.patch('/orders/:id/status', (req, res) => {
 
     const updated = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     const items = query.all('SELECT * FROM order_items WHERE order_id = ?', updated.id);
+
+    supabaseSync.updateOrderStatus(updated.id, updated.order_status, updated.payment_status).catch(err => console.error('Supabase order sync error:', err));
 
     res.json({
       success: true,

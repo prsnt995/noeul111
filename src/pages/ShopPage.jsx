@@ -2,436 +2,451 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
-import { Filter, X, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+import { ProductPreviewModal } from '../components/common/ProductPreviewModal.jsx';
+import { CATEGORIES_BY_GENDER, getFilteredProducts, PRODUCTS } from '../data/products.js';
+import { SlidersHorizontal, X, ChevronRight } from 'lucide-react';
 
 export function ShopPage() {
-  const { lang, t, formatKRW } = useLanguage();
-  const [location] = useLocation();
+  const { lang, t } = useLanguage();
+  const [location, setLocation] = useLocation();
 
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
-
-  // Filters State
+  // Filters parsed from URL query
+  const [selectedGender, setSelectedGender] = useState('all'); // 'all' | 'men' | 'women'
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedSize, setSelectedSize] = useState('');
-  const [selectedColor, setSelectedColor] = useState('');
-  const [inStockOnly, setInStockOnly] = useState(false);
-  const [newOnly, setNewOnly] = useState(false);
-  const [bestOnly, setBestOnly] = useState(false);
-  const [maxPrice, setMaxPrice] = useState(400000);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState(''); // 'new' | 'best' | 'sale' | ''
   const [sortBy, setSortBy] = useState('newest');
 
-  // Parse URL query params if any
-  useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const cat = searchParams.get('category');
-    const filter = searchParams.get('filter');
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [previewProduct, setPreviewProduct] = useState(null);
 
-    if (cat) setSelectedCategory(cat);
-    if (filter === 'new') setNewOnly(true);
-    if (filter === 'best') setBestOnly(true);
+  // 1. Sync state with URL query parameters
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const g = sp.get('gender') || 'all';
+    const c = sp.get('category') || 'all';
+    const s = sp.get('search') || '';
+    const f = sp.get('filter') || '';
+    const sort = sp.get('sort') || 'newest';
+
+    setSelectedGender(g.toLowerCase());
+    setSelectedCategory(c.toLowerCase());
+    setSearchQuery(s);
+    setActiveFilter(f.toLowerCase());
+    setSortBy(sort);
   }, [location]);
 
-  // Fetch categories & products
+  // 2. Fetch or compute products dynamically without reloading
   useEffect(() => {
-    async function loadData() {
+    async function fetchProducts() {
       setLoading(true);
       try {
-        const catRes = await fetch('/api/categories');
-        const catData = await catRes.json();
-        if (catData.success) setCategories(catData.data);
-
-        // Build product query URL
         const params = new URLSearchParams();
-        if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
-        if (selectedSize) params.append('size', selectedSize);
-        if (selectedColor) params.append('color', selectedColor);
-        if (inStockOnly) params.append('inStock', 'true');
-        if (newOnly) params.append('isNew', 'true');
-        if (bestOnly) params.append('isBest', 'true');
-        if (maxPrice < 400000) params.append('maxPrice', String(maxPrice));
+        if (selectedGender !== 'all') params.append('gender', selectedGender);
+        if (selectedCategory !== 'all') params.append('category', selectedCategory);
+        if (searchQuery.trim()) params.append('search', searchQuery.trim());
+        if (activeFilter === 'new') params.append('isNew', 'true');
+        if (activeFilter === 'best') params.append('isBest', 'true');
+        if (activeFilter === 'sale') params.append('isSale', 'true');
         if (sortBy) params.append('sort', sortBy);
 
-        const prodRes = await fetch(`/api/products?${params.toString()}`);
-        const prodData = await prodRes.json();
-        if (prodData.success) setProducts(prodData.data);
+        const res = await fetch(`/api/products?${params.toString()}`);
+        const json = await res.json();
+
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setProducts(json.data);
+        } else {
+          // Fallback to local master dataset
+          const fallback = getFilteredProducts({
+            gender: selectedGender,
+            category: selectedCategory,
+            search: searchQuery,
+            filter: activeFilter,
+            sort: sortBy,
+          });
+          setProducts(fallback);
+        }
       } catch (err) {
-        console.error('Shop load error:', err);
+        // Fallback to local master dataset
+        const fallback = getFilteredProducts({
+          gender: selectedGender,
+          category: selectedCategory,
+          search: searchQuery,
+          filter: activeFilter,
+          sort: sortBy,
+        });
+        setProducts(fallback);
       } finally {
         setLoading(false);
       }
     }
-    loadData();
-  }, [selectedCategory, selectedSize, selectedColor, inStockOnly, newOnly, bestOnly, maxPrice, sortBy]);
 
-  const resetFilters = () => {
-    setSelectedCategory('all');
-    setSelectedSize('');
-    setSelectedColor('');
-    setInStockOnly(false);
-    setNewOnly(false);
-    setBestOnly(false);
-    setMaxPrice(400000);
-    setSortBy('newest');
+    fetchProducts();
+  }, [selectedGender, selectedCategory, searchQuery, activeFilter, sortBy]);
+
+  // Update URL helper without full page reload
+  const updateUrl = (newGender, newCategory, newFilter, newSearch, newSort) => {
+    const params = new URLSearchParams();
+    const g = newGender !== undefined ? newGender : selectedGender;
+    const c = newCategory !== undefined ? newCategory : selectedCategory;
+    const f = newFilter !== undefined ? newFilter : activeFilter;
+    const s = newSearch !== undefined ? newSearch : searchQuery;
+    const sort = newSort !== undefined ? newSort : sortBy;
+
+    if (g && g !== 'all') params.set('gender', g);
+    if (c && c !== 'all') params.set('category', c);
+    if (f) params.set('filter', f);
+    if (s) params.set('search', s);
+    if (sort && sort !== 'newest') params.set('sort', sort);
+
+    const qs = params.toString();
+    const target = `/shop${qs ? `?${qs}` : ''}`;
+    window.history.pushState({}, '', target);
+    setLocation(target);
   };
 
-  const hasActiveFilters = selectedCategory !== 'all' || selectedSize || selectedColor || inStockOnly || newOnly || bestOnly || maxPrice < 400000;
+  // Available categories based on selected gender
+  const availableCategories = useMemo(() => {
+    if (selectedGender === 'men') {
+      return CATEGORIES_BY_GENDER.men;
+    }
+    if (selectedGender === 'women') {
+      return CATEGORIES_BY_GENDER.women;
+    }
+    // All categories combined unique
+    const set = new Map();
+    [...CATEGORIES_BY_GENDER.women, ...CATEGORIES_BY_GENDER.men].forEach((item) => {
+      if (!set.has(item.key)) set.set(item.key, item);
+    });
+    return Array.from(set.values());
+  }, [selectedGender]);
 
-  const sizeOptions = ['S', 'M', 'L', 'XL', 'FREE'];
-  const colorOptions = [
-    { name_ko: '블랙', name_en: 'Black', hex: '#111112' },
-    { name_ko: '화이트', name_en: 'White', hex: '#FFFFFF' },
-    { name_ko: '차콜', name_en: 'Charcoal', hex: '#3b3b3d' },
-    { name_ko: '베이지', name_en: 'Beige', hex: '#D2B48C' },
-    { name_ko: '블루', name_en: 'Blue', hex: '#445D78' },
-    { name_ko: '올리브', name_en: 'Olive', hex: '#636b56' },
-  ];
+  // Title formatting
+  const getPageHeading = () => {
+    if (searchQuery) {
+      return lang === 'ko' ? `"${searchQuery}" 검색 결과` : `Search: "${searchQuery}"`;
+    }
+    if (activeFilter === 'new') return t('nav.new_arrivals');
+    if (activeFilter === 'best') return t('nav.best_sellers');
+    if (activeFilter === 'sale') return t('nav.sale');
+
+    let prefix = '';
+    if (selectedGender === 'women') prefix = lang === 'ko' ? '여성' : 'Women';
+    else prefix = t('nav.all');
+
+    if (selectedCategory !== 'all') {
+      const catObj = availableCategories.find((c) => c.key === selectedCategory);
+      const catName = catObj ? (lang === 'ko' ? catObj.label_ko : catObj.label) : selectedCategory;
+      return `${prefix} • ${catName}`;
+    }
+
+    return lang === 'ko' ? `${prefix} 컬렉션` : `${prefix} Collection`;
+  };
 
   return (
-    <div style={{ padding: '40px 0 80px' }}>
+    <div style={{ backgroundColor: '#ffffff', minHeight: '80vh', padding: '32px 0 80px' }}>
       <div className="container">
-        {/* Page Title & Breadcrumb */}
-        <div style={{ marginBottom: '32px' }}>
-          <h1 className="font-serif" style={{ fontSize: '2.5rem', fontWeight: 600, letterSpacing: '-0.02em' }}>
-            {t('shop.title')}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginTop: '4px' }}>
-            {t('shop.subtitle')}
-          </p>
+        {/* Top Breadcrumb & Clean Heading */}
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#8c8984', marginBottom: '8px' }}>
+            <span>NOEUL</span>
+            <ChevronRight size={12} />
+            <span style={{ textTransform: 'uppercase' }}>{selectedGender}</span>
+            {selectedCategory !== 'all' && (
+              <>
+                <ChevronRight size={12} />
+                <span style={{ textTransform: 'capitalize' }}>{selectedCategory}</span>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h1
+                className="font-serif"
+                style={{
+                  fontSize: '1.875rem',
+                  fontWeight: 600,
+                  letterSpacing: '-0.02em',
+                  color: '#18181b',
+                  lineHeight: 1.2,
+                }}
+              >
+                {getPageHeading()}
+              </h1>
+              <p style={{ fontSize: '0.8125rem', color: '#71717a', marginTop: '4px' }}>
+                {products.length} {lang === 'ko' ? '개의 에센셜 아이템' : t('shop.total_count', { count: '' }).replace('{count} ', '')}
+              </p>
+            </div>
+
+            {/* Sort Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{t('shop.sort_by')}:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => updateUrl(undefined, undefined, undefined, undefined, e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '0.8125rem',
+                  border: '1px solid #e4e4e7',
+                  borderRadius: '3px',
+                  backgroundColor: '#ffffff',
+                  color: '#18181b',
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="newest">{t('shop.sort_newest')}</option>
+                <option value="best">{t('shop.sort_best')}</option>
+                <option value="price_asc">{t('shop.sort_price_low')}</option>
+                <option value="price_desc">{t('shop.sort_price_high')}</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        {/* Toolbar: Filter Toggle & Sort Dropdown */}
+        {/* =========================================================
+            DYNAMIC GENDER SELECTOR TABS (ALL | MEN | WOMEN)
+            ========================================================= */}
         <div
           style={{
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            paddingBottom: '20px',
-            borderBottom: '1px solid var(--border-light)',
-            marginBottom: '32px',
-            flexWrap: 'wrap',
-            gap: '16px',
+            gap: '8px',
+            borderBottom: '1px solid #f0f0f1',
+            paddingBottom: '12px',
+            marginBottom: '16px',
           }}
         >
-          {/* Mobile filter button */}
-          <button
-            onClick={() => setMobileFilterOpen(true)}
-            className="btn-secondary mobile-only"
-            style={{ display: 'none', padding: '10px 16px', fontSize: '0.875rem' }}
-          >
-            <SlidersHorizontal size={16} />
-            <span>{t('shop.filters')}</span>
-          </button>
-
-          {/* Product Counter */}
-          <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            {t('shop.total_count', { count: products.length })}
-          </span>
-
-          {/* Sorting Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ArrowUpDown size={14} color="var(--text-muted)" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="form-select"
-              style={{
-                width: 'auto',
-                padding: '8px 14px',
-                fontSize: '0.875rem',
-                backgroundColor: 'transparent',
-                borderRadius: '4px',
-              }}
-            >
-              <option value="newest">{t('shop.sort_newest')}</option>
-              <option value="popular">{t('shop.sort_popular')}</option>
-              <option value="sales">{t('shop.sort_best')}</option>
-              <option value="price_asc">{t('shop.sort_price_low')}</option>
-              <option value="price_desc">{t('shop.sort_price_high')}</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Main Grid with Sidebar Filters */}
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '48px', alignItems: 'start' }} className="shop-layout">
-          {/* Desktop Filter Sidebar */}
-          <aside className="desktop-only" style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-            {/* Active Filters Reset */}
-            {hasActiveFilters && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '16px', borderBottom: '1px solid var(--border-light)' }}>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{t('shop.filters')}</span>
-                <button
-                  onClick={resetFilters}
-                  style={{ fontSize: '0.75rem', color: 'var(--accent-sunset)', textDecoration: 'underline' }}
-                >
-                  {t('shop.reset_filters')}
-                </button>
-              </div>
-            )}
-
-            {/* 1. Category Filter */}
-            <div>
-              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px' }}>
-                {t('shop.category')}
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.875rem' }}>
-                <button
-                  onClick={() => setSelectedCategory('all')}
-                  style={{
-                    textAlign: 'left',
-                    color: selectedCategory === 'all' ? 'var(--accent-sunset)' : 'var(--text-secondary)',
-                    fontWeight: selectedCategory === 'all' ? 600 : 400,
-                  }}
-                >
-                  {t('shop.all_categories')}
-                </button>
-                {categories.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedCategory(c.slug)}
-                    style={{
-                      textAlign: 'left',
-                      color: selectedCategory === c.slug ? 'var(--accent-sunset)' : 'var(--text-secondary)',
-                      fontWeight: selectedCategory === c.slug ? 600 : 400,
-                      transition: 'color 0.15s',
-                    }}
-                  >
-                    {lang === 'ko' ? c.name_ko : c.name_en}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 2. Badges Filter */}
-            <div>
-              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px' }}>
-                {lang === 'ko' ? '컬렉션 구분' : 'Tags & Badges'}
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.875rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={newOnly}
-                    onChange={(e) => setNewOnly(e.target.checked)}
-                  />
-                  <span>{t('shop.new_only')}</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={bestOnly}
-                    onChange={(e) => setBestOnly(e.target.checked)}
-                  />
-                  <span>{t('shop.best_only')}</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={inStockOnly}
-                    onChange={(e) => setInStockOnly(e.target.checked)}
-                  />
-                  <span>{t('shop.in_stock_only')}</span>
-                </label>
-              </div>
-            </div>
-
-            {/* 3. Price Range Slider */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px' }}>
-                <h4 style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {t('shop.price_range')}
-                </h4>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                  ~ {formatKRW(maxPrice)}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="30000"
-                max="400000"
-                step="10000"
-                value={maxPrice}
-                onChange={(e) => setMaxPrice(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--accent-sunset)' }}
-              />
-            </div>
-
-            {/* 4. Size Filter */}
-            <div>
-              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px' }}>
-                {t('shop.size')}
-              </h4>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {sizeOptions.map((sz) => (
-                  <button
-                    key={sz}
-                    onClick={() => setSelectedSize(selectedSize === sz ? '' : sz)}
-                    style={{
-                      border: selectedSize === sz ? '1px solid var(--text-primary)' : '1px solid var(--border-light)',
-                      backgroundColor: selectedSize === sz ? 'var(--text-primary)' : 'transparent',
-                      color: selectedSize === sz ? '#ffffff' : 'var(--text-primary)',
-                      padding: '6px 12px',
-                      borderRadius: '4px',
-                      fontSize: '0.8125rem',
-                      fontWeight: 500,
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {sz}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 5. Color Filter */}
-            <div>
-              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px' }}>
-                {t('shop.color')}
-              </h4>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                {colorOptions.map((col, idx) => {
-                  const active = selectedColor === col.name_ko || selectedColor === col.name_en;
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedColor(active ? '' : (lang === 'ko' ? col.name_ko : col.name_en))}
-                      title={lang === 'ko' ? col.name_ko : col.name_en}
-                      style={{
-                        width: '24px',
-                        height: '24px',
-                        borderRadius: '50%',
-                        backgroundColor: col.hex,
-                        border: col.hex === '#FFFFFF' ? '1px solid #ccc' : 'none',
-                        outline: active ? '2px solid var(--accent-sunset)' : 'none',
-                        outlineOffset: '2px',
-                        cursor: 'pointer',
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          </aside>
-
-          {/* Product Grid Area */}
-          <div>
-            {loading ? (
-              <div style={{ textAlign: 'center', padding: '100px 0', color: 'var(--text-muted)' }}>
-                <p>{lang === 'ko' ? '상품을 불러오는 중입니다...' : 'Loading collection...'}</p>
-              </div>
-            ) : products.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '100px 20px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                <Filter size={40} style={{ margin: '0 auto 16px', opacity: 0.4 }} />
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '6px' }}>
-                  {t('shop.no_products')}
-                </h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '24px' }}>
-                  {t('shop.no_products_desc')}
-                </p>
-                <button onClick={resetFilters} className="btn-secondary">
-                  {t('shop.reset_filters')}
-                </button>
-              </div>
-            ) : (
-              <div
+          {['all', 'women'].map((g) => {
+            const isSelected = selectedGender === g;
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() => updateUrl(g, 'all', undefined, undefined, undefined)}
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                  gap: '32px 20px',
+                  padding: '6px 16px',
+                  fontSize: '0.8125rem',
+                  fontWeight: isSelected ? 700 : 500,
+                  letterSpacing: '0.04em',
+                  borderRadius: '2px',
+                  border: isSelected ? '1px solid #18181b' : '1px solid #e4e4e7',
+                  backgroundColor: isSelected ? '#18181b' : '#ffffff',
+                  color: isSelected ? '#ffffff' : '#52525b',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  textTransform: 'uppercase',
                 }}
               >
-                {products.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-              </div>
-            )}
-          </div>
+                {g === 'all' ? t('nav.all') : t('nav.women')}
+              </button>
+            );
+          })}
         </div>
-      </div>
 
-      {/* Mobile Filters Drawer */}
-      {mobileFilterOpen && (
-        <div className="backdrop" onClick={() => setMobileFilterOpen(false)} style={{ zIndex: 100 }}>
-          <div
-            onClick={(e) => e.stopPropagation()}
+        {/* =========================================================
+            DYNAMIC CATEGORY FILTER PILLS (T-Shirts, Jeans, etc.)
+            ========================================================= */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            overflowX: 'auto',
+            paddingBottom: '16px',
+            marginBottom: '28px',
+            scrollbarWidth: 'none',
+          }}
+        >
+          {/* 'All' subcategory button */}
+          <button
+            type="button"
+            onClick={() => updateUrl(undefined, 'all', undefined, undefined, undefined)}
             style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              width: '85%',
-              maxWidth: '360px',
-              height: '100%',
-              backgroundColor: '#ffffff',
-              padding: '24px',
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
+              padding: '5px 12px',
+              fontSize: '0.75rem',
+              fontWeight: selectedCategory === 'all' ? 600 : 400,
+              borderRadius: '16px',
+              border: selectedCategory === 'all' ? '1px solid #18181b' : '1px solid #f0f0f1',
+              backgroundColor: selectedCategory === 'all' ? '#f4f4f5' : '#ffffff',
+              color: selectedCategory === 'all' ? '#18181b' : '#71717a',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
             }}
           >
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>{t('shop.filters')}</h3>
-                <button onClick={() => setMobileFilterOpen(false)}>
-                  <X size={20} />
-                </button>
-              </div>
+            {t('shop.all_categories')}
+          </button>
 
-              {/* Mobile Filter content mirroring desktop */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '10px' }}>{t('shop.category')}</h4>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="form-select"
-                  >
-                    <option value="all">{t('shop.all_categories')}</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.slug}>
-                        {lang === 'ko' ? c.name_ko : c.name_en}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '10px' }}>{t('shop.price_range')} (~{formatKRW(maxPrice)})</h4>
-                  <input
-                    type="range"
-                    min="30000"
-                    max="400000"
-                    step="10000"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(Number(e.target.value))}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px', display: 'flex', gap: '10px' }}>
-              <button onClick={resetFilters} className="btn-secondary" style={{ flex: 1 }}>
-                {t('shop.reset_filters')}
+          {availableCategories.map((cat) => {
+            const isSelected = selectedCategory === cat.key;
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() => updateUrl(undefined, cat.key, undefined, undefined, undefined)}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: isSelected ? 600 : 400,
+                  borderRadius: '16px',
+                  border: isSelected ? '1px solid #18181b' : '1px solid #f0f0f1',
+                  backgroundColor: isSelected ? '#18181b' : '#ffffff',
+                  color: isSelected ? '#ffffff' : '#71717a',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {lang === 'ko' ? cat.label_ko : cat.label}
               </button>
-              <button onClick={() => setMobileFilterOpen(false)} className="btn-primary" style={{ flex: 1 }}>
-                {lang === 'ko' ? '적용하기' : 'Apply'}
-              </button>
-            </div>
-          </div>
+            );
+          })}
         </div>
-      )}
 
-      {/* Responsive layout CSS */}
-      <style>{`
-        @media (max-width: 900px) {
-          .shop-layout {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
+        {/* Active Filter Chips (if any search or active filter applied) */}
+        {(selectedCategory !== 'all' || selectedGender !== 'all' || searchQuery || activeFilter) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#8c8984', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {t('shop.filters')}:
+            </span>
+
+            {selectedGender !== 'all' && (
+              <span
+                onClick={() => updateUrl('all', undefined, undefined, undefined, undefined)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.75rem',
+                  padding: '3px 8px',
+                  backgroundColor: '#f4f4f5',
+                  borderRadius: '2px',
+                  cursor: 'pointer',
+                }}
+              >
+                <span>{selectedGender.toUpperCase()}</span>
+                <X size={12} />
+              </span>
+            )}
+
+            {selectedCategory !== 'all' && (
+              <span
+                onClick={() => updateUrl(undefined, 'all', undefined, undefined, undefined)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.75rem',
+                  padding: '3px 8px',
+                  backgroundColor: '#f4f4f5',
+                  borderRadius: '2px',
+                  cursor: 'pointer',
+                }}
+              >
+                <span>{selectedCategory}</span>
+                <X size={12} />
+              </span>
+            )}
+
+            {searchQuery && (
+              <span
+                onClick={() => updateUrl(undefined, undefined, undefined, '', undefined)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.75rem',
+                  padding: '3px 8px',
+                  backgroundColor: '#f4f4f5',
+                  borderRadius: '2px',
+                  cursor: 'pointer',
+                }}
+              >
+                <span>"{searchQuery}"</span>
+                <X size={12} />
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => updateUrl('all', 'all', '', '', 'newest')}
+              style={{
+                fontSize: '0.6875rem',
+                color: '#ef4444',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                marginLeft: '6px',
+              }}
+            >
+              {t('shop.reset_filters')}
+            </button>
+          </div>
+        )}
+
+        {/* =========================================================
+            RESPONSIVE PRODUCT GRID (4 Cols Desktop, 3 Cols Tablet, 2 Cols Mobile)
+            ========================================================= */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '80px 0', color: '#888' }}>
+            <p>{t('home.loading')}</p>
+          </div>
+        ) : products.length === 0 ? (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '90px 0',
+              border: '1px dashed #e4e4e7',
+              borderRadius: '4px',
+              backgroundColor: '#fafafa',
+            }}
+          >
+            <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#18181b', marginBottom: '8px' }}>
+              {t('shop.no_products')}
+            </h3>
+            <p style={{ color: '#71717a', fontSize: '0.8125rem', marginBottom: '20px' }}>
+              {t('shop.no_products_desc')}
+            </p>
+            <button
+              type="button"
+              onClick={() => updateUrl('all', 'all', '', '', 'newest')}
+              style={{
+                padding: '8px 18px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                backgroundColor: '#18181b',
+                color: '#ffffff',
+                borderRadius: '2px',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {t('home.view_all_products')}
+            </button>
+          </div>
+        ) : (
+          <div className="noeul-product-grid product-grid">
+            {products.map((prod) => (
+              <ProductCard
+                key={prod.id}
+                product={prod}
+                onSelect={(p) => setPreviewProduct(p)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* STEP 2: First Click Preview Modal */}
+      <ProductPreviewModal
+        product={previewProduct}
+        isOpen={!!previewProduct}
+        onClose={() => setPreviewProduct(null)}
+      />
     </div>
   );
 }

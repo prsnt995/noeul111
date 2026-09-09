@@ -82,7 +82,7 @@ export function Footer() {
           {/* Col 2: Navigation Links */}
           <div>
             <h4 style={{ color: '#f5f5f7', fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
-              {lang === 'ko' ? '쇼핑 카테고리' : 'Collections'}
+            {t('footer.collections')}
             </h4>
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <li><Link href="/shop" style={{ color: '#8e8e93', transition: 'color 0.15s' }}>{t('nav.shop')}</Link></li>
@@ -122,12 +122,12 @@ export function Footer() {
                 {payment_info.account_number || '1002340390276'}
               </p>
               <p style={{ color: '#8e8e93', fontSize: '0.75rem' }}>
-                예금주: {payment_info.account_holder || '박기삼'}
+                {t('footer.account_holder_label')}: {payment_info.account_holder || '박기삼'}
               </p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#8e8e93', fontSize: '0.75rem' }}>
               <ShieldCheck size={16} color="#10b981" />
-              <span>{lang === 'ko' ? '안전한 1:1 무통장 입금 검수 시스템' : 'Secured Bank Transfer Verification'}</span>
+              <span>{t('footer.secure_transfer')}</span>
             </div>
           </div>
         </div>
@@ -137,13 +137,13 @@ export function Footer() {
           {/* Korean Statutory Business Disclosures */}
           <div style={{ color: '#68686d', fontSize: '0.75rem', lineHeight: 1.8 }}>
             <p>
-              상호: {business_info.company_name} | 대표자: {business_info.ceo || '박기삼'} | 사업자등록번호: {business_info.business_number}
+              {t('footer.company_label')}: {business_info.company_name} | {t('footer.ceo_label')}: {business_info.ceo || '박기삼'} | {t('footer.biz_no_label')}: {business_info.business_number}
             </p>
             <p>
-              통신판매업신고: {business_info.ecommerce_number} | 주소: {business_info.address}
+              {t('footer.ecom_no_label')}: {business_info.ecommerce_number} | {t('footer.address_label')}: {business_info.address}
             </p>
             <p>
-              고객센터/이메일: {business_info.cs_email || 'noeulenterprise@gmail.com'} ({business_info.cs_phone})
+              {t('footer.cs_label')}: {business_info.cs_email || 'noeulenterprise@gmail.com'} ({business_info.cs_phone})
             </p>
           </div>
 
@@ -151,10 +151,10 @@ export function Footer() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderTop: '1px solid #1a1a1d', paddingTop: '16px' }}>
             <div style={{ display: 'flex', gap: '16px', fontSize: '0.75rem' }}>
               <Link href="/about" style={{ color: '#a1a1a6' }}>{t('nav.about')}</Link>
-              <a href="#terms" onClick={(e) => { e.preventDefault(); alert('노을 전자상거래 표준 이용약관이 적용됩니다.'); }} style={{ color: '#a1a1a6' }}>
+              <a href="#terms" onClick={(e) => { e.preventDefault(); alert(lang === 'ko' ? '노을 전자상거래 표준 이용약관이 적용됩니다.' : 'NOEUL standard e-commerce Terms of Service apply.'); }} style={{ color: '#a1a1a6' }}>
                 {t('footer.terms')}
               </a>
-              <a href="#privacy" onClick={(e) => { e.preventDefault(); alert('노을 개인정보처리방침에 따라 고객 정보가 안전하게 보호됩니다.'); }} style={{ color: '#a1a1a6', fontWeight: 600 }}>
+              <a href="#privacy" onClick={(e) => { e.preventDefault(); alert(lang === 'ko' ? '노을 개인정보입력정책에 따라 고객 정보가 안전하게 보호됩니다.' : 'Your information is safely protected under NOEUL Privacy Policy.'); }} style={{ color: '#a1a1a6', fontWeight: 600 }}>
                 {t('footer.privacy')}
               </a>
               <Link href="/admin" style={{ color: '#555558' }}>

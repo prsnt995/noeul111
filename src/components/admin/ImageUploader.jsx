@@ -26,7 +26,7 @@ export function ImageUploader({ images = [], onChange, maxImages = 10, label = '
     });
 
     try {
-      const token = localStorage.getItem('noeul_auth_token');
+      const token = localStorage.getItem('noeul_admin_token') || localStorage.getItem('noeul_token');
       const response = await fetch('/api/admin/upload-multiple', {
         method: 'POST',
         headers: {

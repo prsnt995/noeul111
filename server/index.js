@@ -50,6 +50,11 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 const uploadsPath = path.join(__dirname, '../uploads');
 app.use('/uploads', express.static(uploadsPath));
 
+// Static products directory for /products/men/..., /products/women/...
+const productsStaticPath = path.join(__dirname, '../public/products');
+app.use('/products', express.static(productsStaticPath));
+
+
 // Request Logger
 app.use((req, res, next) => {
   if (!req.url.startsWith('/assets') && !req.url.startsWith('/favicon') && !req.url.startsWith('/uploads')) {

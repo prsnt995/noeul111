@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../../db/database.js';
 import { verifyAdmin } from '../../middleware/auth.js';
+import { supabaseSync } from '../../lib/supabaseSync.js';
 
 const router = express.Router();
 router.use(verifyAdmin);
@@ -45,6 +46,7 @@ router.post('/categories', (req, res) => {
     `, cleanSlug, name_ko.trim(), name_en.trim(), description_ko || '', description_en || '', image_url || '', Number(sort_order));
 
     const created = query.get('SELECT * FROM categories WHERE id = ?', Number(result.lastInsertRowid));
+    supabaseSync.upsertCategory(created).catch(err => console.error('Supabase category sync error:', err));
     res.status(201).json({ success: true, message: '카테고리가 생성되었습니다.', data: created });
   } catch (error) {
     console.error('Admin create category error:', error);
@@ -77,6 +79,7 @@ router.put('/categories/:id', (req, res) => {
     `, slug, name_ko, name_en, description_ko || '', description_en || '', image_url || '', Number(sort_order || 0), is_active !== undefined ? (is_active ? 1 : 0) : 1, Number(id));
 
     const updated = query.get('SELECT * FROM categories WHERE id = ?', Number(id));
+    supabaseSync.upsertCategory(updated).catch(err => console.error('Supabase category sync error:', err));
     res.json({ success: true, message: '카테고리가 수정되었습니다.', data: updated });
   } catch (error) {
     console.error('Admin update category error:', error);

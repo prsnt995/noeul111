@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../../db/database.js';
 import { verifyAdmin } from '../../middleware/auth.js';
+import { supabaseSync } from '../../lib/supabaseSync.js';
 
 const router = express.Router();
 router.use(verifyAdmin);
@@ -38,6 +39,7 @@ router.post('/coupons', (req, res) => {
     `, cleanCode, description_ko || '', description_en || '', discount_type || 'percentage', Number(discount_value), Number(min_order_amount || 0), max_discount_amount ? Number(max_discount_amount) : null, start_date || null, end_date || null, usage_limit ? Number(usage_limit) : 1000, is_active ? 1 : 0);
 
     const created = query.get('SELECT * FROM coupons WHERE id = ?', Number(result.lastInsertRowid));
+    supabaseSync.upsertCoupon(created).catch(err => console.error('Supabase coupon sync error:', err));
     res.status(201).json({ success: true, message: '쿠폰이 발행되었습니다.', data: created });
   } catch (error) {
     console.error('Create coupon error:', error);
@@ -70,6 +72,7 @@ router.put('/coupons/:id', (req, res) => {
     `, cleanCode, description_ko || '', description_en || '', discount_type, Number(discount_value), Number(min_order_amount || 0), max_discount_amount ? Number(max_discount_amount) : null, start_date || null, end_date || null, usage_limit ? Number(usage_limit) : 1000, is_active ? 1 : 0, Number(id));
 
     const updated = query.get('SELECT * FROM coupons WHERE id = ?', Number(id));
+    supabaseSync.upsertCoupon(updated).catch(err => console.error('Supabase coupon sync error:', err));
     res.json({ success: true, message: '쿠폰 정보가 수정되었습니다.', data: updated });
   } catch (error) {
     console.error('Update coupon error:', error);

@@ -44,6 +44,8 @@ import { AdminCustomersPage } from './pages/admin/AdminCustomersPage.jsx';
 import { AdminMediaPage } from './pages/admin/AdminMediaPage.jsx';
 import { AdminStaffPage } from './pages/admin/AdminStaffPage.jsx';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage.jsx';
+import { AdminInventoryPage } from './pages/admin/AdminInventoryPage.jsx';
+import { AdminLanguagesPage } from './pages/admin/AdminLanguagesPage.jsx';
 
 function AppContent() {
   const [location] = useLocation();
@@ -53,7 +55,7 @@ function AppContent() {
   const isAdminRoute = location.startsWith('/admin');
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100%', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
       {/* Storefront Header */}
       {!isAdminRoute && (
         <Header onOpenSearch={() => setSearchOpen(true)} />
@@ -84,6 +86,8 @@ function AppContent() {
           <Route path="/admin/products" component={AdminProductsPage} />
           <Route path="/admin/categories" component={AdminCategoriesPage} />
           <Route path="/admin/orders" component={AdminOrdersPage} />
+          <Route path="/admin/inventory" component={AdminInventoryPage} />
+          <Route path="/admin/languages" component={AdminLanguagesPage} />
           <Route path="/admin/coupons" component={AdminCouponsPage} />
           <Route path="/admin/reviews" component={AdminReviewsPage} />
           <Route path="/admin/customers" component={AdminCustomersPage} />

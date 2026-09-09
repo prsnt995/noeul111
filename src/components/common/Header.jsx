@@ -1,231 +1,163 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
-import { useAuth } from '../../context/AuthContext.jsx';
 import { useCart } from '../../context/CartContext.jsx';
-import { useWishlist } from '../../context/WishlistContext.jsx';
-import { Search, ShoppingBag, Heart, User, Menu, X, ChevronDown, Shield } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { CATEGORIES_BY_GENDER } from '../../data/products.js';
+import { Menu, X, Search, ShoppingBag, ChevronDown, ChevronRight, User } from 'lucide-react';
 
 export function Header({ onOpenSearch }) {
   const { lang, setLang, t } = useLanguage();
-  const { isLoggedIn, user, isAdmin } = useAuth();
   const { totalCount, openCart } = useCart();
-  const { wishlistCount } = useWishlist();
-  const [location] = useLocation();
+  const { isLoggedIn, user } = useAuth();
+  const [location, setLocation] = useLocation();
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
-  const [categories, setCategories] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [expandedSection, setExpandedSection] = useState(null); // 'women' | null
 
+  // Close menu on route change
   useEffect(() => {
-    fetch('/api/categories')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) setCategories(data.data);
-      })
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
+    setMenuOpen(false);
   }, [location]);
+
+  // Navigate with query params without page reload
+  const navigateWithFilter = (paramsObj) => {
+    setMenuOpen(false);
+    const sp = new URLSearchParams();
+    Object.entries(paramsObj).forEach(([k, v]) => {
+      if (v && v !== 'all') sp.set(k, v);
+    });
+    const qs = sp.toString();
+    const target = qs ? `/?${qs}` : '/';
+    window.history.pushState({}, '', target);
+    setLocation(target);
+  };
 
   return (
     <>
-      {/* 1. Top Mini Bar */}
-      <div style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #f0f0f2', fontSize: '0.75rem', color: '#52525b', padding: '6px 0' }}>
-        <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {/* Left: Language & Country Selector */}
-          <div style={{ position: 'relative' }}>
+      {/* =========================================================
+          1. MINIMAL FIXED / STICKY HEADER
+          Layout: Left (☰), Center (NOEUL), Right (Search, Cart)
+          ========================================================= */}
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          backgroundColor: '#ffffff',
+          borderBottom: '1px solid #e5e5e5',
+          height: '56px',
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr auto',
+            alignItems: 'center',
+            height: '100%',
+            padding: '0 12px',
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            margin: '0 auto',
+          }}
+        >
+          {/* Left: Hamburger Menu (☰) */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
             <button
-              onClick={() => setLangMenuOpen(!langMenuOpen)}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: '#52525b' }}
-            >
-              <span>{lang === 'ko' ? '🇰🇷 한국어' : '🇬🇧 English'}</span>
-              <ChevronDown size={12} />
-            </button>
-
-            {langMenuOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  marginTop: '4px',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #e4e4e7',
-                  borderRadius: '6px',
-                  boxShadow: 'var(--shadow-md)',
-                  zIndex: 100,
-                  minWidth: '110px',
-                  overflow: 'hidden',
-                }}
-              >
-                <button
-                  onClick={() => { setLang('ko'); setLangMenuOpen(false); }}
-                  style={{ display: 'block', width: '100%', padding: '8px 12px', textAlign: 'left', background: lang === 'ko' ? '#f4f4f5' : '#fff', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: lang === 'ko' ? 700 : 400 }}
-                >
-                  🇰🇷 한국어
-                </button>
-                <button
-                  onClick={() => { setLang('en'); setLangMenuOpen(false); }}
-                  style={{ display: 'block', width: '100%', padding: '8px 12px', textAlign: 'left', background: lang === 'en' ? '#f4f4f5' : '#fff', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: lang === 'en' ? 700 : 400 }}
-                >
-                  🇬🇧 English
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Membership Benefit Badge & Auth Links */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {!isLoggedIn && (
-              <Link
-                href="/auth?mode=register"
-                style={{
-                  backgroundColor: '#ff5c5c',
-                  color: '#ffffff',
-                  padding: '3px 9px',
-                  borderRadius: '12px',
-                  fontWeight: 700,
-                  fontSize: '0.6875rem',
-                  letterSpacing: '-0.02em',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '2px',
-                }}
-              >
-                <span>회원가입</span>
-                <span style={{ backgroundColor: 'rgba(0,0,0,0.15)', padding: '1px 4px', borderRadius: '8px', fontSize: '0.625rem' }}>1000원 +</span>
-              </Link>
-            )}
-
-            <Link href={isLoggedIn ? '/account' : '/auth'} style={{ color: '#52525b' }}>
-              {isLoggedIn ? (lang === 'ko' ? `${user?.name}님` : 'My Account') : (lang === 'ko' ? '로그인' : 'Login')}
-            </Link>
-
-            <Link href={isLoggedIn ? '/account?tab=orders' : '/auth'} style={{ color: '#52525b' }}>
-              {lang === 'ko' ? '주문조회' : 'Orders'}
-            </Link>
-
-            <button onClick={openCart} style={{ color: '#52525b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}>
-              {lang === 'ko' ? '장바구니' : 'Cart'} ({totalCount})
-            </button>
-
-            {isAdmin && (
-              <Link href="/admin" style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--accent-sunset)', fontWeight: 700 }}>
-                <Shield size={12} />
-                <span>Admin</span>
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Main Brand Header (Logo Center) */}
-      <header style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e4e4e7', padding: '18px 0' }}>
-        <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {/* Left: Mobile Hamburger / Search Icon */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="mobile-only"
-              style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-            >
-              <Menu size={24} />
-            </button>
-
-            <button
-              onClick={onOpenSearch}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#18181b', padding: '6px' }}
-              title="검색"
-            >
-              <Search size={22} />
-            </button>
-          </div>
-
-          {/* Center: Brand Logo (Korean Mall signature style) */}
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open Navigation Menu"
               style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '50%',
-                backgroundColor: '#FEE500',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '6px 4px',
+                color: '#000000',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontWeight: 900,
-                fontSize: '1rem',
-                color: '#18181b',
-                boxShadow: '0 2px 8px rgba(254, 229, 0, 0.5)',
               }}
             >
-              노을
-            </div>
-            <span
-              className="font-serif"
+              <Menu size={22} strokeWidth={1.75} />
+            </button>
+          </div>
+
+          {/* Center: Brand / Logo "NOEUL" */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
+            <Link
+              href="/"
               style={{
-                fontSize: '2rem',
-                fontWeight: 900,
-                letterSpacing: '0.04em',
-                color: '#18181b',
+                fontFamily: "'Cormorant Garamond', 'Pretendard', serif",
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                letterSpacing: '0.12em',
+                color: '#000000',
                 textTransform: 'uppercase',
+                textDecoration: 'none',
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
               }}
             >
               NOEUL
-            </span>
-          </Link>
-
-          {/* Right: Wishlist & Cart */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Link
-              href={isLoggedIn ? '/account?tab=wishlist' : '/auth'}
-              style={{ color: '#18181b', position: 'relative', padding: '6px' }}
-              title="위시리스트"
-            >
-              <Heart size={22} />
-              {wishlistCount > 0 && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    right: '2px',
-                    backgroundColor: '#ef4444',
-                    color: '#fff',
-                    fontSize: '0.625rem',
-                    fontWeight: 800,
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {wishlistCount}
-                </span>
-              )}
             </Link>
+          </div>
 
+          {/* Right: Search & Shopping Cart Icons */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+            {/* Search Icon */}
             <button
-              onClick={openCart}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#18181b', position: 'relative', padding: '6px' }}
-              title="장바구니"
+              type="button"
+              onClick={onOpenSearch}
+              aria-label="Search"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '6px',
+                color: '#000000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <ShoppingBag size={22} />
+              <Search size={20} strokeWidth={1.75} />
+            </button>
+
+            {/* Shopping Bag / Cart Icon */}
+            <button
+              type="button"
+              onClick={openCart}
+              aria-label="Cart"
+              style={{
+                position: 'relative',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '6px',
+                color: '#000000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ShoppingBag size={20} strokeWidth={1.75} />
               {totalCount > 0 && (
                 <span
                   style={{
                     position: 'absolute',
-                    top: '2px',
-                    right: '2px',
-                    backgroundColor: 'var(--accent-sunset)',
-                    color: '#fff',
-                    fontSize: '0.625rem',
-                    fontWeight: 800,
-                    width: '16px',
-                    height: '16px',
+                    top: '0px',
+                    right: '-2px',
+                    backgroundColor: '#000000',
+                    color: '#ffffff',
+                    fontSize: '0.5625rem',
+                    fontWeight: 700,
+                    width: '15px',
+                    height: '15px',
                     borderRadius: '50%',
                     display: 'flex',
                     alignItems: 'center',
@@ -240,155 +172,315 @@ export function Header({ onOpenSearch }) {
         </div>
       </header>
 
-      {/* 3. Category Horizontal Sticky Bar (Iconic Korean Mall Navigation) */}
-      <nav
-        style={{
-          backgroundColor: '#ffffff',
-          borderBottom: '1px solid #e4e4e7',
-          position: 'sticky',
-          top: 0,
-          zIndex: 80,
-          boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-        }}
-      >
-        <div className="container" style={{ display: 'flex', alignItems: 'center', height: '48px', overflowX: 'auto', whiteSpace: 'nowrap', gap: '22px', fontSize: '0.875rem' }}>
-          {/* Hamburger trigger */}
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, paddingRight: '8px', borderRight: '1px solid #eee' }}
-          >
-            <Menu size={18} />
-          </button>
-
-          {/* Primary Shopping Categories */}
-          <Link href="/shop?filter=new" style={{ fontWeight: 700, color: '#ef4444' }}>
-            {lang === 'ko' ? '신상 5%' : 'NEW 5%'}
-          </Link>
-
-          <Link href="/shop?tag=today" style={{ fontWeight: 700, color: '#18181b' }}>
-            {lang === 'ko' ? '당일발송' : 'Fast Ship'}
-          </Link>
-
-          <Link href="/shop?filter=best" style={{ fontWeight: 700, color: '#18181b' }}>
-            BEST
-          </Link>
-
-          <Link
-            href="/shop?tag=custom"
-            style={{
-              fontWeight: 800,
-              color: 'var(--accent-sunset)',
-              backgroundColor: '#fff1f2',
-              padding: '2px 8px',
-              borderRadius: '4px',
-            }}
-          >
-            {lang === 'ko' ? '노을제작' : 'NOEUL MADE'}
-          </Link>
-
-          {/* Dynamic Categories */}
-          {categories.map((c) => (
-            <Link
-              key={c.id}
-              href={`/shop?category=${c.slug}`}
-              style={{
-                color: location === `/shop?category=${c.slug}` ? 'var(--accent-sunset)' : '#27272a',
-                fontWeight: location === `/shop?category=${c.slug}` ? 700 : 500,
-                transition: 'color 0.15s',
-              }}
-            >
-              {lang === 'ko' ? c.name_ko : c.name_en}
-            </Link>
-          ))}
-
-          <Link href="/p/lookbook" style={{ color: '#27272a', fontWeight: 500 }}>
-            {lang === 'ko' ? '2026 룩북' : 'Lookbook'}
-          </Link>
-
-          <Link href="/about" style={{ color: '#27272a', fontWeight: 500 }}>
-            {lang === 'ko' ? '브랜드스토리' : 'About'}
-          </Link>
-
-          <Link href="/shop?filter=sale" style={{ fontWeight: 700, color: '#dc2626' }}>
-            SALE
-          </Link>
-        </div>
-      </nav>
-
-      {/* 4. Full Mobile Drawer */}
-      {mobileMenuOpen && (
-        <div className="backdrop" onClick={() => setMobileMenuOpen(false)} style={{ zIndex: 99 }}>
+      {/* =========================================================
+          2. CLEAN SLIDE-OUT SIDE MENU (FROM LEFT)
+          Includes: HOME, WOMEN, NEW ARRIVALS, SALE, CART
+          ========================================================= */}
+      {menuOpen && (
+        <div
+          className="backdrop"
+          onClick={() => setMenuOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            backdropFilter: 'blur(2px)',
+            zIndex: 150,
+            display: 'flex',
+            justifyContent: 'flex-start',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '84%',
-              maxWidth: '340px',
+              width: '100%',
+              maxWidth: '320px',
               height: '100%',
               backgroundColor: '#ffffff',
-              padding: '24px',
-              boxShadow: 'var(--shadow-xl)',
+              boxShadow: '4px 0 24px rgba(0,0,0,0.1)',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between',
-              overflowY: 'auto',
+              animation: 'slideInLeft 0.24s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid #eee', paddingBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#FEE500', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.75rem' }}>
-                    노을
-                  </div>
-                  <span className="font-serif" style={{ fontSize: '1.25rem', fontWeight: 800 }}>NOEUL</span>
-                </div>
-                <button onClick={() => setMobileMenuOpen(false)}>
-                  <X size={22} />
+            {/* Slide Menu Header */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 20px',
+                borderBottom: '1px solid #f0f0f0',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "'Cormorant Garamond', serif",
+                  fontSize: '1.5rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  color: '#000000',
+                  textTransform: 'uppercase',
+                }}
+              >
+                NOEUL
+              </span>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close Menu"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  color: '#000000',
+                }}
+              >
+                <X size={20} strokeWidth={1.5} />
+              </button>
+            </div>
+
+            {/* Menu Items List */}
+            <div style={{ flex: 1, padding: '20px 0', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {/* 1. HOME */}
+                <button
+                  type="button"
+                  onClick={() => navigateWithFilter({})}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 24px',
+                    fontSize: '0.9375rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.08em',
+                    color: '#000000',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    width: '100%',
+                  }}
+                >
+                  <span>{t('nav.home').toUpperCase()}</span>
                 </button>
-              </div>
 
-              {/* Quick Links */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '20px' }}>
-                <Link href="/shop?filter=new" style={{ padding: '10px', backgroundColor: '#fff1f2', borderRadius: '6px', textAlign: 'center', fontWeight: 700, color: '#ef4444', fontSize: '0.875rem' }}>
-                  신상 5%
-                </Link>
-                <Link href="/shop?filter=best" style={{ padding: '10px', backgroundColor: '#f4f4f5', borderRadius: '6px', textAlign: 'center', fontWeight: 700, fontSize: '0.875rem' }}>
-                  BEST 100
-                </Link>
-              </div>
+                {/* 2. WOMEN (with subcategory expander) */}
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 24px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setExpandedSection(expandedSection === 'women' ? null : 'women')}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigateWithFilter({ gender: 'women' });
+                      }}
+                      style={{
+                        fontSize: '0.9375rem',
+                        fontWeight: 600,
+                        letterSpacing: '0.08em',
+                        color: '#000000',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      {t('nav.women').toUpperCase()}
+                    </button>
+                    <ChevronDown
+                      size={16}
+                      style={{
+                        transform: expandedSection === 'women' ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s',
+                        color: '#71717a',
+                      }}
+                    />
+                  </div>
 
-              {/* Categories */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.9375rem' }}>
-                <Link href="/shop" style={{ fontWeight: 700 }}>전체 상품 보기</Link>
-                {categories.map((c) => (
-                  <Link key={c.id} href={`/shop?category=${c.slug}`} style={{ color: '#52525b' }}>
-                    {lang === 'ko' ? c.name_ko : c.name_en}
-                  </Link>
-                ))}
-                <div style={{ height: '1px', backgroundColor: '#eee', margin: '8px 0' }} />
-                <Link href="/p/lookbook" style={{ color: '#52525b' }}>2026 룩북</Link>
-                <Link href="/about" style={{ color: '#52525b' }}>브랜드 스토리</Link>
-                <Link href="/p/contact" style={{ color: '#52525b' }}>고객센터 & 쇼룸</Link>
+                  {expandedSection === 'women' && (
+                    <div style={{ padding: '4px 24px 12px 36px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => navigateWithFilter({ gender: 'women' })}
+                        style={{
+                          fontSize: '0.8125rem',
+                          color: '#000000',
+                          fontWeight: 600,
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          padding: '3px 0',
+                        }}
+                      >
+                        {lang === 'ko' ? '여성 전체' : 'All Women\'s'}
+                      </button>
+                      {CATEGORIES_BY_GENDER.women.map((c) => (
+                        <button
+                          key={c.key}
+                          type="button"
+                          onClick={() => navigateWithFilter({ gender: 'women', category: c.key })}
+                          style={{
+                            fontSize: '0.8125rem',
+                            color: '#52525b',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            padding: '3px 0',
+                          }}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. NEW ARRIVALS */}
+                <button
+                  type="button"
+                  onClick={() => navigateWithFilter({ filter: 'new' })}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 24px',
+                    fontSize: '0.9375rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.08em',
+                    color: '#000000',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    width: '100%',
+                  }}
+                >
+                  <span>{t('nav.new_arrivals')}</span>
+                </button>
+
+                {/* 5. SALE */}
+                <button
+                  type="button"
+                  onClick={() => navigateWithFilter({ filter: 'sale' })}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 24px',
+                    fontSize: '0.9375rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.08em',
+                    color: '#e11d48',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    width: '100%',
+                  }}
+                >
+                  <span>{t('nav.sale')}</span>
+                </button>
+
+                {/* 6. CART */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openCart();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 24px',
+                    fontSize: '0.9375rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.08em',
+                    color: '#000000',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    width: '100%',
+                  }}
+                >
+                  <span>{t('nav.cart')}</span>
+                  {totalCount > 0 && (
+                    <span style={{ fontSize: '0.75rem', color: '#71717a' }}>({totalCount})</span>
+                  )}
+                </button>
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid #eee', paddingTop: '16px' }}>
+            {/* Slide Menu Footer */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderTop: '1px solid #f0f0f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: '0.8125rem',
+              }}
+            >
               <Link
                 href={isLoggedIn ? '/account' : '/auth'}
-                style={{ display: 'block', padding: '12px', backgroundColor: '#18181b', color: '#fff', textAlign: 'center', borderRadius: '6px', fontWeight: 600, fontSize: '0.875rem' }}
+                onClick={() => setMenuOpen(false)}
+                style={{
+                  color: '#000000',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  textDecoration: 'none',
+                }}
               >
-                {isLoggedIn ? '마이페이지' : '로그인 / 회원가입'}
+                <User size={15} />
+                <span>{isLoggedIn ? (user?.name || t('nav.account')) : t('nav.login')}</span>
               </Link>
+
+              <button
+                type="button"
+                onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
+                style={{
+                  background: '#18181b',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '4px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  color: '#ffffff',
+                  letterSpacing: '0.04em',
+                }}
+                title={lang === 'ko' ? 'Switch to English' : '한국어로 전환'}
+              >
+                {t('lang.switch')}
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Slide in animation from left */}
       <style>{`
-        @media (max-width: 768px) {
-          .mobile-only { display: inline-flex !important; }
+        @keyframes slideInLeft {
+          from { transform: translateX(-100%); }
+          to { transform: translateX(0); }
         }
       `}</style>
     </>

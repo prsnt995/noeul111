@@ -1,224 +1,197 @@
 import React, { useState } from 'react';
-import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
-import { useWishlist } from '../../context/WishlistContext.jsx';
-import { useCart } from '../../context/CartContext.jsx';
-import { Heart, Plus } from 'lucide-react';
+import { ProductPreviewModal } from './ProductPreviewModal.jsx';
 
-export function ProductCard({ product }) {
-  const { lang, formatKRW } = useLanguage();
-  const { isWishlisted, toggleWishlist } = useWishlist();
-  const { addToCart } = useCart();
+export function ProductCard({ product, onSelect }) {
+  const { lang } = useLanguage();
   const [isHovered, setIsHovered] = useState(false);
+  const [internalPreviewOpen, setInternalPreviewOpen] = useState(false);
 
   if (!product) return null;
 
-  const images = Array.isArray(product.images) ? product.images : [];
-  const primaryImg = images[0] || 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600&auto=format&fit=crop';
-  const hoverImg = images[1] || primaryImg;
-  const colors = Array.isArray(product.colors) ? product.colors : [];
-  const wish = isWishlisted(product.id);
+  // Extract actual primary and optional secondary product images
+  const images = (() => {
+    let list = [];
+    if (Array.isArray(product.images)) {
+      list = product.images.filter(Boolean);
+    } else if (typeof product.images === 'string') {
+      try {
+        const parsed = JSON.parse(product.images);
+        if (Array.isArray(parsed)) list = parsed.filter(Boolean);
+      } catch {}
+      if (list.length === 0 && product.images) list = [product.images];
+    }
+    if (list.length === 0 && product.image_url) list = [product.image_url];
+    if (list.length === 0) list = ['/products/men/classic-tshirt/1.jpg'];
+    return list;
+  })();
 
-  const finalPrice = product.discount_price || product.price;
+  const primaryImage = images[0];
+  const secondaryImage = images.length > 1 ? images[1] : null;
 
-  const handleQuickAdd = (e) => {
+  const productName = lang === 'ko'
+    ? (product.name_ko || product.name_en)
+    : (product.name_en || product.name_ko);
+
+  const handleClick = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    addToCart(product, product.sizes?.[0] || 'FREE', colors[0]);
-  };
-
-  const handleWishlistClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleWishlist(product);
+    if (onSelect) {
+      onSelect(product);
+    } else {
+      setInternalPreviewOpen(true);
+    }
   };
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Product Image Container */}
-      <Link
-        href={`/product/${product.id}`}
+    <>
+      {/* STEP 1: Minimal Image-Only Product Grid Card */}
+      <div
+        className="noeul-product-card product-card"
+        onClick={handleClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        role="button"
+        tabIndex={0}
+        aria-label={`View ${productName}`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick(e);
+          }
+        }}
         style={{
+          width: '100%',
+          minWidth: 0,
+          maxWidth: '100%',
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+          cursor: 'pointer',
           position: 'relative',
           display: 'block',
-          width: '100%',
-          aspectRatio: '3 / 4',
-          overflow: 'hidden',
-          backgroundColor: '#f8f8f9',
-          borderRadius: '4px',
-          marginBottom: '10px',
+          outline: 'none',
         }}
       >
-        <img
-          src={isHovered ? hoverImg : primaryImg}
-          alt={product.name_ko}
+        <div
           style={{
+            position: 'relative',
             width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            transition: 'transform 0.4s ease, opacity 0.2s ease',
-            transform: isHovered ? 'scale(1.03)' : 'scale(1)',
+            maxWidth: '100%',
+            minWidth: 0,
+            aspectRatio: '3 / 4',
+            backgroundColor: '#f7f7f8',
+            borderRadius: '3px',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
           }}
-          loading="lazy"
-        />
-
-        {/* Korean Signature Ribbon Badge ("노을제작") */}
-        {product.is_featured || product.id % 2 === 1 ? (
-          <div
+        >
+          {/* Primary Product Image */}
+          <img
+            src={primaryImage}
+            alt={productName}
+            loading="lazy"
             style={{
-              position: 'absolute',
-              top: '0',
-              left: '12px',
-              backgroundColor: '#FEE500',
-              color: '#18181b',
-              padding: '6px 8px 10px',
-              fontWeight: 900,
-              fontSize: '0.6875rem',
-              lineHeight: 1.1,
-              textAlign: 'center',
-              clipPath: 'polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%)',
-              zIndex: 2,
-              boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+              width: '100%',
+              height: '100%',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              display: 'block',
+              userSelect: 'none',
+              pointerEvents: 'none',
+              padding: '6px',
+              boxSizing: 'border-box',
+              transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
+              transform: isHovered ? 'scale(1.025)' : 'scale(1)',
+              opacity: isHovered && secondaryImage ? 0 : 1,
             }}
-          >
-            노을<br />제작
+          />
+
+          {/* Badges Overlay */}
+          <div style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 5, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {product.stock <= 0 && (
+              <span
+                style={{
+                  fontSize: '0.625rem',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '2px',
+                  backgroundColor: '#18181b',
+                  color: '#ffffff',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {lang === 'ko' ? '품절' : 'OUT OF STOCK'}
+              </span>
+            )}
+            {product.is_sale && product.stock > 0 && (
+              <span
+                style={{
+                  fontSize: '0.625rem',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '2px',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                SALE
+              </span>
+            )}
+            {product.is_new && product.stock > 0 && !product.is_sale && (
+              <span
+                style={{
+                  fontSize: '0.625rem',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '2px',
+                  backgroundColor: '#18181b',
+                  color: '#ffffff',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                NEW
+              </span>
+            )}
           </div>
-        ) : null}
 
-        {/* Badges (New, Best, Sale) */}
-        <div style={{ position: 'absolute', bottom: '10px', left: '10px', display: 'flex', gap: '4px', zIndex: 2 }}>
-          {product.is_new ? (
-            <span style={{ fontSize: '0.625rem', fontWeight: 800, backgroundColor: '#18181b', color: '#fff', padding: '2px 6px', borderRadius: '2px' }}>
-              NEW
-            </span>
-          ) : null}
-          {product.is_best ? (
-            <span style={{ fontSize: '0.625rem', fontWeight: 800, backgroundColor: '#ef4444', color: '#fff', padding: '2px 6px', borderRadius: '2px' }}>
-              BEST
-            </span>
-          ) : null}
-        </div>
-
-        {/* Wishlist Heart Button inside Top-Right */}
-        <button
-          onClick={handleWishlistClick}
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(255, 255, 255, 0.85)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: wish ? '#ef4444' : '#52525b',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
-            border: 'none',
-            cursor: 'pointer',
-            zIndex: 2,
-          }}
-          aria-label="Wishlist"
-        >
-          <Heart size={16} fill={wish ? '#ef4444' : 'none'} />
-        </button>
-
-        {/* Quick Add Button on Hover */}
-        <button
-          onClick={handleQuickAdd}
-          style={{
-            position: 'absolute',
-            bottom: '8px',
-            right: '8px',
-            backgroundColor: 'rgba(24, 24, 27, 0.92)',
-            color: '#ffffff',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            opacity: isHovered ? 1 : 0,
-            transform: isHovered ? 'translateY(0)' : 'translateY(6px)',
-            transition: 'all 0.2s ease',
-            zIndex: 3,
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <Plus size={14} />
-          <span>담기</span>
-        </button>
-      </Link>
-
-      {/* Color Swatch Dots */}
-      {colors.length > 0 && (
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-          {colors.slice(0, 5).map((col, idx) => (
-            <span
-              key={idx}
-              title={lang === 'ko' ? col.name_ko : col.name_en}
+          {/* Secondary Image Fade on Desktop Hover (if available) */}
+          {secondaryImage && (
+            <img
+              src={secondaryImage}
+              alt={`${productName} angle 2`}
+              loading="lazy"
               style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: col.hex || '#111',
-                border: '1px solid rgba(0,0,0,0.15)',
-                display: 'inline-block',
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                display: 'block',
+                userSelect: 'none',
+                pointerEvents: 'none',
+                padding: '6px',
+                boxSizing: 'border-box',
+                transition: 'opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                opacity: isHovered ? 1 : 0,
+                transform: isHovered ? 'scale(1.025)' : 'scale(1)',
               }}
             />
-          ))}
-          {colors.length > 5 && (
-            <span style={{ fontSize: '0.625rem', color: '#a1a1aa' }}>+{colors.length - 5}</span>
           )}
         </div>
+      </div>
+
+      {/* Fallback Internal Preview Modal if onSelect is not provided */}
+      {!onSelect && (
+        <ProductPreviewModal
+          product={product}
+          isOpen={internalPreviewOpen}
+          onClose={() => setInternalPreviewOpen(false)}
+        />
       )}
-
-      {/* Product Title & Pricing */}
-      <Link href={`/product/${product.id}`} style={{ display: 'block' }}>
-        <h3
-          style={{
-            fontSize: '0.875rem',
-            fontWeight: 500,
-            color: '#18181b',
-            marginBottom: '4px',
-            lineHeight: 1.35,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {lang === 'ko' ? product.name_ko : product.name_en}
-        </h3>
-
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-          {product.discount_rate > 0 && (
-            <span style={{ fontSize: '0.9375rem', fontWeight: 800, color: '#ef4444' }}>
-              {product.discount_rate}%
-            </span>
-          )}
-
-          <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#18181b' }}>
-            {formatKRW(finalPrice)}
-          </span>
-
-          {product.discount_price && (
-            <span style={{ fontSize: '0.75rem', color: '#a1a1aa', textDecoration: 'line-through' }}>
-              {formatKRW(product.price)}
-            </span>
-          )}
-        </div>
-      </Link>
-    </div>
+    </>
   );
 }

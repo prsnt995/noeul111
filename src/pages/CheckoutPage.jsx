@@ -19,7 +19,8 @@ import {
   MapPin,
   User,
   Phone,
-  Check
+  Check,
+  Tag
 } from 'lucide-react';
 
 export function CheckoutPage() {
@@ -60,6 +61,57 @@ export function CheckoutPage() {
   const [agreed, setAgreed] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Coupon state
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState('');
+
+  // Dynamic calculations
+  const discountAmount = appliedCoupon ? appliedCoupon.discount_amount : 0;
+  const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+  const finalTotalAmount = Math.max(0, discountedSubtotal + shippingFee);
+
+  const handleApplyCoupon = async () => {
+    if (!couponCodeInput.trim()) return;
+
+    setCouponLoading(true);
+    setCouponError('');
+
+    try {
+      const res = await api.post('/coupons/validate', {
+        code: couponCodeInput.trim(),
+        subtotal
+      });
+
+      if (res.success && res.data) {
+        setAppliedCoupon(res.data);
+        setCouponError('');
+        showToast(
+          lang === 'ko'
+            ? `쿠폰 [${res.data.code}]이(가) 적용되었습니다.`
+            : `Coupon [${res.data.code}] applied successfully!`,
+          'success'
+        );
+      } else {
+        throw new Error(res.message || (lang === 'ko' ? '유효하지 않은 쿠폰 코드입니다.' : 'Invalid coupon code.'));
+      }
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(err.message || (lang === 'ko' ? '쿠폰 확인 중 오류가 발생했습니다.' : 'Error validating coupon.'));
+      showToast(err.message || (lang === 'ko' ? '유효하지 않은 쿠폰 코드입니다.' : 'Invalid coupon code.'), 'error');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponError('');
+    showToast(lang === 'ko' ? '쿠폰 적용이 취소되었습니다.' : 'Coupon removed.', 'info');
+  };
 
   useEffect(() => {
     if (items.length === 0) {
@@ -174,6 +226,7 @@ export function CheckoutPage() {
         shipping_memo: finalMemo,
         payment_method: 'bank_transfer',
         payment_sender_name: formData.payment_sender_name || formData.customer_name,
+        coupon_code: appliedCoupon ? appliedCoupon.code : null,
         items: items.map((i) => ({
           product_id: i.product_id,
           quantity: i.quantity,
@@ -520,7 +573,7 @@ export function CheckoutPage() {
 
                       <span style={{ color: '#854d0e', fontWeight: 600 }}>입금금액:</span>
                       <strong style={{ fontSize: '1.25rem', color: 'var(--accent-sunset)', fontWeight: 900 }}>
-                        {formatKRW(totalAmount)}
+                        {formatKRW(finalTotalAmount)}
                       </strong>
                     </div>
                   </div>
@@ -594,7 +647,7 @@ export function CheckoutPage() {
                     }}
                   >
                     <span>
-                      {submitting ? '주문 생성 중...' : `주문 접수 완료 및 영수증 업로드 (${formatKRW(totalAmount)})`}
+                      {submitting ? '주문 생성 중...' : `주문 접수 완료 및 영수증 업로드 (${formatKRW(finalTotalAmount)})`}
                     </span>
                   </button>
                 </div>
@@ -642,19 +695,143 @@ export function CheckoutPage() {
               ))}
             </div>
 
+            {/* Coupon Code Section */}
+            <div style={{ marginTop: '16px', marginBottom: '20px', paddingTop: '16px', borderTop: '1px solid #f0f0f2' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                <Tag size={15} color="var(--accent-sunset)" />
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#18181b' }}>
+                  {t('checkout.coupon_title') || '쿠폰 할인 (Coupon Code)'}
+                </span>
+              </div>
+
+              {!appliedCoupon ? (
+                <div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={couponCodeInput}
+                      onChange={(e) => {
+                        setCouponCodeInput(e.target.value);
+                        if (couponError) setCouponError('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleApplyCoupon();
+                        }
+                      }}
+                      placeholder={t('checkout.coupon_placeholder') || '쿠폰 코드를 입력하세요 (예: SAVE10)'}
+                      style={{
+                        flex: 1,
+                        padding: '10px 12px',
+                        fontSize: '0.875rem',
+                        border: couponError ? '1px solid #ef4444' : '1px solid #d4d4d8',
+                        borderRadius: '6px',
+                        textTransform: 'uppercase',
+                        backgroundColor: '#ffffff',
+                        outline: 'none',
+                        width: '100%',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={couponLoading || !couponCodeInput.trim()}
+                      style={{
+                        padding: '10px 16px',
+                        backgroundColor: '#18181b',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '0.875rem',
+                        fontWeight: 700,
+                        cursor: couponCodeInput.trim() ? 'pointer' : 'not-allowed',
+                        opacity: couponLoading || !couponCodeInput.trim() ? 0.6 : 1,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {couponLoading ? (lang === 'ko' ? '확인 중...' : 'Applying...') : (t('checkout.apply_coupon') || '적용')}
+                    </button>
+                  </div>
+
+                  {couponError && (
+                    <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '6px', fontWeight: 600 }}>
+                      {couponError}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px'
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CheckCircle2 size={15} color="#16a34a" />
+                      <span style={{ fontSize: '0.875rem', fontWeight: 800, color: '#15803d' }}>
+                        {appliedCoupon.code}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', backgroundColor: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                        -{formatKRW(appliedCoupon.discount_amount)}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: '#166534', marginTop: '2px' }}>
+                      {lang === 'ko' ? (appliedCoupon.description_ko || '쿠폰 할인이 적용되었습니다.') : (appliedCoupon.description_en || 'Coupon discount applied.')}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#ef4444',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    {t('checkout.remove_coupon') || '삭제'}
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Price Calculations */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '16px', borderTop: '1px solid #f0f0f2', marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#52525b' }}>
-                <span>상품 금액</span>
+                <span>{t('cart.subtotal') || '상품 금액'}</span>
                 <span>{formatKRW(subtotal)}</span>
               </div>
+
+              {appliedCoupon && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#dc2626', fontWeight: 700 }}>
+                  <span>{t('checkout.coupon_discount') || '쿠폰 할인'} ({appliedCoupon.code})</span>
+                  <span>-{formatKRW(discountAmount)}</span>
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#52525b' }}>
-                <span>배송비</span>
-                <span>{shippingFee === 0 ? '무료배송' : formatKRW(shippingFee)}</span>
+                <span>{t('cart.shipping_fee') || '배송비'}</span>
+                <span>{shippingFee === 0 ? (lang === 'ko' ? '무료배송' : 'Free') : formatKRW(shippingFee)}</span>
               </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.25rem', fontWeight: 900, paddingTop: '12px', borderTop: '1px dashed #e4e4e7' }}>
-                <span>총 결제금액</span>
-                <span style={{ color: 'var(--accent-sunset)' }}>{formatKRW(totalAmount)}</span>
+                <span>{t('cart.total') || '총 결제금액'}</span>
+                <span style={{ color: 'var(--accent-sunset)' }}>{formatKRW(finalTotalAmount)}</span>
               </div>
             </div>
 

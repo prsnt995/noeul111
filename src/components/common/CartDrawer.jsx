@@ -137,18 +137,30 @@ export function CartDrawer() {
                     borderBottom: '1px solid var(--border-subtle)',
                   }}
                 >
-                  {/* Thumbnail */}
-                  <img
-                    src={item.image_url}
-                    alt={item.name_ko}
+                  <div
                     style={{
                       width: '80px',
                       height: '100px',
-                      objectFit: 'cover',
                       borderRadius: '4px',
-                      backgroundColor: 'var(--bg-secondary)',
+                      backgroundColor: '#f7f7f8',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '4px',
+                      flexShrink: 0,
                     }}
-                  />
+                  >
+                    <img
+                      src={item.image_url}
+                      alt={item.name_ko}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                      }}
+                    />
+                  </div>
 
                   {/* Item Details */}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -254,7 +266,7 @@ export function CartDrawer() {
                 onClick={closeCart}
                 style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textDecoration: 'underline' }}
               >
-                {lang === 'ko' ? '장바구니 전체보기' : 'View Full Cart Page'}
+                {t('cart.view_full')}
               </Link>
             </div>
           </div>

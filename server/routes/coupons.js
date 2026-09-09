@@ -8,21 +8,42 @@ router.post('/coupons/validate', (req, res) => {
   try {
     const { code, subtotal } = req.body;
 
-    if (!code) {
+    if (!code || !code.trim()) {
       return res.status(400).json({ success: false, message: '쿠폰 코드를 입력해주세요.' });
     }
 
+    const cleanCode = code.toUpperCase().trim();
     const coupon = query.get(`
       SELECT * FROM coupons
       WHERE code = ? AND is_active = 1
-    `, code.toUpperCase().trim());
+    `, cleanCode);
 
     if (!coupon) {
-      return res.status(404).json({ success: false, message: '유효하지 않거나 만료된 쿠폰 코드입니다.' });
+      return res.status(404).json({ success: false, message: '유효하지 않거나 비활성화된 쿠폰 코드입니다.' });
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Check Start Date
+    if (coupon.start_date && coupon.start_date > todayStr) {
+      return res.status(400).json({ success: false, message: '아직 사용할 수 없는 쿠폰 코드입니다.' });
+    }
+
+    // Check End Date (Expiry)
+    if (coupon.end_date && coupon.end_date < todayStr) {
+      return res.status(400).json({ success: false, message: '만료된 쿠폰 코드입니다.' });
+    }
+
+    // Check Usage Limit
+    if (coupon.usage_limit !== null && coupon.usage_limit !== undefined && coupon.usage_limit > 0) {
+      if (coupon.times_used >= coupon.usage_limit) {
+        return res.status(400).json({ success: false, message: '쿠폰 발급 및 사용 수량이 모두 소진되었습니다.' });
+      }
     }
 
     const orderSubtotal = Number(subtotal || 0);
 
+    // Check Minimum Order Amount
     if (coupon.min_order_amount && orderSubtotal < coupon.min_order_amount) {
       return res.status(400).json({
         success: false,
@@ -40,15 +61,18 @@ router.post('/coupons/validate', (req, res) => {
       discountAmount = coupon.discount_value;
     }
 
+    discountAmount = Math.min(orderSubtotal, discountAmount);
+
     res.json({
       success: true,
       data: {
         code: coupon.code,
         discount_type: coupon.discount_type,
         discount_value: coupon.discount_value,
-        discount_amount: Math.min(orderSubtotal, discountAmount),
+        discount_amount: discountAmount,
         description_ko: coupon.description_ko,
-        description_en: coupon.description_en
+        description_en: coupon.description_en,
+        min_order_amount: coupon.min_order_amount
       }
     });
   } catch (error) {
@@ -58,3 +82,4 @@ router.post('/coupons/validate', (req, res) => {
 });
 
 export default router;
+

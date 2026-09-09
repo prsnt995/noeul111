@@ -547,6 +547,63 @@ export function AdminWebsiteBuilderPage() {
                   </div>
                 )}
 
+                {/* Instagram Feed Specific Fields */}
+                {formData.type === 'instagram_feed' && (
+                  <div style={{ backgroundColor: '#fdf0f6', padding: '16px', borderRadius: '8px', border: '1px solid #f3c4d9', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <Camera size={16} color="#bc1888" />
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#bc1888' }}>Instagram 설정</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">인스타그램 사용자명</label>
+                        <input
+                          type="text"
+                          value={formData.content?.instagram_username || '@noeul.me'}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            content: { ...formData.content, instagram_username: e.target.value }
+                          })}
+                          placeholder="@noeul.me"
+                          className="form-input"
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">인스타그램 프로필 URL</label>
+                        <input
+                          type="url"
+                          value={formData.content?.instagram_url || 'https://www.instagram.com/noeul.me/'}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            content: { ...formData.content, instagram_url: e.target.value }
+                          })}
+                          placeholder="https://www.instagram.com/noeul.me/"
+                          className="form-input"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">그리드 이미지 URL 목록 (쉼표로 구분, 최대 6개)</label>
+                      <textarea
+                        rows={4}
+                        value={(formData.content?.images || []).join(',\n')}
+                        onChange={(e) => {
+                          const urls = e.target.value.split(',').map(u => u.trim()).filter(Boolean);
+                          setFormData({ ...formData, content: { ...formData.content, images: urls } });
+                        }}
+                        placeholder="https://example.com/image1.jpg,&#10;https://example.com/image2.jpg"
+                        className="form-textarea"
+                        style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                      />
+                      <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '6px' }}>
+                        어드민 미디어 라이브러리에 업로드한 이미지의 URL을 붙여넣으세요. (비워두면 기본 패션 이미지가 표시됩니다)
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Modal Footer */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '16px', borderTop: '1px solid #e4e4e7' }}>
                   <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">

@@ -274,4 +274,39 @@ export function initDatabase() {
   try {
     db.exec('ALTER TABLE orders ADD COLUMN payment_admin_notes TEXT');
   } catch {}
+  try {
+    db.exec('ALTER TABLE orders ADD COLUMN coupon_code TEXT');
+  } catch {}
+  try {
+    db.exec("ALTER TABLE products ADD COLUMN gender TEXT DEFAULT 'unisex'");
+  } catch {}
+  try {
+    db.exec('ALTER TABLE products ADD COLUMN subcategory TEXT');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE products ADD COLUMN material TEXT');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE products ADD COLUMN color_name TEXT');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE products ADD COLUMN is_sale INTEGER DEFAULT 0');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE products ADD COLUMN material_ko TEXT');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE products ADD COLUMN material_en TEXT');
+  } catch {}
+
+  // Ensure default categories exist
+  try {
+    const socksCat = query.get("SELECT id FROM categories WHERE slug = 'socks'");
+    if (!socksCat) {
+      query.run(`
+        INSERT INTO categories (slug, name_ko, name_en, description_ko, description_en, image_url, sort_order, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `, 'socks', '양말/삭스', 'Socks', '프리미엄 코튼 및 데일리 삭스 컬렉션', 'Premium cotton and daily socks collection', 'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?q=80&w=900&auto=format&fit=crop', 9);
+    }
+  } catch {}
 }

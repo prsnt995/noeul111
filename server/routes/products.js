@@ -5,12 +5,19 @@ const router = express.Router();
 
 function parseProduct(p) {
   if (!p) return null;
+  const parsedColors = typeof p.colors === 'string' ? JSON.parse(p.colors || '[]') : (p.colors || []);
+  const parsedDetails = typeof p.details === 'string' ? JSON.parse(p.details || '{}') : (p.details || {});
+  
   return {
     ...p,
-    images: typeof p.images === 'string' ? JSON.parse(p.images || '[]') : p.images,
-    sizes: typeof p.sizes === 'string' ? JSON.parse(p.sizes || '[]') : p.sizes,
-    colors: typeof p.colors === 'string' ? JSON.parse(p.colors || '[]') : p.colors,
-    details: typeof p.details === 'string' ? JSON.parse(p.details || '{}') : p.details,
+    gender: p.gender || 'unisex',
+    subcategory: p.subcategory || p.category_slug || 'tshirts',
+    color: p.color_name || (Array.isArray(parsedColors) && parsedColors[0] ? (parsedColors[0].name_en || parsedColors[0].name_ko) : 'Black'),
+    material: p.material || parsedDetails.fabric || parsedDetails.fabric_ko || '100% Cotton',
+    images: typeof p.images === 'string' ? JSON.parse(p.images || '[]') : (p.images || []),
+    sizes: typeof p.sizes === 'string' ? JSON.parse(p.sizes || '[]') : (p.sizes || ['S', 'M', 'L', 'XL']),
+    colors: parsedColors,
+    details: parsedDetails,
     is_new: Boolean(p.is_new),
     is_best: Boolean(p.is_best),
   };
@@ -31,7 +38,9 @@ router.get('/categories', (req, res) => {
 router.get('/products', (req, res) => {
   try {
     const {
+      gender,
       category,
+      subcategory,
       search,
       minPrice,
       maxPrice,
@@ -41,7 +50,7 @@ router.get('/products', (req, res) => {
       isBest,
       inStock,
       sort = 'newest',
-      limit = 50,
+      limit = 100,
       offset = 0
     } = req.query;
 
@@ -53,22 +62,46 @@ router.get('/products', (req, res) => {
     `;
     const params = [];
 
-    // Category filter (slug or id)
-    if (category && category !== 'all') {
-      if (isNaN(Number(category))) {
-        sql += ' AND c.slug = ?';
-        params.push(category);
+    // Gender filter (men / women / unisex)
+    if (gender && gender !== 'all') {
+      const g = gender.toLowerCase();
+      if (g === 'men') {
+        sql += " AND (p.gender = 'men' OR p.gender = 'unisex' OR p.gender IS NULL)";
+      } else if (g === 'women') {
+        sql += " AND (p.gender = 'women' OR p.gender = 'unisex' OR p.gender IS NULL)";
       } else {
-        sql += ' AND p.category_id = ?';
-        params.push(Number(category));
+        sql += ' AND p.gender = ?';
+        params.push(g);
       }
     }
 
-    // Search query (KO / EN name, SKU, descriptions)
+    // Category / Subcategory filter (matches slug, subcategory, or category_id)
+    if (category && category !== 'all') {
+      const catVal = category.toLowerCase();
+      sql += ' AND (LOWER(c.slug) = ? OR LOWER(COALESCE(p.subcategory, \'\')) = ? OR p.category_id = ?)';
+      params.push(catVal, catVal, isNaN(Number(category)) ? -1 : Number(category));
+    }
+
+    if (subcategory && subcategory !== 'all') {
+      sql += ' AND LOWER(COALESCE(p.subcategory, \'\')) = ?';
+      params.push(subcategory.toLowerCase());
+    }
+
+    // Comprehensive search query (Name, SKU, Color, Material, Subcategory, Category)
     if (search && search.trim()) {
-      const term = `%${search.trim()}%`;
-      sql += ' AND (p.name_ko LIKE ? OR p.name_en LIKE ? OR p.sku LIKE ? OR p.description_ko LIKE ? OR p.description_en LIKE ?)';
-      params.push(term, term, term, term, term);
+      const term = `%${search.trim().toLowerCase()}%`;
+      sql += ` AND (
+        LOWER(p.name_ko) LIKE ? OR 
+        LOWER(p.name_en) LIKE ? OR 
+        LOWER(p.sku) LIKE ? OR 
+        LOWER(COALESCE(p.material, '')) LIKE ? OR 
+        LOWER(COALESCE(p.color_name, '')) LIKE ? OR 
+        LOWER(COALESCE(p.subcategory, '')) LIKE ? OR 
+        LOWER(COALESCE(c.slug, '')) LIKE ? OR
+        LOWER(COALESCE(c.name_en, '')) LIKE ? OR
+        LOWER(COALESCE(c.name_ko, '')) LIKE ?
+      )`;
+      params.push(term, term, term, term, term, term, term, term, term);
     }
 
     // Price range

@@ -76,6 +76,11 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
 }
 
 body {
@@ -84,6 +89,16 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   letter-spacing: -0.015em;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
 }
 
@@ -322,3 +337,159 @@ img {
 ::-webkit-scrollbar-thumb:hover {
   background: #9d9990;
 }
+
+/* ============================================================
+   Instagram Feed Section – Responsive Grid
+   ============================================================ */
+
+/* Tablet: 3 columns */
+@media (max-width: 1024px) {
+  .instagram-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+/* Mobile: 2 columns */
+@media (max-width: 600px) {
+  .instagram-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 4px !important;
+  }
+}
+
+/* ============================================================
+   NOEUL Minimal Product Card & Section Grid Styles
+   ============================================================ */
+.noeul-product-grid,
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1024px) {
+  .noeul-product-grid,
+  .product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+.noeul-product-card,
+.product-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: transparent;
+  transition: transform 0.2s ease;
+  height: 100%;
+}
+
+.noeul-product-card:hover,
+.product-card:hover {
+  transform: translateY(-2px);
+}
+
+.noeul-view-btn:hover {
+  background-color: #18181b !important;
+  color: #ffffff !important;
+  border-color: #18181b !important;
+}
+
+/* Category Sub-Bar (ALL | MEN | WOMEN) - Seamlessly pinned with solid white shield */
+.noeul-category-bar {
+  position: sticky;
+  top: 55px;
+  z-index: 95;
+  background-color: #ffffff;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Solid white shield above category bar completely prevents product cards from peeking through on scroll */
+.noeul-category-bar::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background-color: #ffffff;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ============================================================
+   RESPONSIVE MOBILE BREAKPOINT (<= 768px)
+   Strictly prevents horizontal scroll and overlaps
+   ============================================================ */
+@media (max-width: 768px) {
+  .noeul-product-grid,
+  .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .noeul-product-card,
+  .product-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .noeul-slider-arrow {
+    opacity: 0.9 !important;
+    width: 22px !important;
+    height: 22px !important;
+  }
+
+  /* Reposition and scale down floating tools so they NEVER cover product photos */
+  .korean-floating-bar {
+    right: 8px !important;
+    top: auto !important;
+    bottom: 64px !important;
+    transform: none !important;
+    gap: 3px !important;
+    z-index: 85 !important;
+  }
+
+  .korean-floating-badge {
+    display: none !important;
+  }
+
+  .korean-floating-tools {
+    padding: 4px 2px !important;
+    border-radius: 16px !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.1) !important;
+  }
+
+  .korean-floating-tools a,
+  .korean-floating-tools button {
+    padding: 5px !important;
+  }
+
+  .korean-floating-kakao {
+    position: fixed !important;
+    right: 8px !important;
+    bottom: 14px !important;
+    width: 38px !important;
+    height: 38px !important;
+    margin-top: 0 !important;
+    z-index: 90 !important;
+  }
+}
+
+

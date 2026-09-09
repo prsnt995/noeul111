@@ -93,77 +93,141 @@ export function AdminDashboardPage() {
           </Link>
         </div>
 
-        {/* 1. KPI Metric Cards */}
+        {/* 1. All 8 Specified KPI Metric Cards */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '20px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '16px',
             marginBottom: '32px',
           }}
         >
-          {/* Total Revenue */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase' }}>총 매출액 (누적)</span>
-              <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: '#fef2f2', color: 'var(--accent-sunset)' }}>
-                <DollarSign size={18} />
+          {/* Total Sales */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Total Sales (총 매출액)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fef2f2', color: 'var(--accent-sunset)' }}>
+                <DollarSign size={16} />
               </div>
             </div>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
               {formatKRW(stats.totalRevenue)}
             </h2>
-            <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
-              <TrendingUp size={12} /> 실 결제 완료 기준
+            <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              실 결제 완료 누적
             </span>
           </div>
 
-          {/* Today's Sales */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase' }}>오늘의 매출</span>
-              <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: '#f0fdf4', color: '#16a34a' }}>
-                <TrendingUp size={18} />
+          {/* Total Products */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Total Products (전체 상품)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#f0fdf4', color: '#16a34a' }}>
+                <ShoppingBag size={16} />
               </div>
             </div>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>
-              {formatKRW(stats.todaySales)}
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
+              {stats.totalProducts || 0}개
             </h2>
-            <span style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '6px', display: 'block' }}>
-              오늘 접수 주문: <strong>{stats.todayOrders}건</strong>
+            <Link href="/admin/products" style={{ fontSize: '0.75rem', color: 'var(--accent-sunset)', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              상품 목록 관리 →
+            </Link>
+          </div>
+
+          {/* Women's Products */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Women's Products (여성)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fce7f3', color: '#db2777' }}>
+                <ShoppingBag size={16} />
+              </div>
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
+              {stats.womensProducts || 0}개
+            </h2>
+            <span style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '4px', display: 'block' }}>
+              여성 의류 라인업
             </span>
           </div>
 
-          {/* Total Orders */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase' }}>전체 주문 건수</span>
-              <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: '#eff6ff', color: '#2563eb' }}>
-                <ShoppingBag size={18} />
+          {/* New Arrivals */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>New Arrivals (신상품)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#eff6ff', color: '#2563eb' }}>
+                <TrendingUp size={16} />
               </div>
             </div>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>
-              {stats.totalOrders}건
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
+              {stats.newArrivalsCount || 0}개
             </h2>
-            <span style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '6px', display: 'block' }}>
-              배송 대기: <strong>{orderStatuses.confirmed + orderStatuses.processing}건</strong>
+            <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              NEW 뱃지 지정 상품
             </span>
           </div>
 
-          {/* Customers Count */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase' }}>가입 고객 수</span>
-              <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: '#faf5ff', color: '#9333ea' }}>
-                <Users size={18} />
+          {/* Orders */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Orders (전체 주문)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#faf5ff', color: '#9333ea' }}>
+                <Clock size={16} />
               </div>
             </div>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>
-              {stats.totalCustomers}명
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
+              {stats.totalOrders || 0}건
             </h2>
-            <span style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '6px', display: 'block' }}>
-              등록 상품: <strong>{stats.totalProducts}개</strong>
+            <Link href="/admin/orders" style={{ fontSize: '0.75rem', color: 'var(--accent-sunset)', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              주문 전체 내역 →
+            </Link>
+          </div>
+
+          {/* Pending Orders */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Pending Orders (처리 대기)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fef3c7', color: '#b45309' }}>
+                <Clock size={16} />
+              </div>
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#b45309' }}>
+              {stats.pendingOrdersCount || 0}건
+            </h2>
+            <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              입금 & 검수 대기중
             </span>
+          </div>
+
+          {/* Completed Orders */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Completed Orders (완료)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#f0fdf4', color: '#15803d' }}>
+                <CheckCircle size={16} />
+              </div>
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#15803d' }}>
+              {stats.completedOrdersCount || 0}건
+            </h2>
+            <span style={{ fontSize: '0.75rem', color: '#15803d', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              결제 완료 & 배송 완료
+            </span>
+          </div>
+
+          {/* Low Stock Products */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Low Stock (품절 임박)</span>
+              <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fee2e2', color: '#dc2626' }}>
+                <AlertTriangle size={16} />
+              </div>
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.lowStockCount > 0 ? '#dc2626' : '#18181b' }}>
+              {stats.lowStockCount || 0}개
+            </h2>
+            <Link href="/admin/inventory" style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              재고 보충 관리 →
+            </Link>
           </div>
         </div>
 

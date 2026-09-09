@@ -85,7 +85,7 @@ export function QuickSearch({ isOpen, onClose }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={lang === 'ko' ? '상품명, 카테고리 또는 스타일을 검색해보세요.' : 'Search products, categories or styles...'}
+            placeholder={t('shop.search_placeholder')}
             style={{
               flex: 1,
               border: 'none',
@@ -100,7 +100,7 @@ export function QuickSearch({ isOpen, onClose }) {
             </button>
           )}
           <button onClick={onClose} style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginLeft: '8px' }}>
-            {lang === 'ko' ? '닫기' : 'Cancel'}
+            {t('nav.close')}
           </button>
         </div>
 
@@ -109,7 +109,7 @@ export function QuickSearch({ isOpen, onClose }) {
           <div style={{ padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               <TrendingUp size={14} color="var(--accent-sunset)" />
-              <span>{lang === 'ko' ? '인기 검색어' : 'Trending Searches'}</span>
+              <span>{t('shop.trending')}</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
               {popularTags.map((tag, i) => (
@@ -139,7 +139,7 @@ export function QuickSearch({ isOpen, onClose }) {
           <div style={{ maxHeight: '420px', overflowY: 'auto', padding: '16px 24px' }}>
             {loading ? (
               <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                {lang === 'ko' ? '검색 중...' : 'Searching...'}
+                {t('shop.loading')}
               </div>
             ) : results.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
