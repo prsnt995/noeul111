@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../utils/api.js';
+import { supabase } from '../lib/supabase.js';
 import {
   auth,
   googleProvider,
@@ -20,9 +21,10 @@ export function AuthProvider({ children }) {
   const [adminUser, setAdminUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize auth sessions & listen to Firebase Auth changes
+  // Initialize auth sessions & listen to Supabase + Firebase Auth changes
   useEffect(() => {
     let unsubscribeFirebase = () => {};
+    let unsubscribeSupabase = () => {};
 
     async function loadSessions() {
       // 1. Check local admin session
@@ -53,10 +55,54 @@ export function AuthProvider({ children }) {
         }
       }
 
-      // 2. Firebase auth listener for customer session persistence
+      // Helper to format Supabase User
+      const formatSupabaseUser = (sbUser) => {
+        if (!sbUser) return null;
+        const fullName = sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || sbUser.email?.split('@')[0] || 'NOEUL Customer';
+        const avatarUrl = sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture || '';
+        return {
+          id: sbUser.id,
+          uid: sbUser.id,
+          email: sbUser.email,
+          name: fullName,
+          full_name: fullName,
+          photoURL: avatarUrl,
+          avatar_url: avatarUrl,
+          role: 'customer',
+          user_metadata: sbUser.user_metadata || {}
+        };
+      };
+
+      // 2. Check current Supabase Session
+      try {
+        const { data: { session: sbSession } } = await supabase.auth.getSession();
+        if (sbSession && sbSession.user) {
+          const formatted = formatSupabaseUser(sbSession.user);
+          setUser(formatted);
+          localStorage.setItem('noeul_user', JSON.stringify(formatted));
+        }
+      } catch (sbErr) {
+        console.error('Supabase getSession error:', sbErr);
+      }
+
+      // Listen to Supabase Auth state changes
+      try {
+        const { data: { subscription } } = supabase.auth.onAuthStateChanged((_event, session) => {
+          if (session && session.user) {
+            const formatted = formatSupabaseUser(session.user);
+            setUser(formatted);
+            localStorage.setItem('noeul_user', JSON.stringify(formatted));
+            setLoading(false);
+          }
+        });
+        unsubscribeSupabase = () => subscription?.unsubscribe();
+      } catch (subErr) {
+        console.error('Supabase onAuthStateChanged error:', subErr);
+      }
+
+      // 3. Firebase auth listener for customer session persistence
       unsubscribeFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
         if (firebaseUser) {
-          // Sync with Firestore doc users/{uid}
           await syncUserToFirestore(firebaseUser);
 
           const formattedUser = {
@@ -64,13 +110,14 @@ export function AuthProvider({ children }) {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'NOEUL Customer',
+            full_name: firebaseUser.displayName || '',
             photoURL: firebaseUser.photoURL || '',
+            avatar_url: firebaseUser.photoURL || '',
             role: 'customer'
           };
           setUser(formattedUser);
           localStorage.setItem('noeul_user', JSON.stringify(formattedUser));
         } else {
-          // If no firebase user, check fallback local token
           const storedUser = localStorage.getItem('noeul_user');
           const customerToken = localStorage.getItem('noeul_token');
           if (storedUser) {
@@ -85,8 +132,6 @@ export function AuthProvider({ children }) {
               localStorage.removeItem('noeul_token');
               setUser(null);
             }
-          } else {
-            setUser(null);
           }
         }
         setLoading(false);
@@ -97,35 +142,26 @@ export function AuthProvider({ children }) {
 
     return () => {
       if (unsubscribeFirebase) unsubscribeFirebase();
+      if (unsubscribeSupabase) unsubscribeSupabase();
     };
   }, []);
 
-  // 1. Google Sign-In via Firebase Authentication
+  // 1. Google Sign-In via Supabase OAuth
   const loginWithGoogle = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const firebaseUser = result.user;
-
-      // Extract required fields: UID, Full Name, Email, Profile Photo
-      await syncUserToFirestore(firebaseUser);
-
-      const formattedUser = {
-        id: firebaseUser.uid,
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        name: firebaseUser.displayName || 'NOEUL Customer',
-        photoURL: firebaseUser.photoURL || '',
-        role: 'customer'
-      };
-
-      setUser(formattedUser);
-      localStorage.setItem('noeul_user', JSON.stringify(formattedUser));
-      return formattedUser;
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+      if (error) {
+        console.error('Supabase OAuth Error:', error);
+        throw error;
+      }
+      return data;
     } catch (error) {
       console.error('Google Sign-In Error:', error);
-      if (error.code === 'auth/popup-closed-by-user') {
-        throw new Error('구글 로그인 창이 닫혔습니다.');
-      }
       throw new Error(error.message || '구글 로그인 중 오류가 발생했습니다.');
     }
   };
@@ -232,6 +268,11 @@ export function AuthProvider({ children }) {
 
   // 5. Customer Logout
   const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Supabase signout error:', err);
+    }
     try {
       await firebaseSignOut(auth);
     } catch (err) {

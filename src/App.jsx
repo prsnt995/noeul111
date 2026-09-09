@@ -24,6 +24,7 @@ import { CartPage } from './pages/CartPage.jsx';
 import { CheckoutPage } from './pages/CheckoutPage.jsx';
 import { OrderSuccessPage } from './pages/OrderSuccessPage.jsx';
 import { CustomerAuthPage } from './pages/CustomerAuthPage.jsx';
+import { AuthCallbackPage } from './pages/AuthCallbackPage.jsx';
 import { CustomerAccountPage } from './pages/CustomerAccountPage.jsx';
 import { AboutPage } from './pages/AboutPage.jsx';
 import { CustomPageView } from './pages/CustomPageView.jsx';
@@ -72,6 +73,7 @@ function AppContent() {
           <Route path="/checkout" component={CheckoutPage} />
           <Route path="/order-success/:orderNumber" component={OrderSuccessPage} />
           <Route path="/auth" component={CustomerAuthPage} />
+          <Route path="/auth/callback" component={AuthCallbackPage} />
           <Route path="/account" component={CustomerAccountPage} />
           <Route path="/about" component={AboutPage} />
           <Route path="/p/:slug" component={CustomPageView} />

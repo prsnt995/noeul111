@@ -127,27 +127,61 @@ export function CustomerAccountPage() {
             gap: '24px',
           }}
         >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-              <h1 className="font-serif" style={{ fontSize: '1.75rem', fontWeight: 600 }}>
-                {t('account.welcome', { name: user?.name || 'Customer' })}
-              </h1>
-              <span
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {user?.avatar_url || user?.photoURL || user?.user_metadata?.avatar_url ? (
+              <img
+                src={user?.avatar_url || user?.photoURL || user?.user_metadata?.avatar_url}
+                alt={user?.name || 'User Profile'}
                 style={{
-                  backgroundColor: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.75rem',
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '2px solid var(--accent-sunset)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  backgroundColor: '#18181b',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   fontWeight: 700,
-                  padding: '4px 10px',
-                  borderRadius: '999px',
+                  fontSize: '1.25rem',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
                 }}
               >
-                {t('account.tier')}
-              </span>
+                {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              </div>
+            )}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                <h1 className="font-serif" style={{ fontSize: '1.75rem', fontWeight: 600 }}>
+                  {t('account.welcome', { name: user?.full_name || user?.user_metadata?.full_name || user?.name || 'Customer' })}
+                </h1>
+                <span
+                  style={{
+                    backgroundColor: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: '999px',
+                  }}
+                >
+                  {t('account.tier')}
+                </span>
+              </div>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                {user?.email} • {user?.phone || '연락처 미등록'}
+              </p>
             </div>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              {user?.email} • {user?.phone || '연락처 미등록'}
-            </p>
           </div>
 
           {/* Points & Coupon Summary Widgets */}
