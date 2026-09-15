@@ -38,6 +38,8 @@ const PAYMENT_STATUS_MAP = {
   failed: { label: '결제 실패', bg: '#fee2e2', text: '#991b1b' },
 };
 
+import { updateFirestoreOrderStatus } from '../../utils/firestoreOrders.js';
+
 export function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +86,13 @@ export function AdminOrdersPage() {
   const handleUpdateStatus = async (id, nextStatus) => {
     try {
       const res = await api.patch(`/admin/orders/${id}/status`, { order_status: nextStatus });
-      if (res.success) {
+      if (res.success && res.data) {
+        // Sync to Firestore for real-time user notification
+        await updateFirestoreOrderStatus(res.data.order_number, {
+          order_status: res.data.order_status,
+          payment_status: res.data.payment_status
+        });
+
         showToast(res.message, 'success');
         fetchOrders();
         if (selectedOrder && selectedOrder.id === id) {
@@ -104,7 +112,13 @@ export function AdminOrdersPage() {
         notes: action === 'reject' ? '입금 금액 또는 입금자명 불일치' : null,
       });
 
-      if (res.success) {
+      if (res.success && res.data) {
+        // Sync to Firestore for real-time user notification
+        await updateFirestoreOrderStatus(res.data.order_number, {
+          payment_status: res.data.payment_status,
+          order_status: res.data.order_status
+        });
+
         showToast(res.message, 'success');
         fetchOrders();
         if (selectedOrder && selectedOrder.id === id) {
@@ -133,7 +147,14 @@ export function AdminOrdersPage() {
         auto_ship: true,
       });
 
-      if (res.success) {
+      if (res.success && res.data) {
+        // Sync tracking number and shipped status to Firestore
+        await updateFirestoreOrderStatus(res.data.order_number, {
+          courier_name: res.data.courier_name,
+          tracking_number: res.data.tracking_number,
+          order_status: res.data.order_status
+        });
+
         showToast('운송장 정보가 성공적으로 등록되었습니다.', 'success');
         setTrackingModalOrder(null);
         fetchOrders();

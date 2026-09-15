@@ -37,8 +37,9 @@ export function formatDate(dateString, lang = 'ko') {
  * Status mapping for order fulfillment
  */
 export const ORDER_STATUS_MAP = {
+  pending_verification: { ko: '결제대기(검수중)', en: 'Pending Verification', bg: '#fef3c7', text: '#92400e', color: '#b45309' },
   pending: { ko: '결제대기', en: 'Pending Payment', bg: '#fef3c7', text: '#92400e', color: '#b45309' },
-  confirmed: { ko: '주문접수', en: 'Confirmed', bg: '#e0f2fe', text: '#0369a1', color: '#0284c7' },
+  confirmed: { ko: '주문확정', en: 'Confirmed', bg: '#e0f2fe', text: '#0369a1', color: '#0284c7' },
   processing: { ko: '상품준비중', en: 'Processing', bg: '#ede9fe', text: '#5b21b6', color: '#7c3aed' },
   shipped: { ko: '배송중', en: 'Shipped', bg: '#d1fae5', text: '#065f46', color: '#059669' },
   delivered: { ko: '배송완료', en: 'Delivered', bg: '#dcfce7', text: '#166534', color: '#16a34a' },

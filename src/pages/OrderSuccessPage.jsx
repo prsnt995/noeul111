@@ -17,6 +17,8 @@ import {
   Truck
 } from 'lucide-react';
 
+import { updateFirestoreOrderStatus } from '../utils/firestoreOrders.js';
+
 export function OrderSuccessPage() {
   const [, params] = useRoute('/order-success/:orderNumber');
   const { lang, t, formatKRW } = useLanguage();
@@ -88,6 +90,11 @@ export function OrderSuccessPage() {
       const data = await response.json();
       if (data.success && data.data) {
         setOrder(data.data);
+        await updateFirestoreOrderStatus(params.orderNumber, {
+          payment_receipt_url: data.data.payment_receipt_url,
+          payment_status: 'under_review',
+          payment_sender_name: data.data.payment_sender_name
+        });
         showToast('결제 영수증이 등록되었습니다. 관리자가 입금 내역을 확인합니다.', 'success');
       } else {
         showToast(data.message || '영수증 업로드 실패', 'error');

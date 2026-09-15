@@ -113,9 +113,12 @@ router.get('/content/settings', (req, res) => {
           payment_instructions_en: 'Please transfer the exact order amount to the bank account above, then upload your transfer screenshot / receipt. Once verified by our team, your order will be prepared for delivery.'
         },
         business_info: settings.business_info || {
-          company_name: '노을 (NOEUL )',
-          ceo: '노을',
+          company_name: '주식회사 피케이에스이엔지',
+          ceo: '박기삼',
+          business_number: '610-88-00182',
+          address: '경기도 파주시 송학2길 62-3, 1층(야당동)',
           cs_email: 'noeulenterprise@gmail.com',
+          cs_phone: '010-8361-5305',
           bank_account: '우리은행 1002340390276 박기삼'
         },
         about_story: settings.about_story || {

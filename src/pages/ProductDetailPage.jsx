@@ -33,15 +33,11 @@ export function ProductDetailPage() {
 
   // Slider & interaction states
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('details');
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
-
-  const touchStartXRef = useRef(null);
-  const touchEndXRef = useRef(null);
 
   // 1. Fetch product by ID (API with graceful local dataset fallback)
   useEffect(() => {
@@ -84,7 +80,7 @@ export function ProductDetailPage() {
     window.scrollTo(0, 0);
   }, [params?.id]);
 
-  // Normalized 5 images
+  // Normalized product images array
   const images = (() => {
     if (!product) return [];
     let list = [];
@@ -93,27 +89,14 @@ export function ProductDetailPage() {
       try {
         list = JSON.parse(product.images);
       } catch {}
+      if (list.length === 0 && product.images) list = [product.images];
     }
+    if (list.length === 0 && product.image_url) list = [product.image_url];
     if (list.length === 0) {
       list = ['https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=1000&auto=format&fit=crop'];
     }
-    const result = [...list];
-    let padIdx = 0;
-    while (result.length < 5) {
-      result.push(list[padIdx % list.length]);
-      padIdx++;
-    }
-    return result.slice(0, 5);
+    return list;
   })();
-
-  // 2. Automatic slide change every 3 seconds on the large product image
-  useEffect(() => {
-    if (images.length <= 1 || isHovered) return;
-    const interval = setInterval(() => {
-      setSelectedImageIndex((prev) => (prev + 1) % images.length);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [images.length, isHovered]);
 
   if (loading) {
     return (
@@ -148,37 +131,7 @@ export function ProductDetailPage() {
     details.fabric_ko ||
     (lang === 'ko' ? '100% 최고급 코튼' : '100% Combed Cotton');
 
-  // Manual image slider handlers
-  const handlePrevImage = (e) => {
-    e?.preventDefault();
-    setSelectedImageIndex((prev) => (prev - 1 + images.length) % images.length);
-  };
-
-  const handleNextImage = (e) => {
-    e?.preventDefault();
-    setSelectedImageIndex((prev) => (prev + 1) % images.length);
-  };
-
-  const handleTouchStart = (e) => {
-    touchStartXRef.current = e.targetTouches[0].clientX;
-    touchEndXRef.current = null;
-  };
-
-  const handleTouchMove = (e) => {
-    touchEndXRef.current = e.targetTouches[0].clientX;
-  };
-
-  const handleTouchEnd = () => {
-    if (touchStartXRef.current === null || touchEndXRef.current === null) return;
-    const diff = touchStartXRef.current - touchEndXRef.current;
-    if (diff > 35) {
-      handleNextImage();
-    } else if (diff < -35) {
-      handlePrevImage();
-    }
-    touchStartXRef.current = null;
-    touchEndXRef.current = null;
-  };
+  const currentMainImage = images[selectedImageIndex] || images[0];
 
   const handleAddToCart = () => {
     addToCart(product, selectedSize, selectedColor, quantity);
@@ -234,16 +187,11 @@ export function ProductDetailPage() {
           }}
         >
           {/* =========================================================
-              LEFT: 5-IMAGE LARGE SLIDER & THUMBNAILS
+              LEFT: STATIC PRODUCT IMAGE & THUMBNAIL SELECTOR
               ========================================================= */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Large Product Image Frame */}
+            {/* Main Product Image Frame */}
             <div
-              onMouseEnter={() => setIsHovered(true)}
-              onMouseLeave={() => setIsHovered(false)}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
               style={{
                 position: 'relative',
                 width: '100%',
@@ -254,155 +202,54 @@ export function ProductDetailPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                padding: '16px',
+                boxSizing: 'border-box',
               }}
             >
-              {/* Slider Track with Smooth Transition */}
-              <div
+              <img
+                src={currentMainImage}
+                alt={productName}
                 style={{
-                  display: 'flex',
                   width: '100%',
                   height: '100%',
-                  transform: `translateX(-${selectedImageIndex * 100}%)`,
-                  transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
-                  willChange: 'transform',
+                  objectFit: 'contain',
+                  display: 'block',
                 }}
-              >
+              />
+            </div>
+
+            {/* Clickable Thumbnails (Only if product has multiple images) */}
+            {images.length > 1 && (
+              <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
                 {images.map((img, idx) => (
-                  <div
+                  <button
                     key={idx}
+                    type="button"
+                    onClick={() => setSelectedImageIndex(idx)}
+                    aria-label={`View image ${idx + 1}`}
                     style={{
-                      minWidth: '100%',
-                      width: '100%',
-                      height: '100%',
+                      width: '68px',
+                      height: '84px',
+                      borderRadius: '3px',
+                      overflow: 'hidden',
+                      backgroundColor: '#f7f7f8',
+                      border: selectedImageIndex === idx ? '2px solid #18181b' : '1px solid #e4e4e7',
+                      opacity: selectedImageIndex === idx ? 1 : 0.65,
+                      padding: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
                       flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '16px',
-                      boxSizing: 'border-box',
                     }}
                   >
                     <img
                       src={img}
-                      alt={`${productName} view ${idx + 1}`}
-                      loading={idx === 0 ? 'eager' : 'lazy'}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain',
-                        userSelect: 'none',
-                        pointerEvents: 'none',
-                      }}
+                      alt={`Thumbnail ${idx + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     />
-                  </div>
+                  </button>
                 ))}
               </div>
-
-              {/* Slider Left Chevron Arrow */}
-              <button
-                type="button"
-                onClick={handlePrevImage}
-                aria-label="Previous image"
-                style={{
-                  position: 'absolute',
-                  left: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                  backdropFilter: 'blur(4px)',
-                  border: '1px solid rgba(0, 0, 0, 0.08)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#18181b',
-                  cursor: 'pointer',
-                  zIndex: 5,
-                }}
-              >
-                <ChevronLeft size={20} />
-              </button>
-
-              {/* Slider Right Chevron Arrow */}
-              <button
-                type="button"
-                onClick={handleNextImage}
-                aria-label="Next image"
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                  backdropFilter: 'blur(4px)',
-                  border: '1px solid rgba(0, 0, 0, 0.08)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#18181b',
-                  cursor: 'pointer',
-                  zIndex: 5,
-                }}
-              >
-                <ChevronRight size={20} />
-              </button>
-
-              {/* Slide Counter Overlay */}
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: '12px',
-                  right: '12px',
-                  backgroundColor: 'rgba(24, 24, 27, 0.75)',
-                  color: '#ffffff',
-                  fontSize: '0.6875rem',
-                  fontWeight: 600,
-                  letterSpacing: '0.04em',
-                  padding: '3px 8px',
-                  borderRadius: '12px',
-                  zIndex: 5,
-                }}
-              >
-                {selectedImageIndex + 1} / {images.length}
-              </div>
-            </div>
-
-            {/* Thumbnails Row (All 5 thumbnails clickable) */}
-            <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-              {images.map((img, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setSelectedImageIndex(idx)}
-                  style={{
-                    width: '68px',
-                    height: '84px',
-                    borderRadius: '3px',
-                    overflow: 'hidden',
-                    backgroundColor: '#f7f7f8',
-                    border: selectedImageIndex === idx ? '2px solid #18181b' : '1px solid #e4e4e7',
-                    opacity: selectedImageIndex === idx ? 1 : 0.65,
-                    padding: '4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    flexShrink: 0,
-                  }}
-                >
-                  <img
-                    src={img}
-                    alt="Thumbnail"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                </button>
-              ))}
-            </div>
+            )}
           </div>
 
           {/* =========================================================

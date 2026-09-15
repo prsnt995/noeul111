@@ -25,7 +25,7 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
 
   if (!isOpen || !product) return null;
 
-  // Extract primary image
+  // Extract primary static image
   const displayImage = (() => {
     if (Array.isArray(product.images) && product.images.length > 0) {
       return product.images[0];
@@ -37,7 +37,7 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
       } catch {}
       if (product.images) return product.images;
     }
-    return product.image_url || '/products/men/classic-tshirt/1.jpg';
+    return product.image_url || '/products/men/tshirts/classic-tshirt/1.jpg';
   })();
 
   const productName = lang === 'ko'
@@ -115,7 +115,7 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
           <X size={18} />
         </button>
 
-        {/* 1. Product Image (Clickable to view detail) */}
+        {/* 1. Static Product Image (Clickable to view detail) */}
         <div
           onClick={handleOpenDetail}
           style={{
@@ -145,7 +145,6 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
               objectFit: 'contain',
               display: 'block',
               userSelect: 'none',
-              transition: 'transform 0.3s ease',
             }}
           />
         </div>

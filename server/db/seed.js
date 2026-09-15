@@ -211,12 +211,12 @@ export function seed() {
   };
 
   const businessInfo = {
-    company_name: '(주)노을패션코리아 (NOEUL Fashion Korea)',
+    company_name: '주식회사 피케이에스이엔지',
     ceo: '박기삼',
-    business_number: '120-88-94821',
-    ecommerce_number: '제 2026-서울강남-04821호',
-    address: '서울특별시 강남구 압구정로 165 노을 빌딩 4층',
-    cs_phone: '010-1234-5678',
+    business_number: '610-88-00182',
+    ecommerce_number: '제 2026-경기파주-00182호',
+    address: '경기도 파주시 송학2길 62-3, 1층(야당동)',
+    cs_phone: '010-8361-5305',
     cs_email: 'noeulenterprise@gmail.com',
     bank_account: '우리은행 1002340390276 박기삼'
   };

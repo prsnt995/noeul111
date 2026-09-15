@@ -34,6 +34,8 @@ router.post('/orders', optionalAuth, async (req, res) => {
       coupon_code,
       payment_method = 'bank_transfer',
       payment_sender_name,
+      user_id,
+      firebase_uid
     } = req.body;
 
     if (!customer_name || !customer_phone || !postal_code || !address) {
@@ -152,22 +154,24 @@ router.post('/orders', optionalAuth, async (req, res) => {
       order_status = payment_status === 'paid' ? 'confirmed' : 'pending_verification';
     }
 
-    const userId = req.user ? req.user.id : null;
+    const numericUserId = req.user ? req.user.id : (typeof user_id === 'number' ? user_id : null);
+    const fbUid = firebase_uid || (typeof user_id === 'string' ? user_id : null) || (req.user?.uid || null);
     const senderName = payment_sender_name ? payment_sender_name.trim() : customer_name.trim();
 
     // 5. Save order to database & update stock atomically
     const insertOrderStmt = db.prepare(`
       INSERT INTO orders (
-        order_number, user_id, customer_name, customer_email, customer_phone,
+        order_number, user_id, firebase_uid, customer_name, customer_email, customer_phone,
         postal_code, address, detail_address, shipping_memo,
         subtotal, discount_amount, coupon_code, shipping_fee, total_amount,
         payment_method, payment_status, order_status, payment_sender_name, paid_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const orderRes = insertOrderStmt.run(
       order_number,
-      userId,
+      numericUserId,
+      fbUid,
       customer_name.trim(),
       customer_email ? customer_email.trim() : '',
       customer_phone.trim(),
@@ -289,13 +293,21 @@ router.post('/orders/:orderNumber/payment-receipt', upload.single('receipt'), (r
 });
 
 // 3. Get My Orders (Customer Account)
-router.get('/orders/my-orders', verifyToken, (req, res) => {
+router.get('/orders/my-orders', optionalAuth, (req, res) => {
   try {
+    const firebaseUid = req.query.firebase_uid || req.query.userId || req.query.user_id || (req.user ? req.user.uid || req.user.id : null);
+    const numericUserId = req.user ? req.user.id : null;
+
+    if (!firebaseUid && !numericUserId) {
+      return res.json({ success: true, data: [] });
+    }
+
     const orders = query.all(`
       SELECT * FROM orders
-      WHERE user_id = ?
+      WHERE (firebase_uid = ? AND firebase_uid IS NOT NULL AND firebase_uid != '')
+         OR (user_id = ? AND user_id IS NOT NULL)
       ORDER BY created_at DESC
-    `, req.user.id);
+    `, firebaseUid || '', numericUserId || 0);
 
     const ordersWithItems = orders.map(order => {
       const items = query.all('SELECT * FROM order_items WHERE order_id = ?', order.id);

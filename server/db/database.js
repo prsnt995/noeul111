@@ -260,6 +260,9 @@ export function initDatabase() {
     db.exec('ALTER TABLE orders ADD COLUMN payment_receipt_url TEXT');
   } catch {}
   try {
+    db.exec('ALTER TABLE orders ADD COLUMN firebase_uid TEXT');
+  } catch {}
+  try {
     db.exec('ALTER TABLE orders ADD COLUMN payment_sender_name TEXT');
   } catch {}
   try {

@@ -16,6 +16,13 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
 
@@ -87,5 +94,17 @@ export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
-  updateFirebaseProfile
+  updateFirebaseProfile,
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  serverTimestamp
 };

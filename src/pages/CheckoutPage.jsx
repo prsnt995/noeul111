@@ -23,6 +23,8 @@ import {
   Tag
 } from 'lucide-react';
 
+import { saveOrderToFirestore } from '../utils/firestoreOrders.js';
+
 export function CheckoutPage() {
   const { items, subtotal, shippingFee, totalAmount, clearCart } = useCart();
   const { user, isLoggedIn } = useAuth();
@@ -204,7 +206,9 @@ export function CheckoutPage() {
 
   // Final Step: Submit Order
   const handleSubmitOrder = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+
+    if (submitting) return; // Prevent duplicate order creation
 
     if (!agreed) {
       showToast(lang === 'ko' ? '주문 약관에 동의해주세요.' : 'Please agree to terms.', 'error');
@@ -215,18 +219,21 @@ export function CheckoutPage() {
 
     try {
       const finalMemo = formData.shipping_memo === 'custom' ? formData.custom_memo : formData.shipping_memo;
+      const firebaseUid = user?.uid || user?.id || null;
 
       const orderPayload = {
-        customer_name: formData.customer_name,
-        customer_email: formData.customer_email,
-        customer_phone: formData.customer_phone,
-        postal_code: formData.postal_code,
-        address: formData.address,
-        detail_address: formData.detail_address,
+        customer_name: formData.customer_name?.trim() || '',
+        customer_email: formData.customer_email?.trim() || '',
+        customer_phone: formData.customer_phone?.trim() || '',
+        postal_code: formData.postal_code?.trim() || '',
+        address: formData.address?.trim() || '',
+        detail_address: formData.detail_address?.trim() || '',
         shipping_memo: finalMemo,
         payment_method: 'bank_transfer',
-        payment_sender_name: formData.payment_sender_name || formData.customer_name,
+        payment_sender_name: (formData.payment_sender_name || formData.customer_name)?.trim() || '',
         coupon_code: appliedCoupon ? appliedCoupon.code : null,
+        user_id: firebaseUid,
+        firebase_uid: firebaseUid,
         items: items.map((i) => ({
           product_id: i.product_id,
           quantity: i.quantity,
@@ -238,15 +245,24 @@ export function CheckoutPage() {
       const res = await api.post('/orders', orderPayload);
 
       if (res.success && res.order) {
+        // Save order to Firestore asynchronously without blocking navigation
+        try {
+          saveOrderToFirestore(res.order, user).catch((fsErr) =>
+            console.warn('Background Firestore order save warning:', fsErr)
+          );
+        } catch (fsErr) {
+          console.warn('Firestore sync warning:', fsErr);
+        }
+
         clearCart();
         showToast(lang === 'ko' ? '주문이 성공적으로 접수되었습니다!' : 'Order placed successfully!', 'success');
         setLocation(`/order-success/${res.order.order_number}`);
       } else {
-        throw new Error(res.message || '주문 생성에 실패했습니다.');
+        throw new Error(res.message || (lang === 'ko' ? '주문 생성에 실패했습니다. 다시 시도해주세요.' : 'Order creation failed. Please try again.'));
       }
     } catch (err) {
       console.error('Order checkout error:', err);
-      showToast(err.message || '주문 처리 중 오류가 발생했습니다.', 'error');
+      showToast(err.message || (lang === 'ko' ? '주문 처리 중 오류가 발생했습니다. 다시 시도해주세요.' : 'Order processing failed. Please try again.'), 'error');
     } finally {
       setSubmitting(false);
     }

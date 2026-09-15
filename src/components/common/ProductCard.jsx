@@ -9,7 +9,7 @@ export function ProductCard({ product, onSelect }) {
 
   if (!product) return null;
 
-  // Extract actual primary and optional secondary product images
+  // Extract actual product images
   const images = (() => {
     let list = [];
     if (Array.isArray(product.images)) {
@@ -22,7 +22,7 @@ export function ProductCard({ product, onSelect }) {
       if (list.length === 0 && product.images) list = [product.images];
     }
     if (list.length === 0 && product.image_url) list = [product.image_url];
-    if (list.length === 0) list = ['/products/men/classic-tshirt/1.jpg'];
+    if (list.length === 0) list = ['/products/men/tshirts/classic-tshirt/1.jpg'];
     return list;
   })();
 
@@ -155,32 +155,6 @@ export function ProductCard({ product, onSelect }) {
               </span>
             )}
           </div>
-
-          {/* Secondary Image Fade on Desktop Hover (if available) */}
-          {secondaryImage && (
-            <img
-              src={secondaryImage}
-              alt={`${productName} angle 2`}
-              loading="lazy"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                maxWidth: '100%',
-                maxHeight: '100%',
-                objectFit: 'contain',
-                display: 'block',
-                userSelect: 'none',
-                pointerEvents: 'none',
-                padding: '6px',
-                boxSizing: 'border-box',
-                transition: 'opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
-                opacity: isHovered ? 1 : 0,
-                transform: isHovered ? 'scale(1.025)' : 'scale(1)',
-              }}
-            />
-          )}
         </div>
       </div>
 

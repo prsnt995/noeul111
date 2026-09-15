@@ -22,6 +22,8 @@ import {
   Coins,
 } from 'lucide-react';
 
+import { subscribeUserOrders } from '../utils/firestoreOrders.js';
+
 export function CustomerAccountPage() {
   const { user, isLoggedIn, logout, updateProfile } = useAuth();
   const { lang, t, formatKRW } = useLanguage();
@@ -60,21 +62,36 @@ export function CustomerAccountPage() {
     const tabParam = searchParams.get('tab');
     if (tabParam) setActiveTab(tabParam);
 
-    async function fetchOrders() {
-      setLoadingOrders(true);
-      try {
-        const res = await api.get('/orders/my-orders');
-        if (res.success) {
-          setOrders(res.data);
-        }
-      } catch (err) {
-        console.error('Fetch my orders error:', err);
-      } finally {
-        setLoadingOrders(false);
-      }
+    const firebaseUid = user?.uid || user?.id;
+
+    if (!firebaseUid) {
+      setLoadingOrders(false);
+      return;
     }
 
-    fetchOrders();
+    setLoadingOrders(true);
+
+    // 1. Subscribe to Firestore real-time order updates for currentUser.uid
+    const unsubscribeFS = subscribeUserOrders(firebaseUid, (fsOrders) => {
+      if (fsOrders && fsOrders.length > 0) {
+        setOrders(fsOrders);
+        setLoadingOrders(false);
+      } else {
+        // 2. Fallback fetch from server API
+        api.get(`/orders/my-orders?firebase_uid=${encodeURIComponent(firebaseUid)}`)
+          .then((res) => {
+            if (res.success && res.data) {
+              setOrders(res.data);
+            }
+          })
+          .catch((err) => console.error('Fetch my orders error:', err))
+          .finally(() => setLoadingOrders(false));
+      }
+    });
+
+    return () => {
+      if (unsubscribeFS) unsubscribeFS();
+    };
   }, [isLoggedIn, user, setLocation, location]);
 
   const handleSaveProfile = async (e) => {
@@ -440,6 +457,21 @@ export function CustomerAccountPage() {
                           >
                             입금 계좌 / 영수증 업로드 →
                           </Link>
+                        </div>
+                      )}
+
+                      {/* Shipping Address Details */}
+                      {(order.address || order.customer_name) && (
+                        <div style={{ backgroundColor: '#fafafa', borderRadius: '6px', padding: '12px 16px', marginBottom: '16px', fontSize: '0.8125rem', border: '1px solid #f0f0f2' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#52525b', fontWeight: 700, marginBottom: '4px' }}>
+                            <MapPin size={14} color="var(--accent-sunset)" />
+                            <span>배송지 정보 (Shipping Address)</span>
+                          </div>
+                          <p style={{ color: '#18181b', lineHeight: 1.4 }}>
+                            <strong>{order.customer_name}</strong> ({order.customer_phone})<br />
+                            [{order.postal_code}] {order.address} {order.detail_address}
+                            {order.shipping_memo && <span style={{ color: '#71717a', display: 'block', marginTop: '2px' }}>요청사항: {order.shipping_memo}</span>}
+                          </p>
                         </div>
                       )}
 

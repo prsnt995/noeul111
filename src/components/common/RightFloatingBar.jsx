@@ -6,11 +6,25 @@ import { useCart } from '../../context/CartContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { User, Heart, ShoppingBag, Search, ChevronUp, ChevronDown, MessageCircle } from 'lucide-react';
 
+function KakaoTalkLogo({ size = 22, color = '#381E1F' }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={color}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M12 3C6.477 3 2 6.477 2 10.765c0 2.766 1.84 5.195 4.62 6.643-.2.74-.73 2.68-.84 3.09-.13.5.18.49.38.36.16-.1 2.53-1.72 3.56-2.42.75.11 1.51.17 2.28.17 5.523 0 10-3.477 10-7.765C22 6.477 17.523 3 12 3z" />
+    </svg>
+  );
+}
+
 export function RightFloatingBar({ onOpenSearch }) {
   const { isLoggedIn } = useAuth();
   const { wishlistCount } = useWishlist();
   const { totalCount, openCart } = useCart();
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -44,8 +58,8 @@ export function RightFloatingBar({ onOpenSearch }) {
             width: '38px',
             height: '38px',
             borderRadius: '50%',
-            backgroundColor: '#FEE500',
-            color: '#18181b',
+            backgroundColor: '#18181b',
+            color: '#ffffff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -53,6 +67,7 @@ export function RightFloatingBar({ onOpenSearch }) {
             fontSize: '0.75rem',
             boxShadow: 'var(--shadow-md)',
             cursor: 'pointer',
+            letterSpacing: '0.05em',
           }}
           title="노을 NOEUL"
         >
@@ -226,9 +241,9 @@ export function RightFloatingBar({ onOpenSearch }) {
         </div>
       </aside>
 
-      {/* 2. KakaoTalk Live Consultation Floating Button */}
+      {/* 2. KakaoTalk Floating Button (Bottom Right) */}
       <a
-        href="https://pf.kakao.com"
+        href="https://open.kakao.com/o/prsnt.2415"
         target="_blank"
         rel="noopener noreferrer"
         className="korean-floating-kakao"
@@ -236,23 +251,31 @@ export function RightFloatingBar({ onOpenSearch }) {
           position: 'fixed',
           right: '20px',
           bottom: '24px',
-          width: '42px',
-          height: '42px',
+          width: '46px',
+          height: '46px',
           borderRadius: '50%',
           backgroundColor: '#FEE500',
           color: '#381E1F',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+          boxShadow: '0 6px 18px rgba(0, 0, 0, 0.22)',
           zIndex: 90,
           cursor: 'pointer',
-          transition: 'transform 0.15s ease',
+          transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+          textDecoration: 'none',
         }}
-        title="카카오톡 실시간 1:1 상담톡"
+        title="카카오톡 1:1 상담톡 (KakaoTalk Contact)"
       >
-        <MessageCircle size={20} fill="#381E1F" />
+        <KakaoTalkLogo size={22} color="#381E1F" />
       </a>
+
+      <style>{`
+        .korean-floating-kakao:hover {
+          transform: scale(1.1) translateY(-2px) !important;
+          box-shadow: 0 10px 24px rgba(254, 229, 0, 0.45) !important;
+        }
+      `}</style>
     </>
   );
 }

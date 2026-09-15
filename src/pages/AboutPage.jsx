@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
-import { Sparkles, MapPin, Clock, ArrowRight } from 'lucide-react';
+import { Sparkles, MapPin, Clock, ArrowRight, ExternalLink } from 'lucide-react';
 
 export function AboutPage() {
   const { lang, t } = useLanguage();
@@ -29,6 +29,25 @@ export function AboutPage() {
             ? '노을(NOEUL)은 서울의 해질녘이 선사하는 차분하면서도 따뜻한 온도감에서 시작되었습니다. 빠르게 변화하는 유행을 좇기보다는, 시간이 흘러도 변치 않는 소재와 정교한 테일러링으로 옷장에 오랜 울림을 남기는 옷을 만듭니다.'
             : 'NOEUL was founded on the calm warmth of twilight in Seoul. Rather than chasing transient trends, we design garments that offer architectural silhouettes, natural enduring fabrics, and timeless quiet luxury.'}
         </p>
+
+        {/* Company attribution line */}
+        <div style={{ marginTop: '16px', fontSize: '0.9375rem', color: 'var(--text-muted)' }}>
+          {lang === 'ko' ? 'A business by ' : 'A business by '}
+          <a
+            href="https://noeulenterprises.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: 'var(--accent-sunset)',
+              fontWeight: 600,
+              textDecoration: 'underline',
+              textUnderlineOffset: '3px',
+              transition: 'color 0.2s ease',
+            }}
+          >
+            NOEUL ENTERPRISES
+          </a>
+        </div>
       </div>
 
       {/* Editorial Imagery Collage */}
@@ -108,7 +127,7 @@ export function AboutPage() {
       </div>
 
       {/* Flagship Showroom Section */}
-      <div className="container" style={{ maxWidth: '900px' }}>
+      <div className="container" style={{ maxWidth: '900px', marginBottom: '40px' }}>
         <div
           style={{
             backgroundColor: '#ffffff',
@@ -152,6 +171,58 @@ export function AboutPage() {
           />
         </div>
       </div>
+
+      {/* Parent Company Section */}
+      <div className="container" style={{ maxWidth: '900px' }}>
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            padding: '28px 40px',
+            border: '1px solid var(--border-light)',
+            boxShadow: 'var(--shadow-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '20px',
+          }}
+        >
+          <div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-sunset)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+              PARENT COMPANY
+            </span>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, margin: '4px 0 4px', color: 'var(--text-primary)' }}>
+              NOEUL ENTERPRISES
+            </h3>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              {lang === 'ko'
+                ? '노을(NOEUL)은 NOEUL ENTERPRISES의 패션 및 라이프스타일 공식 브랜드를 운영하고 있습니다.'
+                : 'NOEUL is an official fashion brand operated by NOEUL ENTERPRISES.'}
+            </p>
+          </div>
+
+          <a
+            href="https://noeulenterprises.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary"
+            style={{
+              padding: '10px 20px',
+              fontSize: '0.875rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              textDecoration: 'none',
+              borderRadius: '6px',
+            }}
+          >
+            <span>NOEUL ENTERPRISES</span>
+            <ExternalLink size={14} />
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
+
