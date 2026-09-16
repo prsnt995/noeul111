@@ -47,6 +47,7 @@ import { AdminStaffPage } from './pages/admin/AdminStaffPage.jsx';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage.jsx';
 import { AdminInventoryPage } from './pages/admin/AdminInventoryPage.jsx';
 import { AdminLanguagesPage } from './pages/admin/AdminLanguagesPage.jsx';
+import { AdminContentPage } from './pages/admin/AdminContentPage.jsx';
 
 function AppContent() {
   const [location] = useLocation();
@@ -93,6 +94,7 @@ function AppContent() {
           <Route path="/admin/coupons" component={AdminCouponsPage} />
           <Route path="/admin/reviews" component={AdminReviewsPage} />
           <Route path="/admin/customers" component={AdminCustomersPage} />
+          <Route path="/admin/content" component={AdminContentPage} />
           <Route path="/admin/media" component={AdminMediaPage} />
           <Route path="/admin/staff" component={AdminStaffPage} />
           <Route path="/admin/settings" component={AdminSettingsPage} />
