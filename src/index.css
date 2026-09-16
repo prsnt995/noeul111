@@ -407,7 +407,7 @@ img {
 /* Category Sub-Bar (ALL | MEN | WOMEN) - Seamlessly pinned with solid white shield */
 .noeul-category-bar {
   position: sticky;
-  top: 55px;
+  top: 56px;
   z-index: 95;
   background-color: #ffffff;
   width: 100%;

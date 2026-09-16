@@ -145,80 +145,31 @@ export function ShopPage() {
   };
 
   return (
-    <div style={{ backgroundColor: '#ffffff', minHeight: '80vh', padding: '32px 0 80px' }}>
-      <div className="container">
-        {/* Top Breadcrumb & Clean Heading */}
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#8c8984', marginBottom: '8px' }}>
-            <span>NOEUL</span>
-            <ChevronRight size={12} />
-            <span style={{ textTransform: 'uppercase' }}>{selectedGender}</span>
-            {selectedCategory !== 'all' && (
-              <>
-                <ChevronRight size={12} />
-                <span style={{ textTransform: 'capitalize' }}>{selectedCategory}</span>
-              </>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <h1
-                className="font-serif"
-                style={{
-                  fontSize: '1.875rem',
-                  fontWeight: 600,
-                  letterSpacing: '-0.02em',
-                  color: '#18181b',
-                  lineHeight: 1.2,
-                }}
-              >
-                {getPageHeading()}
-              </h1>
-              <p style={{ fontSize: '0.8125rem', color: '#71717a', marginTop: '4px' }}>
-                {products.length} {lang === 'ko' ? '개의 에센셜 아이템' : t('shop.total_count', { count: '' }).replace('{count} ', '')}
-              </p>
-            </div>
-
-            {/* Sort Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{t('shop.sort_by')}:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => updateUrl(undefined, undefined, undefined, undefined, e.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  fontSize: '0.8125rem',
-                  border: '1px solid #e4e4e7',
-                  borderRadius: '3px',
-                  backgroundColor: '#ffffff',
-                  color: '#18181b',
-                  outline: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="newest">{t('shop.sort_newest')}</option>
-                <option value="best">{t('shop.sort_best')}</option>
-                <option value="price_asc">{t('shop.sort_price_low')}</option>
-                <option value="price_desc">{t('shop.sort_price_high')}</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* =========================================================
-            DYNAMIC GENDER SELECTOR TABS (ALL | MEN | WOMEN)
-            ========================================================= */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            borderBottom: '1px solid #f0f0f1',
-            paddingBottom: '12px',
-            marginBottom: '16px',
-          }}
-        >
+    <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
+      {/* Category Sub-Bar */}
+      <div
+        className="noeul-category-bar"
+        style={{
+          borderBottom: '1px solid #f0f0f0',
+          padding: '8px 12px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: '#ffffff',
+          position: 'sticky',
+          top: '56px',
+          zIndex: 95,
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          gap: '8px',
+          flexWrap: 'nowrap',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+        }}
+      >
+        {/* Left: Category Navigation Bar (전체 / 여성) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
           {['all', 'women'].map((g) => {
             const isSelected = selectedGender === g;
             return (
@@ -227,17 +178,16 @@ export function ShopPage() {
                 type="button"
                 onClick={() => updateUrl(g, 'all', undefined, undefined, undefined)}
                 style={{
-                  padding: '6px 16px',
-                  fontSize: '0.8125rem',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '0.75rem',
                   fontWeight: isSelected ? 700 : 500,
-                  letterSpacing: '0.04em',
-                  borderRadius: '2px',
-                  border: isSelected ? '1px solid #18181b' : '1px solid #e4e4e7',
-                  backgroundColor: isSelected ? '#18181b' : '#ffffff',
-                  color: isSelected ? '#ffffff' : '#52525b',
+                  letterSpacing: '0.08em',
+                  color: isSelected ? '#000000' : '#888888',
+                  borderBottom: isSelected ? '1.5px solid #000000' : '1.5px solid transparent',
+                  paddingBottom: '2px',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
-                  textTransform: 'uppercase',
                 }}
               >
                 {g === 'all' ? t('nav.all') : t('nav.women')}
@@ -246,163 +196,69 @@ export function ShopPage() {
           })}
         </div>
 
-        {/* =========================================================
-            DYNAMIC CATEGORY FILTER PILLS (T-Shirts, Jeans, etc.)
-            ========================================================= */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            overflowX: 'auto',
-            paddingBottom: '16px',
-            marginBottom: '28px',
-            scrollbarWidth: 'none',
-          }}
-        >
-          {/* 'All' subcategory button */}
-          <button
-            type="button"
-            onClick={() => updateUrl(undefined, 'all', undefined, undefined, undefined)}
-            style={{
-              padding: '5px 12px',
-              fontSize: '0.75rem',
-              fontWeight: selectedCategory === 'all' ? 600 : 400,
-              borderRadius: '16px',
-              border: selectedCategory === 'all' ? '1px solid #18181b' : '1px solid #f0f0f1',
-              backgroundColor: selectedCategory === 'all' ? '#f4f4f5' : '#ffffff',
-              color: selectedCategory === 'all' ? '#18181b' : '#71717a',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {t('shop.all_categories')}
-          </button>
-
-          {availableCategories.map((cat) => {
-            const isSelected = selectedCategory === cat.key;
-            return (
-              <button
-                key={cat.key}
-                type="button"
-                onClick={() => updateUrl(undefined, cat.key, undefined, undefined, undefined)}
-                style={{
-                  padding: '5px 12px',
-                  fontSize: '0.75rem',
-                  fontWeight: isSelected ? 600 : 400,
-                  borderRadius: '16px',
-                  border: isSelected ? '1px solid #18181b' : '1px solid #f0f0f1',
-                  backgroundColor: isSelected ? '#18181b' : '#ffffff',
-                  color: isSelected ? '#ffffff' : '#71717a',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {lang === 'ko' ? cat.label_ko : cat.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Active Filter Chips (if any search or active filter applied) */}
-        {(selectedCategory !== 'all' || selectedGender !== 'all' || searchQuery || activeFilter) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#8c8984', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {t('shop.filters')}:
-            </span>
-
-            {selectedGender !== 'all' && (
-              <span
-                onClick={() => updateUrl('all', undefined, undefined, undefined, undefined)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.75rem',
-                  padding: '3px 8px',
-                  backgroundColor: '#f4f4f5',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                }}
-              >
-                <span>{selectedGender.toUpperCase()}</span>
-                <X size={12} />
-              </span>
-            )}
-
-            {selectedCategory !== 'all' && (
-              <span
-                onClick={() => updateUrl(undefined, 'all', undefined, undefined, undefined)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.75rem',
-                  padding: '3px 8px',
-                  backgroundColor: '#f4f4f5',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                }}
-              >
-                <span>{selectedCategory}</span>
-                <X size={12} />
-              </span>
-            )}
-
-            {searchQuery && (
-              <span
-                onClick={() => updateUrl(undefined, undefined, undefined, '', undefined)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.75rem',
-                  padding: '3px 8px',
-                  backgroundColor: '#f4f4f5',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                }}
-              >
-                <span>"{searchQuery}"</span>
-                <X size={12} />
-              </span>
-            )}
-
+        {/* Selected Subcategory Indicator */}
+        {selectedCategory !== 'all' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#18181b', fontWeight: 600, flexShrink: 0 }}>
+            <span>/</span>
+            <span>{selectedCategory}</span>
             <button
               type="button"
-              onClick={() => updateUrl('all', 'all', '', '', 'newest')}
-              style={{
-                fontSize: '0.6875rem',
-                color: '#ef4444',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                marginLeft: '6px',
-              }}
+              onClick={() => updateUrl(undefined, 'all', undefined, undefined, undefined)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#888888' }}
             >
-              {t('shop.reset_filters')}
+              <X size={12} />
             </button>
           </div>
         )}
 
-        {/* =========================================================
-            RESPONSIVE PRODUCT GRID (4 Cols Desktop, 3 Cols Tablet, 2 Cols Mobile)
-            ========================================================= */}
+        {/* Right: Item Count & Sort Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, marginLeft: 'auto' }}>
+          <span style={{ fontSize: '0.6875rem', color: '#888888', fontWeight: 500 }}>
+            {loading ? '...' : `${products.length} ${t('home.items')}`}
+          </span>
+          <select
+            value={sortBy}
+            onChange={(e) => updateUrl(undefined, undefined, undefined, undefined, e.target.value)}
+            style={{
+              padding: '2px 6px',
+              fontSize: '0.75rem',
+              border: '1px solid #e4e4e7',
+              borderRadius: '2px',
+              backgroundColor: '#ffffff',
+              color: '#18181b',
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="newest">{t('shop.sort_newest')}</option>
+            <option value="best">{t('shop.sort_best')}</option>
+            <option value="price_asc">{t('shop.sort_price_low')}</option>
+            <option value="price_desc">{t('shop.sort_price_high')}</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Product Images Grid directly below category sub-bar */}
+      <main
+        style={{
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          padding: '4px 4px 60px',
+          margin: 0,
+          overflowX: 'hidden',
+        }}
+      >
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '80px 0', color: '#888' }}>
-            <p>{t('home.loading')}</p>
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#888888' }}>
+            <p style={{ fontSize: '0.875rem' }}>{t('home.loading')}</p>
           </div>
         ) : products.length === 0 ? (
           <div
             style={{
               textAlign: 'center',
-              padding: '90px 0',
-              border: '1px dashed #e4e4e7',
-              borderRadius: '4px',
-              backgroundColor: '#fafafa',
+              padding: '80px 20px',
+              color: '#666666',
             }}
           >
             <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#18181b', marginBottom: '8px' }}>
@@ -429,7 +285,7 @@ export function ShopPage() {
             </button>
           </div>
         ) : (
-          <div className="noeul-product-grid product-grid">
+          <div className="noeul-product-grid product-grid" style={{ margin: 0, padding: 0 }}>
             {products.map((prod) => (
               <ProductCard
                 key={prod.id}
@@ -439,7 +295,7 @@ export function ShopPage() {
             ))}
           </div>
         )}
-      </div>
+      </main>
 
       {/* STEP 2: First Click Preview Modal */}
       <ProductPreviewModal

@@ -105,27 +105,27 @@ export function HomePage() {
       }}
     >
       {/* =========================================================
-          3. MINIMAL CATEGORY SUB-BAR
-          Full width, responsive, "19 ITEMS" aligned on the right
+          3. MINIMAL CATEGORY SUB-BAR (전체 / 여성)
+          Full width, responsive, item count aligned on the right
           ========================================================= */}
       <div
         className="noeul-category-bar"
         style={{
           borderBottom: '1px solid #f0f0f0',
-          padding: '10px 12px',
+          padding: '8px 12px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           backgroundColor: '#ffffff',
           position: 'sticky',
-          top: '55px',
+          top: '56px',
           zIndex: 95,
           width: '100%',
           maxWidth: '100%',
           boxSizing: 'border-box',
         }}
       >
-        {/* Left: Interactive Gender Switch (ALL | WOMEN) */}
+        {/* Left: Interactive Category Navigation Bar (전체 / 여성) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
           {[
             { key: 'all', label: t('nav.all') },
@@ -145,7 +145,7 @@ export function HomePage() {
                   letterSpacing: '0.08em',
                   color: isSelected ? '#000000' : '#888888',
                   borderBottom: isSelected ? '1.5px solid #000000' : '1.5px solid transparent',
-                  paddingBottom: '3px',
+                  paddingBottom: '2px',
                   paddingLeft: '2px',
                   paddingRight: '2px',
                   cursor: 'pointer',
@@ -158,7 +158,7 @@ export function HomePage() {
           })}
         </div>
 
-        {/* Right: Item Count / Active status (19 ITEMS) */}
+        {/* Right: Item Count */}
         <div
           style={{
             fontSize: '0.6875rem',
@@ -175,25 +175,25 @@ export function HomePage() {
       </div>
 
       {/* =========================================================
-          4. DIRECT 2-COLUMN PRODUCT GRID (DESKTOP, TABLET & MOBILE)
-          Strict repeat(2, minmax(0, 1fr)) with small gap (8px)
-          No horizontal scrolling, no overlapping cards
+          4. DIRECT PRODUCT GRID (Zero whitespace gap)
+          Starts immediately below category navigation bar
           ========================================================= */}
       <main
         style={{
           width: '100%',
           maxWidth: '100%',
           boxSizing: 'border-box',
-          padding: '8px 8px 80px',
+          padding: '4px 4px 60px',
+          margin: 0,
           overflowX: 'hidden',
         }}
       >
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '100px 0', color: '#888888' }}>
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#888888' }}>
             <p style={{ fontSize: '0.875rem', letterSpacing: '0.04em' }}>{t('home.loading')}</p>
           </div>
         ) : products.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '120px 20px', color: '#666666' }}>
+          <div style={{ textAlign: 'center', padding: '80px 20px', color: '#666666' }}>
             <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '8px' }}>{t('home.no_products')}</p>
             <p style={{ fontSize: '0.8125rem', color: '#888888', marginBottom: '20px' }}>
               {t('home.no_products_desc')}
@@ -216,7 +216,7 @@ export function HomePage() {
             </button>
           </div>
         ) : (
-          <div className="product-grid noeul-product-grid">
+          <div className="product-grid noeul-product-grid" style={{ margin: 0, padding: 0 }}>
             {products.map((prod) => (
               <ProductCard
                 key={prod.id}
