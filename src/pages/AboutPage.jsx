@@ -34,7 +34,7 @@ export function AboutPage() {
         <div style={{ marginTop: '16px', fontSize: '0.9375rem', color: 'var(--text-muted)' }}>
           {lang === 'ko' ? 'A business by ' : 'A business by '}
           <a
-            href="https://noeulenterprises.com"
+            href="https://www.noeulenterprises.com"
             target="_blank"
             rel="noopener noreferrer"
             style={{

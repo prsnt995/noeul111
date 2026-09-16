@@ -152,7 +152,7 @@ export function Footer() {
               <div style={{ marginBottom: '16px', fontSize: '0.8125rem', color: '#a1a1a6' }}>
                 A business by{' '}
                 <a
-                  href="https://noeulenterprises.com"
+                  href="https://www.noeulenterprises.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -452,7 +452,7 @@ export function Footer() {
             <div style={{ color: '#8e8e93', fontSize: '0.75rem', letterSpacing: '0.04em' }}>
               A business by{' '}
               <a
-                href="https://noeulenterprises.com"
+                href="https://www.noeulenterprises.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
