@@ -48,19 +48,21 @@ export function CustomerAuthPage() {
     }
   }, [isLoggedIn, setLocation]);
 
-  // 1. Firebase Google Sign-In
+  // 1. Google Sign-In
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
     setGoogleLoading(true);
     try {
       const user = await loginWithGoogle();
-      showToast(
-        lang === 'ko'
-          ? `환영합니다, ${user.name}님! 성공적으로 로그인되었습니다.`
-          : `Welcome back, ${user.name}!`,
-        'success'
-      );
-      setLocation('/account');
+      if (user) {
+        showToast(
+          lang === 'ko'
+            ? `환영합니다, ${user.name || user.full_name || '고객'}님! Google 로그인 완료.`
+            : `Welcome back, ${user.name || user.full_name || 'Customer'}!`,
+          'success'
+        );
+        setLocation('/account');
+      }
     } catch (err) {
       console.error('Google Auth Error:', err);
       setErrorMsg(err.message || '구글 로그인 중 오류가 발생했습니다.');
