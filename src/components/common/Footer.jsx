@@ -379,26 +379,6 @@ export function Footer() {
               }}
             >
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ color: '#6e6e73', minWidth: '70px' }}>{lang === 'ko' ? '모기업:' : 'Company:'}</span>
-                <a
-                  href="https://noeulenterprises.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: '#ffffff',
-                    fontWeight: 600,
-                    textDecoration: 'underline',
-                    textUnderlineOffset: '3px',
-                    transition: 'color 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#e05638')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = '#ffffff')}
-                >
-                  NOEUL ENTERPRISES
-                </a>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ color: '#6e6e73', minWidth: '70px' }}>상호:</span>
                 <span style={{ color: '#d1d1d6', fontWeight: 500 }}>{legalInfo.companyName}</span>
               </div>
