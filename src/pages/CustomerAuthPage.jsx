@@ -614,23 +614,7 @@ export function CustomerAuthPage() {
           )}
         </div>
 
-        {/* Footer Admin Link */}
-        <div style={{ textAlign: 'center', marginTop: '24px' }}>
-          <Link
-            href="/admin/login"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.8125rem',
-              color: '#71717a',
-              textDecoration: 'none',
-            }}
-          >
-            <Shield size={14} />
-            <span>Store Manager / Admin Login</span>
-          </Link>
-        </div>
+
       </div>
 
       {/* Forgot Password Modal */}
