@@ -162,12 +162,7 @@ export function CustomerAuthPage() {
     }
   };
 
-  // Quick Demo Filler
-  const fillDemoAccount = () => {
-    setEmail('customer@noeul.kr');
-    setPassword('customer1234!');
-    setErrorMsg('');
-  };
+
 
   return (
     <div
@@ -587,31 +582,7 @@ export function CustomerAuthPage() {
             )}
           </div>
 
-          {/* Demo Account Helper */}
-          {mode === 'login' && (
-            <div
-              style={{
-                marginTop: '16px',
-                backgroundColor: '#fafafa',
-                border: '1px solid #e4e4e7',
-                borderRadius: '8px',
-                padding: '10px 14px',
-                fontSize: '0.75rem',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ color: '#71717a' }}>Demo Account: customer@noeul.kr</span>
-              <button
-                type="button"
-                onClick={fillDemoAccount}
-                style={{ color: 'var(--accent-sunset)', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Auto-fill
-              </button>
-            </div>
-          )}
+
         </div>
 
 
