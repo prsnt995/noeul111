@@ -106,20 +106,20 @@ router.get('/content/settings', (req, res) => {
         shipping_policy: settings.shipping_policy || { threshold: 70000, fee: 3000 },
         payment_info: settings.payment_info || {
           bank_name: '우리은행 (Woori Bank)',
-          account_holder: '박기삼',
+          account_holder: '박기성',
           account_number: '1002340390276',
           currency: 'KRW',
           payment_instructions_ko: '주문 접수 후 위 계좌로 주문 금액을 정확히 입금하신 후, 결제 영수증(이체 확인증 또는 모바일 뱅킹 스크린샷)을 업로드해주세요. 관리자 입금 확인 후 즉시 배송이 준비됩니다.',
           payment_instructions_en: 'Please transfer the exact order amount to the bank account above, then upload your transfer screenshot / receipt. Once verified by our team, your order will be prepared for delivery.'
         },
         business_info: settings.business_info || {
-          company_name: '주식회사 피케이에스이엔지',
-          ceo: '박기삼',
+          company_name: '주식회사 페리어스엔지',
+          ceo: '박기성',
           business_number: '610-88-00182',
           address: '경기도 파주시 송학2길 62-3, 1층(야당동)',
-          cs_email: 'noeulenterprise@gmail.com',
+          cs_email: 'noeulenterprises@gmail.com',
           cs_phone: '010-8361-5305',
-          bank_account: '우리은행 1002340390276 박기삼'
+          bank_account: '우리은행 1002340390276 박기성'
         },
         about_story: settings.about_story || {
           title_ko: '서울의 황혼에서 영감을 얻은 컨템포러리 룩',

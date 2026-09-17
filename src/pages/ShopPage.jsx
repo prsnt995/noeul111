@@ -54,10 +54,10 @@ export function ShopPage() {
         const res = await fetch(`/api/products?${params.toString()}`);
         const json = await res.json();
 
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (res.ok && json.success && Array.isArray(json.data)) {
           setProducts(json.data);
         } else {
-          // Fallback to local master dataset
+          // Fallback to local master dataset if API fails
           const fallback = getFilteredProducts({
             gender: selectedGender,
             category: selectedCategory,

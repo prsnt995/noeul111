@@ -29,6 +29,16 @@ import { CustomerAccountPage } from './pages/CustomerAccountPage.jsx';
 import { AboutPage } from './pages/AboutPage.jsx';
 import { CustomPageView } from './pages/CustomPageView.jsx';
 
+// Legal & Policy Pages
+import { PrivacyPage } from './pages/policy/PrivacyPage.jsx';
+import { TermsPage } from './pages/policy/TermsPage.jsx';
+import { RefundExchangePage } from './pages/policy/RefundExchangePage.jsx';
+import { ShippingPage } from './pages/policy/ShippingPage.jsx';
+import { CookiePolicyPage } from './pages/policy/CookiePolicyPage.jsx';
+import { DisclaimerPage } from './pages/policy/DisclaimerPage.jsx';
+import { BusinessInfoPage } from './pages/policy/BusinessInfoPage.jsx';
+import { ContactPage } from './pages/policy/ContactPage.jsx';
+
 // Admin Pages
 import { AdminLoginPage } from './pages/admin/AdminLoginPage.jsx';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage.jsx';
@@ -77,6 +87,14 @@ function AppContent() {
           <Route path="/auth/callback" component={AuthCallbackPage} />
           <Route path="/account" component={CustomerAccountPage} />
           <Route path="/about" component={AboutPage} />
+          <Route path="/privacy" component={PrivacyPage} />
+          <Route path="/terms" component={TermsPage} />
+          <Route path="/refund-exchange" component={RefundExchangePage} />
+          <Route path="/shipping" component={ShippingPage} />
+          <Route path="/cookies" component={CookiePolicyPage} />
+          <Route path="/disclaimer" component={DisclaimerPage} />
+          <Route path="/business-info" component={BusinessInfoPage} />
+          <Route path="/contact" component={ContactPage} />
           <Route path="/p/:slug" component={CustomPageView} />
 
           {/* Admin Control Center & CMS Routes */}

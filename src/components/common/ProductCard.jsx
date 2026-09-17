@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ProductPreviewModal } from './ProductPreviewModal.jsx';
+import { getProductImages } from '../../utils/imageHelper.js';
 
 export function ProductCard({ product, onSelect }) {
   const { lang } = useLanguage();
@@ -9,23 +10,8 @@ export function ProductCard({ product, onSelect }) {
 
   if (!product) return null;
 
-  // Extract actual product images
-  const images = (() => {
-    let list = [];
-    if (Array.isArray(product.images)) {
-      list = product.images.filter(Boolean);
-    } else if (typeof product.images === 'string') {
-      try {
-        const parsed = JSON.parse(product.images);
-        if (Array.isArray(parsed)) list = parsed.filter(Boolean);
-      } catch {}
-      if (list.length === 0 && product.images) list = [product.images];
-    }
-    if (list.length === 0 && product.image_url) list = [product.image_url];
-    if (list.length === 0) list = ['/products/men/tshirts/classic-tshirt/1.jpg'];
-    return list;
-  })();
-
+  // Extract actual product images dynamically
+  const images = getProductImages(product);
   const primaryImage = images[0];
   const secondaryImage = images.length > 1 ? images[1] : null;
 
@@ -94,17 +80,44 @@ export function ProductCard({ product, onSelect }) {
               height: '100%',
               maxWidth: '100%',
               maxHeight: '100%',
-              objectFit: 'contain',
+              objectFit: 'cover',
+              objectPosition: 'center',
               display: 'block',
               userSelect: 'none',
               pointerEvents: 'none',
-              padding: '6px',
               boxSizing: 'border-box',
               transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
-              transform: isHovered ? 'scale(1.025)' : 'scale(1)',
+              transform: isHovered ? 'scale(1.03)' : 'scale(1)',
               opacity: isHovered && secondaryImage ? 0 : 1,
             }}
           />
+
+          {/* Secondary Hover Image (if available) */}
+          {secondaryImage && (
+            <img
+              src={secondaryImage}
+              alt={`${productName} hover`}
+              loading="lazy"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center',
+                display: 'block',
+                userSelect: 'none',
+                pointerEvents: 'none',
+                boxSizing: 'border-box',
+                transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
+                transform: isHovered ? 'scale(1.03)' : 'scale(1)',
+                opacity: isHovered ? 1 : 0,
+              }}
+            />
+          )}
 
           {/* Badges Overlay */}
           <div style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 5, display: 'flex', flexDirection: 'column', gap: '4px' }}>

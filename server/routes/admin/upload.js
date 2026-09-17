@@ -20,8 +20,19 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const cleanBase = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9가-힣_-]/g, '');
+    let ext = path.extname(file.originalname).toLowerCase();
+    if (!ext || ext === '.') {
+      const mimeMap = {
+        'image/jpeg': '.jpg',
+        'image/jpg': '.jpg',
+        'image/png': '.png',
+        'image/webp': '.webp',
+        'image/gif': '.gif',
+        'image/svg+xml': '.svg',
+      };
+      ext = mimeMap[file.mimetype.toLowerCase()] || '.jpg';
+    }
+    const cleanBase = path.basename(file.originalname, path.extname(file.originalname)).replace(/[^a-zA-Z0-9가-힣_-]/g, '');
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
     cb(null, `${cleanBase || 'image'}-${uniqueSuffix}${ext}`);
   },

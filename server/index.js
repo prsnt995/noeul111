@@ -48,7 +48,13 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Static uploads directory for locally uploaded product/banner images
 const uploadsPath = path.join(__dirname, '../uploads');
-app.use('/uploads', express.static(uploadsPath));
+app.use('/uploads', express.static(uploadsPath, {
+  setHeaders: (res, filePath) => {
+    if (!path.extname(filePath)) {
+      res.set('Content-Type', 'image/jpeg');
+    }
+  }
+}));
 
 // Static products directory for /products/men/..., /products/women/...
 const productsStaticPath = path.join(__dirname, '../public/products');

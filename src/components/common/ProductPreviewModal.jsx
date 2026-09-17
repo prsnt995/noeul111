@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { X } from 'lucide-react';
+import { getPrimaryProductImage } from '../../utils/imageHelper.js';
 
 export function ProductPreviewModal({ product, isOpen, onClose }) {
   const [, setLocation] = useLocation();
@@ -25,20 +26,8 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
 
   if (!isOpen || !product) return null;
 
-  // Extract primary static image
-  const displayImage = (() => {
-    if (Array.isArray(product.images) && product.images.length > 0) {
-      return product.images[0];
-    }
-    if (typeof product.images === 'string') {
-      try {
-        const parsed = JSON.parse(product.images);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
-      } catch {}
-      if (product.images) return product.images;
-    }
-    return product.image_url || '/products/men/tshirts/classic-tshirt/1.jpg';
-  })();
+  // Extract primary image dynamically
+  const displayImage = getPrimaryProductImage(product);
 
   const productName = lang === 'ko'
     ? (product.name_ko || product.name_en)
@@ -142,7 +131,8 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
               height: '100%',
               maxWidth: '100%',
               maxHeight: '100%',
-              objectFit: 'contain',
+              objectFit: 'cover',
+              objectPosition: 'center',
               display: 'block',
               userSelect: 'none',
             }}

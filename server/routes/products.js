@@ -8,13 +8,28 @@ function parseProduct(p) {
   const parsedColors = typeof p.colors === 'string' ? JSON.parse(p.colors || '[]') : (p.colors || []);
   const parsedDetails = typeof p.details === 'string' ? JSON.parse(p.details || '{}') : (p.details || {});
   
+  let rawImages = [];
+  if (Array.isArray(p.images)) rawImages = p.images;
+  else if (typeof p.images === 'string') {
+    try {
+      const parsed = JSON.parse(p.images || '[]');
+      if (Array.isArray(parsed)) rawImages = parsed;
+      else if (typeof parsed === 'string') rawImages = [parsed];
+    } catch {
+      rawImages = p.images ? [p.images] : [];
+    }
+  }
+  if (!Array.isArray(rawImages)) rawImages = [];
+  rawImages = rawImages.filter(Boolean);
+  if (rawImages.length === 0 && p.image_url) rawImages = [p.image_url];
+  
   return {
     ...p,
     gender: p.gender || 'unisex',
     subcategory: p.subcategory || p.category_slug || 'tshirts',
     color: p.color_name || (Array.isArray(parsedColors) && parsedColors[0] ? (parsedColors[0].name_en || parsedColors[0].name_ko) : 'Black'),
     material: p.material || parsedDetails.fabric || parsedDetails.fabric_ko || '100% Cotton',
-    images: typeof p.images === 'string' ? JSON.parse(p.images || '[]') : (p.images || []),
+    images: rawImages,
     sizes: typeof p.sizes === 'string' ? JSON.parse(p.sizes || '[]') : (p.sizes || ['S', 'M', 'L', 'XL']),
     colors: parsedColors,
     details: parsedDetails,
@@ -78,8 +93,16 @@ router.get('/products', (req, res) => {
     // Category / Subcategory filter (matches slug, subcategory, or category_id)
     if (category && category !== 'all') {
       const catVal = category.toLowerCase();
-      sql += ' AND (LOWER(c.slug) = ? OR LOWER(COALESCE(p.subcategory, \'\')) = ? OR p.category_id = ?)';
-      params.push(catVal, catVal, isNaN(Number(category)) ? -1 : Number(category));
+      const catAliases = {
+        'tshirts': 'tops',
+        'jackets': 'outerwear',
+        'hoodies': 'tops',
+        'jeans': 'pants',
+        'knitwear': 'tops',
+      };
+      const mappedSlug = catAliases[catVal] || catVal;
+      sql += ' AND (LOWER(c.slug) = ? OR LOWER(c.slug) = ? OR LOWER(COALESCE(p.subcategory, \'\')) = ? OR p.category_id = ?)';
+      params.push(catVal, mappedSlug, catVal, isNaN(Number(category)) ? -1 : Number(category));
     }
 
     if (subcategory && subcategory !== 'all') {

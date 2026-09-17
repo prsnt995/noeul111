@@ -35,7 +35,7 @@ export function CheckoutPage() {
   // Settings from API
   const [paymentSettings, setPaymentSettings] = useState({
     bank_name: '우리은행 (Woori Bank)',
-    account_holder: '박기삼',
+    account_holder: '박기성',
     account_number: '1002340390276',
     currency: 'KRW',
     payment_instructions_ko: '주문 접수 후 위 계좌로 주문 금액을 정확히 입금하신 후, 결제 영수증(이체 확인증 또는 모바일 뱅킹 스크린샷)을 업로드해주세요. 관리자 입금 확인 후 즉시 배송이 준비됩니다.',
