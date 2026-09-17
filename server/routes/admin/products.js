@@ -344,11 +344,46 @@ router.post('/products/:id/duplicate', (req, res) => {
 router.delete('/products/:id', (req, res) => {
   try {
     const { id } = req.params;
-    query.run('DELETE FROM products WHERE id = ?', Number(id));
+    const prodId = Number(id);
+
+    if (isNaN(prodId)) {
+      return res.status(400).json({ success: false, message: '유효하지 않은 상품 ID입니다.' });
+    }
+
+    const prod = query.get('SELECT id FROM products WHERE id = ?', prodId);
+    if (!prod) {
+      return res.status(404).json({ success: false, message: '삭제할 상품을 찾을 수 없습니다.' });
+    }
+
+    // Decouple & delete child records in related tables to avoid foreign key errors
+    try {
+      query.run('DELETE FROM reviews WHERE product_id = ?', prodId);
+    } catch (e) {
+      console.warn('Failed to delete related reviews:', e.message);
+    }
+
+    try {
+      query.run('DELETE FROM wishlists WHERE product_id = ?', prodId);
+    } catch (e) {
+      console.warn('Failed to delete related wishlists:', e.message);
+    }
+
+    try {
+      query.run('UPDATE order_items SET product_id = NULL WHERE product_id = ?', prodId);
+    } catch (e) {
+      console.warn('Failed to nullify order_items product_id:', e.message);
+    }
+
+    // Delete product record
+    query.run('DELETE FROM products WHERE id = ?', prodId);
+
+    // Sync deletion to Supabase
     supabaseSync.deleteProduct(id).catch(err => console.error('Supabase sync error:', err));
-    res.json({ success: true, message: '상품이 삭제되었습니다.' });
+
+    res.json({ success: true, message: '상품이 성공적으로 삭제되었습니다.' });
   } catch (error) {
-    res.status(500).json({ success: false, message: '상품 삭제 실패' });
+    console.error('Delete product server error:', error);
+    res.status(500).json({ success: false, message: '상품 삭제 실패: ' + error.message });
   }
 });
 

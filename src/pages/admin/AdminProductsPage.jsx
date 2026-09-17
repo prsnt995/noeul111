@@ -198,12 +198,13 @@ export function AdminProductsPage() {
 
   const handleDeleteProduct = async (id) => {
     try {
-      await api.delete(`/admin/products/${id}`);
-      showToast('상품이 삭제되었습니다.', 'info');
+      const res = await api.delete(`/admin/products/${id}`);
+      showToast(res.message || '상품이 성공적으로 삭제되었습니다.', 'info');
       setDeleteConfirmId(null);
       fetchProducts();
     } catch (err) {
-      showToast('상품 삭제 실패', 'error');
+      console.error('Delete product error:', err);
+      showToast(err.message || '상품 삭제 실패', 'error');
     }
   };
 
