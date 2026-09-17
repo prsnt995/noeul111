@@ -14,6 +14,7 @@ import wishlistRoutes from './routes/wishlist.js';
 import contentRoutes from './routes/content.js';
 import couponsRoutes from './routes/coupons.js';
 import reviewsRoutes from './routes/reviews.js';
+import inquiriesRoutes from './routes/inquiries.js';
 
 // Route Imports - Admin Management & CMS
 import adminDashboardRoutes from './routes/admin/dashboard.js';
@@ -82,6 +83,7 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api', contentRoutes);
 app.use('/api', couponsRoutes);
 app.use('/api', reviewsRoutes);
+app.use('/api', inquiriesRoutes);
 
 // Mount Admin APIs
 app.use('/api/admin', adminDashboardRoutes);

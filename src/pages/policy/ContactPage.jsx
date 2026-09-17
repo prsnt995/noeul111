@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
+import { api } from '../../utils/api.js';
 import { Headphones, Phone, Mail, Clock, MessageSquare, Send, ArrowLeft, ChevronDown } from 'lucide-react';
 
 function KakaoIcon({ size = 16 }) {
@@ -46,7 +47,7 @@ export function ContactPage() {
     }
   ];
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.message) {
       showToast('성함, 이메일, 문의 내용을 입력해주세요.', 'error');
@@ -54,11 +55,24 @@ export function ContactPage() {
     }
 
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
-      showToast('1:1 고객 문의가 접수되었습니다. 확인 후 답변 드리겠습니다.', 'success');
+    try {
+      const res = await api.post('/inquiries', formData);
+      if (res.success) {
+        showToast('1:1 문의가 접수되었습니다. (noeulenterprises@gmail.com으로 발송되었습니다)', 'success');
+        setFormData({ name: '', email: '', phone: '', category: 'shipping', message: '' });
+      } else {
+        showToast(res.message || '문의 접수 중 오류가 발생했습니다.', 'error');
+      }
+    } catch (err) {
+      console.error('Submit inquiry error:', err);
+      // Fallback mailto trigger
+      const mailtoUrl = `mailto:noeulenterprises@gmail.com?subject=${encodeURIComponent(`[NOEUL 문의] ${formData.name}님`)}&body=${encodeURIComponent(`성함: ${formData.name}\n이메일: ${formData.email}\n연락처: ${formData.phone}\n\n문의 내용:\n${formData.message}`)}`;
+      window.location.href = mailtoUrl;
+      showToast('문의 메일 프로그램이 연결되었습니다.', 'info');
       setFormData({ name: '', email: '', phone: '', category: 'shipping', message: '' });
-    }, 800);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
