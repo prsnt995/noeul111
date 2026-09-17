@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
-import { useToast } from '../../context/ToastContext.jsx';
-import { api } from '../../utils/api.js';
-import { Headphones, Phone, Mail, Clock, MessageSquare, Send, ArrowLeft, ChevronDown } from 'lucide-react';
+import { Headphones, Phone, Mail, Clock, ArrowLeft, ChevronDown } from 'lucide-react';
 
 function KakaoIcon({ size = 16 }) {
   return (
@@ -15,18 +13,7 @@ function KakaoIcon({ size = 16 }) {
 
 export function ContactPage() {
   const { lang } = useLanguage();
-  const { showToast } = useToast();
-
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    category: 'shipping',
-    message: '',
-  });
-
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const faqs = [
     {
@@ -47,33 +34,7 @@ export function ContactPage() {
     }
   ];
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.name || !formData.email || !formData.message) {
-      showToast('성함, 이메일, 문의 내용을 입력해주세요.', 'error');
-      return;
-    }
 
-    setSubmitting(true);
-    try {
-      const res = await api.post('/inquiries', formData);
-      if (res.success) {
-        showToast('1:1 문의가 접수되었습니다. (noeulenterprises@gmail.com으로 발송되었습니다)', 'success');
-        setFormData({ name: '', email: '', phone: '', category: 'shipping', message: '' });
-      } else {
-        showToast(res.message || '문의 접수 중 오류가 발생했습니다.', 'error');
-      }
-    } catch (err) {
-      console.error('Submit inquiry error:', err);
-      // Fallback mailto trigger
-      const mailtoUrl = `mailto:noeulenterprises@gmail.com?subject=${encodeURIComponent(`[NOEUL 문의] ${formData.name}님`)}&body=${encodeURIComponent(`성함: ${formData.name}\n이메일: ${formData.email}\n연락처: ${formData.phone}\n\n문의 내용:\n${formData.message}`)}`;
-      window.location.href = mailtoUrl;
-      showToast('문의 메일 프로그램이 연결되었습니다.', 'info');
-      setFormData({ name: '', email: '', phone: '', category: 'shipping', message: '' });
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <div style={{ backgroundColor: 'var(--bg-primary, #0b0b0c)', color: 'var(--text-primary, #f4f4f5)', minHeight: '100vh', padding: '60px 0 100px' }}>
@@ -182,173 +143,59 @@ export function ContactPage() {
 
         </div>
 
-        {/* 1:1 Message Form + FAQ Section Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '40px' }} className="cs-grid">
-          
-          {/* 1:1 Inquiry Form */}
-          <div style={{ backgroundColor: '#121214', border: '1px solid #232328', borderRadius: '16px', padding: '32px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <MessageSquare size={20} color="var(--accent-sunset, #e05638)" />
-              <span>1:1 온라인 고객 문의</span>
-            </h2>
-            <p style={{ color: '#8e8e93', fontSize: '0.875rem', marginBottom: '24px' }}>
-              문의사항을 남겨주시면 확인 후 이메일 또는 연락처로 신속히 안내해 드리겠습니다.
-            </p>
+        {/* FAQ Section */}
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '20px' }}>
+            자주 묻는 질문 (FAQ)
+          </h2>
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#d1d1d6', marginBottom: '6px' }}>
-                  이름 (성함) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="홍길동"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#1a1a1e', border: '1px solid #2c2c34', color: '#ffffff', fontSize: '0.875rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#d1d1d6', marginBottom: '6px' }}>
-                  이메일 주소 *
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="example@email.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#1a1a1e', border: '1px solid #2c2c34', color: '#ffffff', fontSize: '0.875rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#d1d1d6', marginBottom: '6px' }}>
-                  연락처 (선택)
-                </label>
-                <input
-                  type="text"
-                  placeholder="010-0000-0000"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#1a1a1e', border: '1px solid #2c2c34', color: '#ffffff', fontSize: '0.875rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#d1d1d6', marginBottom: '6px' }}>
-                  문의 유형
-                </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#1a1a1e', border: '1px solid #2c2c34', color: '#ffffff', fontSize: '0.875rem' }}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {faqs.map((faq, idx) => {
+              const isOpen = openFaqIndex === idx;
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    backgroundColor: '#121214',
+                    border: '1px solid #232328',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                  }}
                 >
-                  <option value="shipping">배송 문의</option>
-                  <option value="return">교환 및 반품 문의</option>
-                  <option value="product">상품 관련 문의</option>
-                  <option value="payment">결제 및 입금 문의</option>
-                  <option value="other">기타 일반 문의</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#d1d1d6', marginBottom: '6px' }}>
-                  문의 내용 *
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  placeholder="문의 내용을 자세히 기재해 주세요."
-                  value={formData.message}
-                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#1a1a1e', border: '1px solid #2c2c34', color: '#ffffff', fontSize: '0.875rem', lineHeight: 1.6 }}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submitting}
-                style={{
-                  backgroundColor: 'var(--accent-sunset, #e05638)',
-                  color: '#ffffff',
-                  padding: '14px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  fontWeight: 700,
-                  fontSize: '0.9375rem',
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  marginTop: '8px',
-                  transition: 'opacity 0.2s ease',
-                }}
-              >
-                <Send size={16} />
-                <span>{submitting ? '문의 접수 중...' : '문의하기 접수'}</span>
-              </button>
-            </form>
-          </div>
-
-          {/* FAQ Accordions */}
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '20px' }}>
-              자주 묻는 질문 (FAQ)
-            </h2>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {faqs.map((faq, idx) => {
-                const isOpen = openFaqIndex === idx;
-                return (
-                  <div
-                    key={idx}
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
                     style={{
-                      backgroundColor: '#121214',
-                      border: '1px solid #232328',
-                      borderRadius: '10px',
-                      overflow: 'hidden',
+                      width: '100%',
+                      padding: '16px 20px',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                      style={{
-                        width: '100%',
-                        padding: '16px 20px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        color: '#ffffff',
-                        fontWeight: 600,
-                        fontSize: '0.875rem',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span>{faq.q}</span>
-                      <ChevronDown
-                        size={16}
-                        style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
-                      />
-                    </button>
+                    <span>{faq.q}</span>
+                    <ChevronDown
+                      size={16}
+                      style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+                    />
+                  </button>
 
-                    {isOpen && (
-                      <div style={{ padding: '0 20px 18px', fontSize: '0.84375rem', lineHeight: 1.7, color: '#a1a1a6', borderTop: '1px solid #1a1a1e', paddingTop: '12px' }}>
-                        {faq.a}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  {isOpen && (
+                    <div style={{ padding: '0 20px 18px', fontSize: '0.84375rem', lineHeight: 1.7, color: '#a1a1a6', borderTop: '1px solid #1a1a1e', paddingTop: '12px' }}>
+                      {faq.a}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
         </div>
 
       </div>
