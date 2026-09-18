@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation, useSearchParams } from 'wouter';
+import { useSearchParams } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { ProductPreviewModal } from '../components/common/ProductPreviewModal.jsx';
+import { CATEGORIES_BY_GENDER } from '../data/products.js';
+import { api } from '../utils/api.js';
 import { SlidersHorizontal, X, ChevronRight } from 'lucide-react';
 
 export function ShopPage() {
@@ -18,23 +20,7 @@ export function ShopPage() {
   const [loading, setLoading] = useState(true);
   const [previewProduct, setPreviewProduct] = useState(null);
 
-  // 1. Sync state with URL query parameters
-  useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    const g = sp.get('gender') || 'all';
-    const c = sp.get('category') || 'all';
-    const s = sp.get('search') || '';
-    const f = sp.get('filter') || '';
-    const sort = sp.get('sort') || 'newest';
-
-    setSelectedGender(g.toLowerCase());
-    setSelectedCategory(c.toLowerCase());
-    setSearchQuery(s);
-    setActiveFilter(f.toLowerCase());
-    setSortBy(sort);
-  }, [location]);
-
-  // 2. Fetch or compute products dynamically without reloading
+  // Fetch products via canonical api wrapper (credentials + CSRF handled)
   useEffect(() => {
     async function fetchProducts() {
       setLoading(true);
@@ -48,10 +34,8 @@ export function ShopPage() {
         if (activeFilter === 'sale') params.append('sale', 'true');
         if (sortBy) params.append('sort', sortBy);
 
-        const res = await fetch(`/api/v1/catalog/products?${params.toString()}`);
-        const json = await res.json();
-
-        if (res.ok && json.success && Array.isArray(json.data)) {
+        const json = await api.get(`/catalog/products?${params.toString()}`);
+        if (json.success && Array.isArray(json.data)) {
           setProducts(json.data);
         } else {
           setProducts([]);
@@ -82,10 +66,28 @@ export function ShopPage() {
     setSearchParams(params);
   };
 
-  // Available categories based on selected gender
+  // Live categories from DB (creates if not present per Q2) — falls back to hardcoded
+  const [liveCategories, setLiveCategories] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/catalog/categories').then(res=>{
+      if(!cancelled && res.success && Array.isArray(res.data) && res.data.length){
+        // Map DB {slug, name_ko, name_en} -> {key, label, label_ko}
+        setLiveCategories(res.data.map(c=>({ key: c.slug, label: c.name_en, label_ko: c.name_ko })));
+      }
+    }).catch(()=>{});
+    return ()=>{ cancelled=true; };
+  }, []);
   const availableCategories = useMemo(() => {
-    return [];
-  }, [selectedGender]);
+    if (liveCategories.length) {
+      if (selectedGender === 'women') return liveCategories.filter(c=> ['tshirts','shirts','jeans','pants','underwear','socks','dresses','skirts','jackets','hoodies','accessories','bags'].includes(c.key));
+      if (selectedGender === 'men') return liveCategories.filter(c=> ['tshirts','shirts','jeans','pants','underwear','socks','jackets','hoodies','accessories','bags'].includes(c.key));
+      return liveCategories;
+    }
+    if (selectedGender === 'women') return CATEGORIES_BY_GENDER.women;
+    if (selectedGender === 'men') return CATEGORIES_BY_GENDER.men;
+    return [...CATEGORIES_BY_GENDER.women, ...CATEGORIES_BY_GENDER.men];
+  }, [selectedGender, liveCategories]);
 
   // Title formatting
   const getPageHeading = () => {

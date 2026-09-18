@@ -15,16 +15,26 @@ const createTransporter = () => {
 };
 
 export const emailService = {
-  async sendMail({ to, subject, template, data }) {
+  // Finding #23: delivery states are honest. The stream transport only
+  // buffers mail in-process (dev/test) — it must never report delivery.
+  // In production a missing SMTP password fails closed.
+  async sendMail({ to, subject, template, data }) { // eslint-disable-line no-unused-vars -- template/data reserved for the template renderer; delivery state is the contract here
+    const pass = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.EMAIL_PASSWORD;
+    const streaming = !pass;
+    if (streaming && process.env.NODE_ENV === 'production' && process.env.EMAIL_ALLOW_STREAM !== '1') {
+      throw new Error('SMTP is not configured (production delivery required)');
+    }
     const transporter = createTransporter();
     const mailOptions = { from: `"NOEUL 고객센터" <${process.env.SMTP_USER || 'noeulenterprises@gmail.com'}>`, to, subject };
     try {
       const info = await transporter.sendMail(mailOptions);
       console.log(`[EmailService] Sent to ${to}: ${info.messageId || 'sent'}`);
-      return { success: true, messageId: info.messageId, delivered: true };
+      return streaming
+        ? { success: true, queued: true, delivered: false, transport: 'stream', messageId: info.messageId || null }
+        : { success: true, queued: false, delivered: true, transport: 'smtp', messageId: info.messageId };
     } catch (err) {
       console.error(`[EmailService] Failed to ${to}:`, err.message);
-      return { success: false, messageId: null, delivered: false, error: err.message };
+      return { success: false, queued: false, delivered: false, transport: streaming ? 'stream' : 'smtp', messageId: null, error: err.message };
     }
   },
 

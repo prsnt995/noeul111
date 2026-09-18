@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { formatKRW, ORDER_STATUS_MAP } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
@@ -24,7 +24,7 @@ export function AdminDashboardPage() {
 
   const fetchStats = async () => {
     try {
-      const res = await api.get('/admin/dashboard/stats');
+      const res = await adminApi.get('/admin/dashboard/stats');
       if (res.success) {
         setData(res);
       }
@@ -42,7 +42,7 @@ export function AdminDashboardPage() {
 
   const handleQuickStock = async (productId, delta) => {
     try {
-      await api.patch(`/admin/products/${productId}/stock`, { delta });
+      await adminApi.patch(`/admin/products/${productId}/stock`, { delta });
       showToast('재고가 추가되었습니다.', 'success');
       fetchStats();
     } catch (err) {
@@ -52,7 +52,7 @@ export function AdminDashboardPage() {
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
-      await api.patch(`/admin/orders/${orderId}/status`, { order_status: newStatus });
+      await adminApi.patch(`/admin/orders/${orderId}/status`, { order_status: newStatus });
       showToast('주문 상태가 변경되었습니다.', 'success');
       fetchStats();
     } catch (err) {

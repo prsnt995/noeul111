@@ -59,10 +59,16 @@ router.get('/admin/inquiries', verifyAdmin, (req, res) => {
 });
 
 // 3. Admin Update Inquiry Status
+// Finding #8: admin-only (verifyAdmin) + status allowlist so arbitrary
+// values cannot be written through this endpoint.
 router.patch('/admin/inquiries/:id', verifyAdmin, (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const allowed = ['new', 'in_progress', 'answered', 'closed'];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ success: false, message: '유효하지 않은 상태 값입니다.' });
+    }
     query.run('UPDATE customer_inquiries SET status = ? WHERE id = ?', status, id);
     res.json({ success: true, message: '상태가 업데이트되었습니다.' });
   } catch (error) {

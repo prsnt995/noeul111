@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { api } from '../../utils/api.js';
+import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { MediaPickerModal } from '../common/MediaPickerModal.jsx';
 import { Upload, X, Image as ImageIcon, Star, ArrowLeft, ArrowRight, Plus, Loader2 } from 'lucide-react';
@@ -26,15 +26,7 @@ export function ImageUploader({ images = [], onChange, maxImages = 10, label = '
     });
 
     try {
-      const response = await fetch('/api/admin/upload-multiple', {
-        method: 'POST',
-        headers: {
-        },
-        credentials: 'include',
-        body: formData,
-      });
-
-      const data = await response.json();
+      const data = await adminApi.post('/admin/upload-multiple', formData);
       if (data.success && data.data) {
         const uploadedUrls = data.data.map((f) => f.url);
         onChange([...images, ...uploadedUrls]);

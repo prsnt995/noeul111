@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Image as ImageIcon, Plus, Edit2, Trash2, X, Save, Building, Truck, RefreshCw, FileText } from 'lucide-react';
 
@@ -32,8 +32,8 @@ export function AdminContentPage() {
     setLoading(true);
     try {
       const [banRes, setRes] = await Promise.all([
-        api.get('/admin/content/banners'),
-        api.get('/admin/content/settings'),
+        adminApi.get('/admin/content/banners'),
+        adminApi.get('/admin/content/settings'),
       ]);
       if (banRes.success) setBanners(banRes.data);
       if (setRes.success) setSettings(setRes.data);
@@ -57,7 +57,7 @@ export function AdminContentPage() {
       title_en: '',
       subtitle_ko: '',
       subtitle_en: '',
-      image_url: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1600&auto=format&fit=crop',
+      image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
       link_url: '/shop',
       button_text_ko: '신규 컬렉션 쇼핑하기',
       button_text_en: 'Shop Now',
@@ -89,10 +89,10 @@ export function AdminContentPage() {
     e.preventDefault();
     try {
       if (editingBannerId) {
-        await api.put(`/admin/content/banners/${editingBannerId}`, bannerForm);
+        await adminApi.put(`/admin/content/banners/${editingBannerId}`, bannerForm);
         showToast('배너가 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/content/banners', bannerForm);
+        await adminApi.post('/admin/content/banners', bannerForm);
         showToast('새 배너가 추가되었습니다.', 'success');
       }
       setIsBannerModalOpen(false);
@@ -105,7 +105,7 @@ export function AdminContentPage() {
   const handleDeleteBanner = async (id) => {
     if (!window.confirm('배너를 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/content/banners/${id}`);
+      await adminApi.delete(`/admin/content/banners/${id}`);
       showToast('배너가 삭제되었습니다.', 'info');
       fetchData();
     } catch (err) {
@@ -116,7 +116,7 @@ export function AdminContentPage() {
   const handleSaveSettings = async (e) => {
     e.preventDefault();
     try {
-      await api.put('/admin/content/settings', { settings });
+      await adminApi.put('/admin/content/settings', { settings });
       showToast('사이트 설정이 안전하게 저장되었습니다.', 'success');
     } catch (err) {
       showToast('설정 저장 실패', 'error');

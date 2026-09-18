@@ -4,8 +4,11 @@ import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Finding #16: router paths are relative to the mount point (/api/wishlist).
+// Previously these were '/wishlist' + '/wishlist/toggle', producing the
+// doubled '/api/wishlist/wishlist' URLs while the frontend URLs 404'd.
 // Get Current User's Wishlist with full product objects
-router.get('/wishlist', verifyToken, (req, res) => {
+router.get('/', verifyToken, (req, res) => {
   try {
     const rows = query.all(`
       SELECT p.*, c.slug as category_slug, c.name_ko as category_name_ko, c.name_en as category_name_en, w.created_at as wishlisted_at
@@ -34,7 +37,7 @@ router.get('/wishlist', verifyToken, (req, res) => {
 });
 
 // Toggle Product in Wishlist
-router.post('/wishlist/toggle', verifyToken, (req, res) => {
+router.post('/toggle', verifyToken, (req, res) => {
   try {
     const { product_id } = req.body;
     if (!product_id) {

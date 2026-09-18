@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Plus, Edit2, Trash2, FolderTree, X, AlertCircle } from 'lucide-react';
 
@@ -27,7 +27,7 @@ export function AdminCategoriesPage() {
   const fetchCategories = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/categories');
+      const res = await adminApi.get('/admin/categories');
       if (res.success) {
         setCategories(res.data);
       }
@@ -52,7 +52,7 @@ export function AdminCategoriesPage() {
       name_en: '',
       description_ko: '',
       description_en: '',
-      image_url: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=800&auto=format&fit=crop',
+      image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
       sort_order: categories.length + 1,
       is_active: true,
     });
@@ -79,10 +79,10 @@ export function AdminCategoriesPage() {
     e.preventDefault();
     try {
       if (isEditMode) {
-        await api.put(`/admin/categories/${editingId}`, formData);
+        await adminApi.put(`/admin/categories/${editingId}`, formData);
         showToast('카테고리가 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/categories', formData);
+        await adminApi.post('/admin/categories', formData);
         showToast('새 카테고리가 등록되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -94,7 +94,7 @@ export function AdminCategoriesPage() {
 
   const handleDelete = async (id) => {
     try {
-      await api.delete(`/admin/categories/${id}`);
+      await adminApi.delete(`/admin/categories/${id}`);
       showToast('카테고리가 삭제되었습니다.', 'info');
       setDeleteConfirmId(null);
       fetchCategories();
@@ -148,7 +148,7 @@ export function AdminCategoriesPage() {
             >
               <div style={{ position: 'relative', height: '160px', backgroundColor: '#eee' }}>
                 <img
-                  src={cat.image_url || 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600&auto=format&fit=crop'}
+                  src={cat.image_url || '/products/men/tshirts/classic-tshirt/1.jpg'}
                   alt={cat.name_ko}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />

@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { ProductPreviewModal } from '../components/common/ProductPreviewModal.jsx';
-import { getFilteredProducts } from '../data/products.js';
+import { api } from '../utils/api.js';
 
 export function HomePage() {
   const { lang, t } = useLanguage();
@@ -46,10 +46,8 @@ export function HomePage() {
         if (activeFilter === 'sale') params.append('sale', 'true');
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
 
-        const res = await fetch(`/api/v1/catalog/products?${params.toString()}`);
-        const json = await res.json();
-
-        if (res.ok && json.success && Array.isArray(json.data)) {
+        const json = await api.get(`/catalog/products?${params.toString()}`);
+        if (json.success && Array.isArray(json.data)) {
           setProducts(json.data);
         } else {
           setProducts([]);
@@ -64,7 +62,7 @@ export function HomePage() {
     loadProducts();
   }, [selectedGender, selectedCategory, activeFilter, searchQuery]);
 
-  // Handle switching gender filter smoothly without reload
+  // Handle switching gender filter smoothly — single source of truth via wouter
   const handleGenderSwitch = (gender) => {
     const params = new URLSearchParams(window.location.search);
     if (gender === 'all') {
@@ -72,11 +70,9 @@ export function HomePage() {
     } else {
       params.set('gender', gender);
     }
-    // reset category when gender switches
     params.delete('category');
     const qs = params.toString();
     const target = qs ? `/?${qs}` : '/';
-    window.history.pushState({}, '', target);
     setLocation(target);
   };
 

@@ -20,41 +20,39 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    let ext = path.extname(file.originalname).toLowerCase();
-    if (!ext || ext === '.') {
-      const mimeMap = {
-        'image/jpeg': '.jpg',
-        'image/jpg': '.jpg',
-        'image/png': '.png',
-        'image/webp': '.webp',
-        'image/gif': '.gif',
-        'image/svg+xml': '.svg',
-      };
-      ext = mimeMap[file.mimetype.toLowerCase()] || '.jpg';
-    }
-    const cleanBase = path.basename(file.originalname, path.extname(file.originalname)).replace(/[^a-zA-Z0-9가-힣_-]/g, '');
+    // Finding #7: extension comes from the validated MIME type, never the
+    // user-supplied filename (blocks .html/.svg smuggling via extension).
+    const mime = String(file.mimetype || '').toLowerCase();
+    const ext = MIME_TO_EXT[mime] || '.jpg';
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-    cb(null, `${cleanBase || 'image'}-${uniqueSuffix}${ext}`);
+    cb(null, `image-${uniqueSuffix}${ext}`);
   },
 });
 
-// Multer file filter (Images only)
+// Multer file filter (finding #7): raster images only, SVG/HTML rejected.
+// BOTH extension and MIME must allowlist; served extension is derived
+// from the validated MIME type, never the user filename.
+const MIME_TO_EXT = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const fileFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|png|webp|gif|svg/;
-  const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
-  const mime = file.mimetype.toLowerCase();
-
-  if (allowed.test(ext) || allowed.test(mime)) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const mime = String(file.mimetype || '').toLowerCase();
+  if (ALLOWED_EXTS.has(ext) && Object.hasOwn(MIME_TO_EXT, mime)) {
     cb(null, true);
   } else {
-    cb(new Error('이미지 파일(JPG, PNG, WEBP, GIF, SVG)만 업로드 가능합니다.'), false);
+    cb(new Error('이미지 파일(JPG, PNG, WEBP, GIF)만 업로드 가능합니다. SVG/HTML은 허용되지 않습니다.'), false);
   }
 };
 
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB limit
 });
 
 const router = express.Router();

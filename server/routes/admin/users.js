@@ -1,13 +1,11 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from '../../db/database.js';
-import { verifyAdmin } from '../../middleware/auth.js';
+import { verifyAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 
 const router = express.Router();
-router.use(verifyAdmin);
-
-// List all admin & staff members
-router.get('/users/staff', (req, res) => {
+// Listing staff remains available to all admin-area roles (read-only).
+router.get('/users/staff', verifyAdmin, (req, res) => {
   try {
     const staff = query.all(`
       SELECT id, email, name, phone, role, created_at, updated_at
@@ -22,13 +20,18 @@ router.get('/users/staff', (req, res) => {
   }
 });
 
-// Add staff member
-router.post('/users/staff', (req, res) => {
+// Add staff member (finding #9): super_admin only. Editors and
+// order managers must never create/promote staff accounts.
+router.post('/users/staff', requireSuperAdmin, (req, res) => {
   try {
     const { email, password, name, phone, role } = req.body;
 
     if (!email || !password || !name) {
       return res.status(400).json({ success: false, message: '이메일, 비밀번호, 이름은 필수입니다.' });
+    }
+
+    if (String(password).length < 12) {
+      return res.status(400).json({ success: false, message: '비밀번호는 최소 12자 이상이어야 합니다.' });
     }
 
     const existing = query.get('SELECT id FROM users WHERE email = ?', email.toLowerCase().trim());
@@ -53,15 +56,38 @@ router.post('/users/staff', (req, res) => {
   }
 });
 
-// Update staff role
-router.put('/users/staff/:id', (req, res) => {
+// Update staff role (finding #9): super_admin only. Protects the last
+// super-admin and blocks self-demotion.
+router.put('/users/staff/:id', requireSuperAdmin, (req, res) => {
   try {
     const { id } = req.params;
     const { name, phone, role, new_password } = req.body;
 
+    const target = query.get('SELECT id, role FROM users WHERE id = ?', Number(id));
+    if (!target) {
+      return res.status(404).json({ success: false, message: '대상 계정을 찾을 수 없습니다.' });
+    }
+
     const validRole = ['super_admin', 'admin', 'editor', 'order_manager'].includes(role) ? role : 'editor';
 
+    // Protect the final super-admin from demotion/removal.
+    if (target.role === 'super_admin' && validRole !== 'super_admin') {
+      const remaining = query.get(
+        "SELECT COUNT(*) as count FROM users WHERE role = 'super_admin' AND id != ?",
+        Number(id)
+      );
+      if (Number(remaining?.count || 0) === 0) {
+        return res.status(400).json({ success: false, message: '마지막 최고 관리자는 강등할 수 없습니다.' });
+      }
+      if (Number(id) === req.user.id) {
+        return res.status(400).json({ success: false, message: '본인 계정은 강등할 수 없습니다.' });
+      }
+    }
+
     if (new_password) {
+      if (String(new_password).length < 12) {
+        return res.status(400).json({ success: false, message: '비밀번호는 최소 12자 이상이어야 합니다.' });
+      }
       const salt = bcrypt.genSaltSync(10);
       const password_hash = bcrypt.hashSync(new_password, salt);
       query.run(`
@@ -82,12 +108,27 @@ router.put('/users/staff/:id', (req, res) => {
   }
 });
 
-// Delete staff member
-router.delete('/users/staff/:id', (req, res) => {
+// Delete staff member (finding #9): super_admin only, never self, never
+// the last super-admin.
+router.delete('/users/staff/:id', requireSuperAdmin, (req, res) => {
   try {
     const { id } = req.params;
     if (Number(id) === req.user.id) {
       return res.status(400).json({ success: false, message: '현재 로그인 중인 본인 계정은 삭제할 수 없습니다.' });
+    }
+
+    const target = query.get('SELECT id, role FROM users WHERE id = ?', Number(id));
+    if (!target) {
+      return res.status(404).json({ success: false, message: '대상 계정을 찾을 수 없습니다.' });
+    }
+    if (target.role === 'super_admin') {
+      const remaining = query.get(
+        "SELECT COUNT(*) as count FROM users WHERE role = 'super_admin' AND id != ?",
+        Number(id)
+      );
+      if (Number(remaining?.count || 0) === 0) {
+        return res.status(400).json({ success: false, message: '마지막 최고 관리자는 삭제할 수 없습니다.' });
+      }
     }
 
     query.run('DELETE FROM users WHERE id = ?', Number(id));

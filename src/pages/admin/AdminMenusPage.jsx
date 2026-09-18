@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Menu, Plus, ArrowUp, ArrowDown, Edit2, Trash2, X, Link as LinkIcon, ChevronRight } from 'lucide-react';
 
@@ -30,9 +30,9 @@ export function AdminMenusPage() {
     setLoading(true);
     try {
       const [menuRes, catRes, pageRes] = await Promise.all([
-        api.get('/admin/menus'),
-        api.get('/admin/categories'),
-        api.get('/admin/pages'),
+        adminApi.get('/admin/menus'),
+        adminApi.get('/admin/categories'),
+        adminApi.get('/admin/pages'),
       ]);
       if (menuRes.success) setMenus(menuRes.data);
       if (catRes.success) setCategories(catRes.data);
@@ -60,7 +60,7 @@ export function AdminMenusPage() {
     setMenus(newMenus);
 
     try {
-      await api.patch('/admin/menus/reorder', {
+      await adminApi.patch('/admin/menus/reorder', {
         menuIds: newMenus.map((m) => m.id),
       });
       showToast('메뉴 순서가 변경되었습니다.', 'success');
@@ -106,10 +106,10 @@ export function AdminMenusPage() {
     e.preventDefault();
     try {
       if (isEditMode) {
-        await api.put(`/admin/menus/${editingId}`, formData);
+        await adminApi.put(`/admin/menus/${editingId}`, formData);
         showToast('메뉴 항목이 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/menus', formData);
+        await adminApi.post('/admin/menus', formData);
         showToast('새 메뉴 항목이 추가되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -122,7 +122,7 @@ export function AdminMenusPage() {
   const handleDeleteMenu = async (id) => {
     if (!window.confirm('이 메뉴 항목을 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/menus/${id}`);
+      await adminApi.delete(`/admin/menus/${id}`);
       showToast('메뉴 항목이 삭제되었습니다.', 'info');
       fetchMenus();
     } catch (err) {

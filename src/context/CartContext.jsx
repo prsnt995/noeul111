@@ -6,12 +6,20 @@ const CartContext = createContext();
 
 const FREE_SHIPPING_THRESHOLD = 70000;
 const DEFAULT_SHIPPING_FEE = 3000;
+const STORAGE_KEY = 'noeul_cart';
+const STORAGE_VERSION = 2;
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {
     try {
-      const stored = localStorage.getItem('noeul_cart');
-      return stored ? JSON.parse(stored) : [];
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const parsed = stored ? JSON.parse(stored) : [];
+      // Migration: drop pre-variant_id entries (old schema v1 -> v2)
+      if (Array.isArray(parsed) && parsed.some(i => !i.variant_id)) {
+        localStorage.removeItem(STORAGE_KEY);
+        return [];
+      }
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
@@ -22,48 +30,75 @@ export function CartProvider({ children }) {
   const { lang } = useLanguage();
 
   useEffect(() => {
-    localStorage.setItem('noeul_cart', JSON.stringify(items));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
   const openCart = () => setIsCartOpen(true);
   const closeCart = () => setIsCartOpen(false);
 
-  // Add Item to Cart
+  // Resolve variant_id from product.variants when available (authoritative stock SKU)
+  const resolveVariant = (product, sizeVal, colorNameKo, colorNameEn) => {
+    const variants = Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : [];
+    if (variants.length > 0) {
+      // Prefer exact match on size+color
+      let v = variants.find(x => x.size === sizeVal && (x.color === colorNameKo || x.color === colorNameEn));
+      if (v) return v;
+      v = variants.find(x => x.size === sizeVal);
+      if (v) return v;
+      v = variants.find(x => x.color === colorNameKo || x.color === colorNameEn);
+      if (v) return v;
+      return variants[0];
+    }
+    return null;
+  };
+
+  // Add Item to Cart — now stores variant_id for backend checkout compatibility
   const addToCart = (product, size, color, quantity = 1) => {
     if (!product) return;
 
-    const unitPrice = product.discount_price || product.price;
     const sizeVal = size || (product.sizes?.[0] || 'FREE');
     const colorObj = color || (product.colors?.[0] || { name_ko: '단일상품', name_en: 'Default' });
     const colorNameKo = typeof colorObj === 'object' ? colorObj.name_ko : colorObj;
     const colorNameEn = typeof colorObj === 'object' ? colorObj.name_en : colorObj;
+    const hex = typeof colorObj === 'object' ? colorObj.hex : undefined;
 
-    const cartItemId = `${product.id}-${sizeVal}-${colorNameKo}`;
+    const variant = resolveVariant(product, sizeVal, colorNameKo, colorNameEn);
+    const variant_id = variant?.id || variant?.variant_id || null;
+    const variant_sku = variant?.sku || product.sku;
+
+    // If backend has variants but none matched, still allow but warn — checkout will validate stock via quote
+    const unitPrice = variant ? Math.max(1, (product.discount_price || product.price || 0) + (variant.price_delta || 0)) : (product.discount_price || product.price);
+
+    const cartItemId = variant_id ? `${variant_id}` : `${product.id}-${sizeVal}-${colorNameKo}`;
 
     setItems((prevItems) => {
       const existingIndex = prevItems.findIndex((item) => item.id === cartItemId);
       if (existingIndex > -1) {
         const updated = [...prevItems];
         updated[existingIndex].quantity += quantity;
+        // Keep variant_id stable if already stored
+        if (variant_id && !updated[existingIndex].variant_id) updated[existingIndex].variant_id = variant_id;
         return updated;
       } else {
         return [
           ...prevItems,
           {
             id: cartItemId,
+            variant_id,
             product_id: product.id,
-            sku: product.sku,
+            sku: variant_sku,
             name_ko: product.name_ko,
             name_en: product.name_en,
             price: product.price,
             discount_price: product.discount_price,
             unit_price: unitPrice,
-            image_url: Array.isArray(product.images) ? product.images[0] : '',
+            image_url: Array.isArray(product.images) ? product.images[0] : (product.image_url || ''),
             size: sizeVal,
             color_ko: colorNameKo,
             color_en: colorNameEn,
+            color_hex: hex,
             quantity: quantity,
-            max_stock: product.stock || 99,
+            max_stock: variant?.stock ?? product.stock ?? 99,
           },
         ];
       }

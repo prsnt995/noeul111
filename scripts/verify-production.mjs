@@ -26,6 +26,14 @@ const checks = [
   ['backup script exists', fs.existsSync(path.join(root, 'scripts/backup.js'))],
   ['recovery docs exist', fs.existsSync(path.join(root, 'docs/ops/recovery.md'))],
   ['compliance docs exist', fs.existsSync(path.join(root, 'docs/compliance/asvs-traceability.md'))],
+  ['shipments/history/reviews migration', fs.existsSync(path.join(root, 'supabase/migrations/202609180004_shipments_history_reviews.sql'))],
+  ['outbox aligned to app.outbox', read('api/app.js').includes("from('outbox')") && !read('api/app.js').includes('outbox_events')],
+  ['outbox worker uses leases', read('server/workers/outbox.js').includes('lease_until')],
+  ['expiry sweeper exists', fs.existsSync(path.join(root, 'server/workers/expiry.js'))],
+  ['dual-write sync removed', !fs.existsSync(path.join(root, 'server/lib/supabaseSync.js'))],
+  ['honest email delivery states', read('server/services/emailService.js').includes("transport: 'stream'")],
+  ['payments fail closed by default', read('api/app.js').includes("PAYMENTS_ENABLED !== 'true'")],
+  ['admin bundle is route-split', read('src/App.jsx').includes('React.lazy') || read('src/App.jsx').includes('lazy(')],
 
 ];
 const failed = checks.filter(([, ok]) => !ok);

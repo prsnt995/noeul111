@@ -60,17 +60,17 @@ export function AboutPage() {
           }}
         >
           <img
-            src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1000&auto=format&fit=crop"
+            src="/products/men/tshirts/classic-tshirt/1.jpg"
             alt="Atelier 1"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
           <img
-            src="https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=1000&auto=format&fit=crop"
+            src="/products/men/tshirts/classic-tshirt/1.jpg"
             alt="Atelier 2"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
           <img
-            src="https://images.unsplash.com/photo-1548036328-c9fa89d128fa?q=80&w=1000&auto=format&fit=crop"
+            src="/products/men/tshirts/classic-tshirt/1.jpg"
             alt="Atelier 3"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
@@ -165,7 +165,7 @@ export function AboutPage() {
           </div>
 
           <img
-            src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=800&auto=format&fit=crop"
+            src="/products/men/tshirts/classic-tshirt/1.jpg"
             alt="Showroom"
             style={{ width: '100%', height: '260px', objectFit: 'cover', borderRadius: '8px' }}
           />

@@ -5,7 +5,10 @@ import { fileURLToPath } from 'url';
 import { CONFIG } from './config.js';
 import { initDatabase } from './db/database.js';
 import rateLimit from 'express-rate-limit';
-import apiRouter from './routes/api.js';
+// NOTE: the production API (api/app.js) runs as its own process via
+// `node api/app.js` (see package.json start/server scripts) and is never
+// mounted here. A previous bridge (server/routes/api.js) was removed: it
+// pointed at a nonexistent path and would have doubled the /api/v1 prefix.
 import { startOutboxWorker } from './workers/outbox.js';
 
 const legacyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
@@ -43,8 +46,13 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 // Legacy server is a read-only migration aid, never a production runtime.
+// Containment (findings #1–#9): in production every protected path and
+// every mutating request on the legacy boundary is rejected — clients must
+// use the Google-authenticated /api/v1 service. Set LEGACY_API_DISABLED=1
+// to enforce the same block in any environment (e.g. staging).
 const productionBlock = (req, res, next) => {
-  if (process.env.NODE_ENV === 'production') {
+  const legacyDisabled = process.env.LEGACY_API_DISABLED === '1' || process.env.NODE_ENV === 'production';
+  if (legacyDisabled) {
     const protectedPaths = ['/orders', '/auth', '/me', '/profile', '/inquiries', '/upload', '/payment-receipt', '/admin'];
     const isProtected = protectedPaths.some(p => req.path.startsWith(p));
     const isMutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
@@ -56,9 +64,10 @@ const productionBlock = (req, res, next) => {
 };
 app.use('/api', legacyLimiter, productionBlock);
 
-// Middleware
+// Middleware — strict origin in production (no wildcard credentialed CORS, audit #17)
+const allowedOrigin = process.env.APP_ORIGIN || (process.env.NODE_ENV === 'production' ? (()=>{ throw new Error('APP_ORIGIN must be set in production'); })() : 'http://localhost:5173');
 app.use(cors({
-  origin: true,
+  origin: allowedOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -87,9 +96,6 @@ app.use((req, res, next) => {
 
 // Initialize Database Schema
 initDatabase();
-
-// Mount NEW production API routes (bridge from api/app.js)
-app.use('/api/v1', apiRouter);
 
 // Mount Customer APIs (legacy auth removed - use /api/v1)
 app.use('/api', productsRoutes);

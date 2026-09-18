@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Tag, Plus, Edit2, Trash2, X, Check, Copy } from 'lucide-react';
@@ -31,7 +31,7 @@ export function AdminCouponsPage() {
   const fetchCoupons = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/coupons');
+      const res = await adminApi.get('/admin/coupons');
       if (res.success) setCoupons(res.data);
     } catch (err) {
       console.error('Fetch coupons error:', err);
@@ -87,10 +87,10 @@ export function AdminCouponsPage() {
     e.preventDefault();
     try {
       if (isEditMode) {
-        await api.put(`/admin/coupons/${editingId}`, formData);
+        await adminApi.put(`/admin/coupons/${editingId}`, formData);
         showToast('쿠폰 정보가 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/coupons', formData);
+        await adminApi.post('/admin/coupons', formData);
         showToast('새 할인 쿠폰이 발행되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -103,7 +103,7 @@ export function AdminCouponsPage() {
   const handleDelete = async (id) => {
     if (!window.confirm('이 쿠폰을 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/coupons/${id}`);
+      await adminApi.delete(`/admin/coupons/${id}`);
       showToast('쿠폰이 삭제되었습니다.', 'info');
       fetchCoupons();
     } catch (err) {

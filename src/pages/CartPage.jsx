@@ -25,14 +25,28 @@ export function CartPage() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
 
-  const handleApplyCoupon = (e) => {
+  const handleApplyCoupon = async (e) => {
     e.preventDefault();
-    if (couponCode.trim().toUpperCase() === 'WELCOME10' || couponCode.trim().toUpperCase() === 'NOEUL10') {
-      const disc = Math.round(subtotal * 0.1);
-      setAppliedDiscount(disc);
-      showToast(lang === 'ko' ? '10% 할인 쿠폰이 적용되었습니다!' : '10% Welcome Coupon Applied!', 'success');
-    } else {
-      showToast(lang === 'ko' ? '유효하지 않은 쿠폰 코드입니다. (WELCOME10을 입력해보세요)' : 'Invalid code. (Try WELCOME10)', 'error');
+    const code = couponCode.trim().toUpperCase();
+    // Prefer server validation; fallback to demo 10% preview only when quote endpoint unreachable (e.g. no Supabase)
+    try {
+      const { api } = await import('../utils/api.js');
+      const res = await api.post('/checkout/quote', { items: items.filter(i=>i.variant_id).map(i=>({ variant_id: i.variant_id, quantity: i.quantity })), coupon_code: code });
+      if (res.success && res.data && typeof res.data.discount === 'number' && res.data.discount > 0) {
+        setAppliedDiscount(res.data.discount);
+        showToast(lang === 'ko' ? `${code} 쿠폰이 적용되었습니다!` : `${code} applied!`, 'success');
+        return;
+      }
+      showToast(lang === 'ko' ? '사용할 수 없는 쿠폰입니다.' : 'Coupon not applicable.', 'error');
+    } catch {
+      // Offline/demo fallback: preview 10% only
+      if (code === 'WELCOME10' || code === 'NOEUL10') {
+        const disc = Math.round(subtotal * 0.1);
+        setAppliedDiscount(disc);
+        showToast(lang === 'ko' ? '10% 할인 미리보기 (서버 검증 필요)' : '10% preview (server validation required)', 'success');
+      } else {
+        showToast(lang === 'ko' ? '유효하지 않은 쿠폰 코드입니다.' : 'Invalid code.', 'error');
+      }
     }
   };
 

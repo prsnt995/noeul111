@@ -48,7 +48,15 @@ export function CustomPageView() {
   }
 
   const title = lang === 'ko' ? page.title_ko : (page.title_en || page.title_ko);
-  const content = lang === 'ko' ? page.content_ko : (page.content_en || page.content_ko);
+  const rawContent = lang === 'ko' ? page.content_ko : (page.content_en || page.content_ko);
+  const sanitize = (html) => {
+    if (!html) return '';
+    return String(html)
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/\bon\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/javascript:/gi, '');
+  };
+  const content = sanitize(rawContent);
 
   return (
     <div>

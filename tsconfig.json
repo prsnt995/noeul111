@@ -3,8 +3,9 @@
     "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
     "strict": true, "esModuleInterop": true, "skipLibCheck": true,
     "allowJs": true, "checkJs": false,
+    "jsx": "react-jsx",
     "outDir": "build", "rootDir": ".", "resolveJsonModule": true,
     "types": ["vitest/globals"]
   },
-  "include": ["server/**/*.js", "test/**/*.ts", "scripts/**/*.ts", "api/**/*.js"]
+  "include": ["server/**/*.js", "test/**/*.ts", "scripts/**/*.ts", "api/**/*.js", "src/**/*"]
 }

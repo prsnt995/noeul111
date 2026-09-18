@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint server/ api/ test/ scripts/",
+    "lint": "eslint server/ src/ api/ scripts/",
     "lint:fix": "npm run lint -- --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src/ api/ server/ --cache",

@@ -20,7 +20,7 @@ export function Header({ onOpenSearch }) {
     setMenuOpen(false);
   }, [location]);
 
-  // Navigate with query params without page reload
+  // Navigate with query params — category/filter routes to /shop so product grid filters to that cat only
   const navigateWithFilter = (paramsObj) => {
     setMenuOpen(false);
     const sp = new URLSearchParams();
@@ -28,8 +28,13 @@ export function Header({ onOpenSearch }) {
       if (v && v !== 'all') sp.set(k, v);
     });
     const qs = sp.toString();
-    const target = qs ? `/?${qs}` : '/';
-    window.history.pushState({}, '', target);
+    const hasCategory = paramsObj.category && paramsObj.category !== 'all';
+    const hasFilter = paramsObj.filter && paramsObj.filter !== 'all' && paramsObj.filter !== '';
+    const base = hasCategory || hasFilter ? '/shop' : (paramsObj.gender && paramsObj.gender !== 'all' ? '/' : '/');
+    // Keep current page if already on /shop and navigating to a category
+    const isOnShop = location.startsWith('/shop');
+    const finalBase = isOnShop && (hasCategory || hasFilter) ? '/shop' : base;
+    const target = qs ? `${finalBase}?${qs}` : finalBase;
     setLocation(target);
   };
 

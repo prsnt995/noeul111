@@ -1,3 +1,7 @@
+// Legacy JWT middleware (finding #2/#13). The canonical production identity
+// is the cookie-based Google session in api/app.js. This module remains only
+// for the legacy SQLite boundary guarded by productionBlock; new code must
+// not issue or accept these tokens.
 import jwt from 'jsonwebtoken';
 import { CONFIG } from '../config.js';
 import { query } from '../db/database.js';
@@ -37,6 +41,37 @@ export function verifyToken(req, res, next) {
 
 export const verifyAuth = verifyToken;
 
+// Role hierarchy (highest privilege first). Per-action gates must use
+// verifyRole() with the minimal role set — never treat all staff equally.
+export const STAFF_ROLES = ['super_admin', 'admin', 'order_manager', 'editor'];
+
+export function verifyRole(allowedRoles) {
+  return (req, res, next) => {
+    verifyToken(req, res, () => {
+      if (req.user && allowedRoles.includes(req.user.role)) {
+        next();
+      } else {
+        return res.status(403).json({ success: false, message: 'Access denied. Insufficient privileges.' });
+      }
+    });
+  };
+}
+
+// Staff-only account management (finding #9): only super_admin may
+// create/update/delete staff accounts. Editors and order managers are
+// explicitly excluded.
+export function requireSuperAdmin(req, res, next) {
+  verifyToken(req, res, () => {
+    if (req.user && req.user.role === 'super_admin') {
+      next();
+    } else {
+      return res.status(403).json({ success: false, message: 'Access denied. Super-admin privileges required.' });
+    }
+  });
+}
+
+// Legacy compat: general admin-area gate. Prefer verifyRole() with a
+// minimal role list on new routes.
 export function verifyAdmin(req, res, next) {
   verifyToken(req, res, () => {
     const adminRoles = ['super_admin', 'admin', 'editor', 'order_manager'];

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
+import { api } from '../../utils/api.js';
 import { Search, X, TrendingUp, ArrowRight } from 'lucide-react';
 
 export function QuickSearch({ isOpen, onClose }) {
@@ -28,8 +29,7 @@ export function QuickSearch({ isOpen, onClose }) {
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/products?search=${encodeURIComponent(query.trim())}&limit=6`);
-        const data = await res.json();
+        const data = await api.get(`/catalog/products?search=${encodeURIComponent(query.trim())}&limit=6`);
         if (data.success) {
           setResults(data.data);
         }

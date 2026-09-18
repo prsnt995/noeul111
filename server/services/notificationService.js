@@ -8,7 +8,7 @@ export const notificationService = {
       template: 'order-confirmation',
       data: { order_number: order.order_number, total_amount: order.total_amount, items: order.items || [] }
     });
-    return { success: result.success, queued: true, delivered: result.success, failed: !result.success, messageId: result.messageId };
+    return { success: result.success, queued: result.queued ?? !result.success, delivered: result.delivered ?? false, failed: !result.success, transport: result.transport || 'unknown', messageId: result.messageId };
   },
 
   async sendShippingUpdate(order) {
@@ -18,7 +18,7 @@ export const notificationService = {
       template: 'shipping-update',
       data: { order_number: order.order_number, courier: order.courier_name, tracking: order.tracking_number }
     });
-    return { success: result.success, queued: true, delivered: result.success, failed: !result.success, messageId: result.messageId };
+    return { success: result.success, queued: result.queued ?? !result.success, delivered: result.delivered ?? false, failed: !result.success, transport: result.transport || 'unknown', messageId: result.messageId };
   },
 
   async sendPaymentNotification(order) {
@@ -28,7 +28,7 @@ export const notificationService = {
       template: 'payment-confirmation',
       data: { order_number: order.order_number, amount: order.total_amount }
     });
-    return { success: result.success, queued: true, delivered: result.success, failed: !result.success, messageId: result.messageId };
+    return { success: result.success, queued: result.queued ?? !result.success, delivered: result.delivered ?? false, failed: !result.success, transport: result.transport || 'unknown', messageId: result.messageId };
   },
 
   async sendCancellationNotification(order) {
@@ -38,7 +38,7 @@ export const notificationService = {
       template: 'cancellation',
       data: { order_number: order.order_number, reason: order.cancel_reason || '고객 요청' }
     });
-    return { success: result.success, queued: true, delivered: result.success, failed: !result.success, messageId: result.messageId };
+    return { success: result.success, queued: result.queued ?? !result.success, delivered: result.delivered ?? false, failed: !result.success, transport: result.transport || 'unknown', messageId: result.messageId };
   },
 
   async sendInquiryResponse(inquiry) {
@@ -48,6 +48,6 @@ export const notificationService = {
       template: 'inquiry-response',
       data: { inquiry_id: inquiry.id, category: inquiry.category, response: inquiry.response }
     });
-    return { success: result.success, queued: true, delivered: result.success, failed: !result.success, messageId: result.messageId };
+    return { success: result.success, queued: result.queued ?? !result.success, delivered: result.delivered ?? false, failed: !result.success, transport: result.transport || 'unknown', messageId: result.messageId };
   }
 };

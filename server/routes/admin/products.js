@@ -1,7 +1,6 @@
 import express from 'express';
 import { query } from '../../db/database.js';
 import { verifyAdmin } from '../../middleware/auth.js';
-import { supabaseSync } from '../../lib/supabaseSync.js';
 
 const router = express.Router();
 router.use(verifyAdmin);
@@ -140,7 +139,6 @@ router.post('/products', (req, res) => {
     );
 
     const created = query.get('SELECT * FROM products WHERE id = ?', Number(result.lastInsertRowid));
-    supabaseSync.createProduct(created).catch(err => console.error('Supabase sync error:', err));
     res.status(201).json({ success: true, message: '새 상품이 등록되었습니다.', data: parseProduct(created) });
   } catch (error) {
     console.error('Admin create product error:', error);
@@ -231,7 +229,6 @@ router.put('/products/:id', (req, res) => {
     );
 
     const updated = query.get('SELECT * FROM products WHERE id = ?', Number(id));
-    supabaseSync.updateProduct(id, updated).catch(err => console.error('Supabase sync error:', err));
     res.json({ success: true, message: '상품 정보가 수정되었습니다.', data: parseProduct(updated) });
   } catch (error) {
     console.error('Update product error:', error);
@@ -252,7 +249,6 @@ router.patch('/products/:id/status', (req, res) => {
 
     const nextStatus = status || (prod.status === 'active' ? 'hidden' : 'active');
     query.run('UPDATE products SET status = ? WHERE id = ?', nextStatus, Number(id));
-    supabaseSync.updateProductField(id, { is_active: nextStatus === 'active' }).catch(err => console.error('Supabase sync error:', err));
     res.json({ success: true, message: `상품 상태가 ${nextStatus === 'active' ? '공개(Active)' : '비공개(Hidden)'}로 변경되었습니다.`, status: nextStatus });
   } catch (error) {
     res.status(500).json({ success: false, message: '상태 변경 실패' });
@@ -278,7 +274,6 @@ router.patch('/products/:id/stock', (req, res) => {
     }
 
     query.run('UPDATE products SET stock = ? WHERE id = ?', calculatedStock, Number(id));
-    supabaseSync.updateProductField(id, { stock: calculatedStock }).catch(err => console.error('Supabase sync error:', err));
     res.json({ success: true, message: '재고가 변경되었습니다.', stock: calculatedStock });
   } catch (error) {
     res.status(500).json({ success: false, message: '재고 변경 실패' });
@@ -332,7 +327,6 @@ router.post('/products/:id/duplicate', (req, res) => {
     );
 
     const created = query.get('SELECT * FROM products WHERE id = ?', Number(result.lastInsertRowid));
-    supabaseSync.createProduct(created).catch(err => console.error('Supabase sync error:', err));
     res.status(201).json({ success: true, message: '상품이 복제되었습니다.', data: parseProduct(created) });
   } catch (error) {
     console.error('Duplicate product error:', error);
@@ -378,7 +372,6 @@ router.delete('/products/:id', (req, res) => {
     query.run('DELETE FROM products WHERE id = ?', prodId);
 
     // Sync deletion to Supabase
-    supabaseSync.deleteProduct(id).catch(err => console.error('Supabase sync error:', err));
 
     res.json({ success: true, message: '상품이 성공적으로 삭제되었습니다.' });
   } catch (error) {

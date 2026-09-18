@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Search, Eye, Users, ShoppingBag, X } from 'lucide-react';
@@ -18,7 +18,7 @@ export function AdminCustomersPage() {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
 
-      const res = await api.get(`/admin/customers?${params.toString()}`);
+      const res = await adminApi.get(`/admin/customers?${params.toString()}`);
       if (res.success) {
         setCustomers(res.data);
       }
@@ -41,7 +41,7 @@ export function AdminCustomersPage() {
 
   const openCustomerDetail = async (id) => {
     try {
-      const res = await api.get(`/admin/customers/${id}`);
+      const res = await adminApi.get(`/admin/customers/${id}`);
       if (res.success) {
         setSelectedCustomer(res.data);
       }

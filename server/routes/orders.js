@@ -1,11 +1,10 @@
 import express from 'express';
 import { query, db } from '../db/database.js';
-import { verifyToken, optionalAuth } from '../middleware/auth.js';
+import { verifyToken } from '../middleware/auth.js';
 import { paymentService } from '../services/paymentService.js';
 import { notificationService } from '../services/notificationService.js';
 import { CONFIG } from '../config.js';
 import { upload } from '../utils/uploader.js';
-import { supabaseSync } from '../lib/supabaseSync.js';
 
 const router = express.Router();
 
@@ -19,8 +18,11 @@ function generateOrderNumber() {
   return `NE${year}${month}${day}-${randomSuffix}`;
 }
 
-// 1. Place New Order (Customer Checkout)
-router.post('/orders', optionalAuth, async (req, res) => {
+// 1. Place New Order (authenticated customers only — finding #5, plan
+// decision: no guest checkout). Quantities are strictly validated
+// (finding #10): positive bounded integers, demand aggregated per
+// product before the stock check so duplicate lines cannot oversell.
+router.post('/orders', verifyToken, async (req, res) => {
   try {
     const {
       customer_name,
@@ -47,6 +49,18 @@ router.post('/orders', optionalAuth, async (req, res) => {
     // 1. Validate items and compute subtotal
     let computedSubtotal = 0;
     const validatedItems = [];
+    const demandByProduct = new Map();
+
+    for (const item of items) {
+      // Finding #10: reject non-integer, zero, negative, or excessive quantities.
+      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+        return res.status(400).json({ success: false, message: '수량은 1개 이상 99개 이하의 정수여야 합니다.' });
+      }
+      if (!item.product_id) {
+        return res.status(400).json({ success: false, message: '상품 정보가 올바르지 않습니다.' });
+      }
+      demandByProduct.set(item.product_id, (demandByProduct.get(item.product_id) || 0) + item.quantity);
+    }
 
     for (const item of items) {
       const product = query.get('SELECT * FROM products WHERE id = ?', item.product_id);
@@ -55,6 +69,15 @@ router.post('/orders', optionalAuth, async (req, res) => {
       }
 
       if (product.stock < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `[${product.name_ko}] 상품의 재고가 부족합니다. (현재 재고: ${product.stock}개)`
+        });
+      }
+
+      // Finding #10: aggregated demand per product must fit available stock,
+      // so repeated lines for the same product cannot drive stock negative.
+      if (product.stock < (demandByProduct.get(item.product_id) || item.quantity)) {
         return res.status(400).json({
           success: false,
           message: `[${product.name_ko}] 상품의 재고가 부족합니다. (현재 재고: ${product.stock}개)`
@@ -138,23 +161,31 @@ router.post('/orders', optionalAuth, async (req, res) => {
     const order_number = generateOrderNumber();
 
     // 4. Determine Payment & Order Status
+    // Finding #1: only bank_transfer is accepted here; every other method
+    // goes through the retired adapter, which throws (fail-closed).
     let payment_status = 'pending_payment';
     let order_status = 'pending_verification';
 
     if (payment_method !== 'bank_transfer') {
-      const paymentResult = await paymentService.processPayment({
-        method: payment_method,
-        amount: total_amount,
-        orderNumber: order_number,
-        customer: { name: customer_name, phone: customer_phone, email: customer_email }
-      });
-      payment_status = paymentResult.status === 'paid' ? 'paid' : 'pending_payment';
-      order_status = payment_status === 'paid' ? 'confirmed' : 'pending_verification';
+      try {
+        const paymentResult = await paymentService.processPayment({
+          method: payment_method,
+          amount: total_amount,
+          orderNumber: order_number,
+          customer: { name: customer_name, phone: customer_phone, email: customer_email }
+        });
+        payment_status = paymentResult.status === 'paid' ? 'paid' : 'pending_payment';
+        order_status = payment_status === 'paid' ? 'confirmed' : 'pending_verification';
+      } catch {
+        return res.status(503).json({ success: false, message: '해당 결제 수단은 현재 지원되지 않습니다. 무통장입금을 이용해주세요.' });
+      }
     }
 
     const senderName = payment_sender_name ? payment_sender_name.trim() : customer_name.trim();
-    const numericUserId = req.user ? req.user.id : null;
-    const fbUid = req.user ? null : null;
+    // Authenticated route: identity always derives from the verified session
+    // (finding #5) — never from request body fields.
+    const numericUserId = req.user.id;
+    const fbUid = null;
 
     // 5. Save order to database & update stock atomically
     const insertOrderStmt = db.prepare(`
@@ -231,7 +262,6 @@ router.post('/orders', optionalAuth, async (req, res) => {
     createdOrder.items = validatedItems;
 
     // Sync order to Supabase
-    supabaseSync.createOrder(createdOrder).catch(err => console.error('Supabase order sync error:', err));
 
     // 5. Send order confirmation notification asynchronously
     notificationService.sendOrderConfirmation(createdOrder).catch(err => console.error(err));
@@ -247,7 +277,8 @@ router.post('/orders', optionalAuth, async (req, res) => {
   }
 });
 
-// 2. Upload Payment Screenshot / Receipt (Authenticated Customer Only)
+// 2. Upload Payment Screenshot / Receipt (finding #6: authenticated owner
+// only, and never after settlement unless an authorized workflow permits it)
 router.post('/orders/:orderNumber/payment-receipt', verifyToken, upload.single('receipt'), (req, res) => {
   try {
     const { orderNumber } = req.params;
@@ -256,6 +287,17 @@ router.post('/orders/:orderNumber/payment-receipt', verifyToken, upload.single('
     const order = query.get('SELECT * FROM orders WHERE order_number = ?', orderNumber);
     if (!order) {
       return res.status(404).json({ success: false, message: '주문을 찾을 수 없습니다.' });
+    }
+
+    const isOwner = order.user_id === req.user.id;
+    const isStaff = ['super_admin', 'admin', 'order_manager'].includes(req.user.role);
+    if (!isOwner && !isStaff) {
+      return res.status(403).json({ success: false, message: '영수증 등록 권한이 없습니다.' });
+    }
+
+    // Receipt changes are only allowed while the order is unsettled.
+    if (!['pending_payment', 'pending_verification', 'under_review'].includes(order.payment_status)) {
+      return res.status(409).json({ success: false, message: '정산이 완료된 주문의 영수증은 변경할 수 없습니다.' });
     }
 
     if (!req.file && !req.body.receipt_url) {

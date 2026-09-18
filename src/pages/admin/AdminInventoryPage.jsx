@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Boxes, AlertTriangle, CheckCircle, XCircle, Search, RefreshCw } from 'lucide-react';
@@ -20,7 +20,7 @@ export function AdminInventoryPage() {
       if (filter !== 'all') params.append('stockStatus', filter);
       if (search.trim()) params.append('search', search.trim());
 
-      const res = await api.get(`/admin/products?${params.toString()}`);
+      const res = await adminApi.get(`/admin/products?${params.toString()}`);
       if (res.success) {
         setProducts(res.data);
       }
@@ -44,7 +44,7 @@ export function AdminInventoryPage() {
     setUpdatingId(id);
     try {
       const payload = directValue !== undefined ? { newStock: directValue } : { delta };
-      const res = await api.patch(`/admin/products/${id}/stock`, payload);
+      const res = await adminApi.patch(`/admin/products/${id}/stock`, payload);
       if (res.success) {
         showToast('재고 수량이 업데이트되었습니다.', 'success');
         setProducts((prev) =>

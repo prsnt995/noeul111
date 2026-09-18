@@ -9,7 +9,6 @@ fs.mkdirSync(backupDir, { recursive: true });
 
 console.log('[Backup] Starting database backup...');
 try {
-  const dbName = process.env.SUPABASE_DB_NAME || 'postgres';
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) { console.error('[Backup] DATABASE_URL required'); process.exit(1); }
   execSync(`pg_dump "${connectionString}" > "${path.join(backupDir, 'database.sql')}"`, { cwd: projectDir });

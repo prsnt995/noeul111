@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { ShieldAlert, Plus, Edit2, Trash2, X, Shield, UserCheck } from 'lucide-react';
 
@@ -25,7 +25,7 @@ export function AdminStaffPage() {
   const fetchStaff = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/users/staff');
+      const res = await adminApi.get('/admin/users/staff');
       if (res.success) setStaff(res.data);
     } catch (err) {
       console.error('Fetch staff error:', err);
@@ -71,10 +71,10 @@ export function AdminStaffPage() {
     e.preventDefault();
     try {
       if (isEditMode) {
-        await api.put(`/admin/users/staff/${editingId}`, formData);
+        await adminApi.put(`/admin/users/staff/${editingId}`, formData);
         showToast('관리자 정보가 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/users/staff', formData);
+        await adminApi.post('/admin/users/staff', formData);
         showToast('새 관리자 계정이 생성되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -87,7 +87,7 @@ export function AdminStaffPage() {
   const handleDelete = async (id) => {
     if (!window.confirm('이 관리자 계정을 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/users/staff/${id}`);
+      await adminApi.delete(`/admin/users/staff/${id}`);
       showToast('관리자 계정이 삭제되었습니다.', 'info');
       fetchStaff();
     } catch (err) {

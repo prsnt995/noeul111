@@ -501,7 +501,7 @@ export function CustomerAccountPage() {
                   >
                     <Link href={`/product/${item.id}`} style={{ display: 'block', aspectRatio: '3 / 4' }}>
                       <img
-                        src={item.images?.[0] || 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600&auto=format&fit=crop'}
+                        src={item.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
                         alt={item.name_ko}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />

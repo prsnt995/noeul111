@@ -46,8 +46,8 @@ export function ProductDetailPage() {
       if (!params?.id) return;
       setLoading(true);
       try {
-        const res = await fetch(`/api/v1/catalog/products/${params.id}`);
-        const data = await res.json();
+        const { api } = await import('../utils/api.js');
+        const data = await api.get(`/catalog/products/${params.id}`);
         if (data.success && data.data) {
           setProduct(data.data);
           setRelated(data.related || getRelatedProducts(data.data));
@@ -111,8 +111,46 @@ export function ProductDetailPage() {
   const colors = Array.isArray(product.colors) ? product.colors : [];
   const details = product.details || {};
   const isWish = isWishlisted(product.id);
-  const finalPrice = product.discount_price || product.price;
   const productName = lang === 'ko' ? (product.name_ko || product.name_en) : (product.name_en || product.name_ko);
+  const variants = Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : [];
+  const getVariant = (colorObj, sizeVal) => {
+    const cName = colorObj?.name_en || colorObj?.name || colorObj;
+    return variants.find(v => v.color === cName && v.size === sizeVal) || variants.find(v => v.color === cName) || variants.find(v => v.size === sizeVal) || null;
+  };
+  const currentVariant = getVariant(selectedColor, selectedSize) || variants[0] || null;
+  const basePrice = product.discount_price || product.price;
+  const finalPrice = currentVariant ? Math.max(1, basePrice + (currentVariant.price_delta || 0)) : basePrice;
+  const isVariantAvailable = (colorObj, sizeVal) => {
+    const v = getVariant(colorObj || selectedColor, sizeVal || selectedSize);
+    if (!v) return false;
+    const stock = (v.stock ?? product.stock ?? 0);
+    const reserved = (v.reserved ?? 0);
+    return (stock - reserved) > 0;
+  };
+
+  // Sync variant to URL ?variant=uuid for shareable links
+  useEffect(() => {
+    if (!currentVariant?.id) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('variant', currentVariant.id);
+    window.history.replaceState({}, '', url.toString());
+  }, [currentVariant?.id]);
+
+  // Initialize from ?variant= on load
+  useEffect(() => {
+    if (!product || variants.length===0) return;
+    const vid = new URLSearchParams(window.location.search).get('variant');
+    if (vid) {
+      const v = variants.find(x=> x.id===vid);
+      if (v) {
+        if (v.size) setSelectedSize(v.size);
+        const col = colors.find(c=> (c.name_en||c.name)===v.color);
+        if (col) setSelectedColor(col);
+        const mediaIdx = product.product_media ? product.product_media.findIndex(m=> m.variant_id===v.id) : -1;
+        if (mediaIdx>=0) setSelectedImageIndex(mediaIdx);
+      }
+    }
+  }, [product?.id]);
 
   // Material extraction
   const productMaterial =
@@ -121,7 +159,15 @@ export function ProductDetailPage() {
     details.fabric_ko ||
     (lang === 'ko' ? '100% 최고급 코튼' : '100% Combed Cotton');
 
-  const currentMainImage = images[selectedImageIndex] || images[0];
+  const currentMainImage = (() => {
+    if (currentVariant) {
+      const mediaForVariant = Array.isArray(product.product_media) ? product.product_media.find(m=> m.variant_id===currentVariant.id) : null;
+      if (mediaForVariant?.url) return mediaForVariant.url;
+      const byColor = Array.isArray(product.product_media) ? product.product_media.find(m=> m.color=== (selectedColor?.name_en||selectedColor?.name)) : null;
+      if (byColor?.url) return byColor.url;
+    }
+    return images[selectedImageIndex] || images[0];
+  })();
 
   const handleAddToCart = () => {
     addToCart(product, selectedSize, selectedColor, quantity);
@@ -349,15 +395,18 @@ export function ProductDetailPage() {
                     {selectedColor ? (lang === 'ko' ? (selectedColor.name_ko || selectedColor.name) : (selectedColor.name_en || selectedColor.name)) : ''}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap:'wrap' }}>
                   {colors.map((c, idx) => {
                     const isSelected = selectedColor?.name === c.name || selectedColor?.hex === c.hex;
+                    const available = isVariantAvailable(c, selectedSize);
                     return (
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => setSelectedColor(c)}
-                        title={c.name || c.name_en}
+                        disabled={!available}
+                        onClick={() => { if(available) setSelectedColor(c); }}
+                        title={`${c.name || c.name_en}${!available ? ' (품절)' : ''}${getVariant(c, selectedSize)?.price_delta ? ` +${formatKRW(getVariant(c, selectedSize).price_delta)}` : ''}`}
+                        aria-label={`${c.name || c.name_en}${!available ? ' 품절' : ''}`}
                         style={{
                           width: '28px',
                           height: '28px',
@@ -366,12 +415,17 @@ export function ProductDetailPage() {
                           border: isSelected ? '2px solid #18181b' : '1px solid rgba(0,0,0,0.15)',
                           outline: isSelected ? '2px solid #18181b' : 'none',
                           outlineOffset: '2px',
-                          cursor: 'pointer',
+                          cursor: available ? 'pointer' : 'not-allowed',
+                          opacity: available ? 1 : 0.35,
+                          position:'relative',
                         }}
-                      />
+                      >
+                        {!available && <span style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:'#991b1b'}}>×</span>}
+                      </button>
                     );
                   })}
                 </div>
+                {currentVariant?.price_delta ? <span style={{fontSize:'0.75rem', color:'#52525b', marginTop:6, display:'inline-block'}}>{currentVariant.price_delta>0?`+${formatKRW(currentVariant.price_delta)}`:`${formatKRW(currentVariant.price_delta)}`} (옵션 추가금)</span> : null}
               </div>
             )}
 
@@ -405,11 +459,15 @@ export function ProductDetailPage() {
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {sizes.map((sz) => {
                     const isSelected = selectedSize === sz;
+                    const available = isVariantAvailable(selectedColor, sz);
                     return (
                       <button
                         key={sz}
                         type="button"
-                        onClick={() => setSelectedSize(sz)}
+                        disabled={!available}
+                        onClick={() => { if(available) setSelectedSize(sz); }}
+                        aria-disabled={!available}
+                        title={!available ? '품절' : ''}
                         style={{
                           minWidth: '54px',
                           padding: '8px 14px',
@@ -417,9 +475,11 @@ export function ProductDetailPage() {
                           fontWeight: isSelected ? 700 : 500,
                           borderRadius: '2px',
                           border: isSelected ? '1.5px solid #18181b' : '1px solid #e4e4e7',
-                          backgroundColor: isSelected ? '#18181b' : '#ffffff',
-                          color: isSelected ? '#ffffff' : '#18181b',
-                          cursor: 'pointer',
+                          backgroundColor: !available ? '#f4f4f5' : isSelected ? '#18181b' : '#ffffff',
+                          color: !available ? '#a1a1aa' : isSelected ? '#ffffff' : '#18181b',
+                          cursor: available ? 'pointer' : 'not-allowed',
+                          opacity: available ? 1 : 0.6,
+                          textDecoration: available ? 'none' : 'line-through',
                           transition: 'all 0.15s ease',
                         }}
                       >
@@ -465,8 +525,8 @@ export function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Out of stock warning banner */}
-            {product?.stock <= 0 && (
+            {/* Variant-aware out of stock warning */}
+            {(!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) && (
               <div
                 style={{
                   backgroundColor: '#fee2e2',
@@ -481,7 +541,7 @@ export function ProductDetailPage() {
                   gap: '8px',
                 }}
               >
-                <span>⚠️ {lang === 'ko' ? '이 상품은 현재 일시 품절 상태입니다. (Out of Stock)' : 'This item is currently out of stock.'}</span>
+                <span>⚠️ {lang === 'ko' ? '선택한 옵션은 현재 일시 품절 상태입니다. (Out of Stock)' : 'Selected option is out of stock.'}</span>
               </div>
             )}
 
@@ -489,7 +549,7 @@ export function ProductDetailPage() {
             <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
               <button
                 type="button"
-                disabled={product?.stock <= 0}
+                disabled={!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0}
                 onClick={handleAddToCart}
                 style={{
                   flex: 1,
@@ -497,22 +557,22 @@ export function ProductDetailPage() {
                   fontSize: '0.875rem',
                   fontWeight: 600,
                   letterSpacing: '0.04em',
-                  backgroundColor: product?.stock <= 0 ? '#f4f4f5' : '#ffffff',
-                  color: product?.stock <= 0 ? '#a1a1aa' : '#18181b',
-                  border: product?.stock <= 0 ? '1px solid #d4d4d8' : '1.5px solid #18181b',
+                  backgroundColor: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? '#f4f4f5' : '#ffffff',
+                  color: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? '#a1a1aa' : '#18181b',
+                  border: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? '1px solid #d4d4d8' : '1.5px solid #18181b',
                   borderRadius: '2px',
-                  cursor: product?.stock <= 0 ? 'not-allowed' : 'pointer',
+                  cursor: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
               >
-                {product?.stock <= 0
+                {(!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0)
                   ? (lang === 'ko' ? '품절 (Out of Stock)' : 'Out of Stock')
                   : (lang === 'ko' ? '장바구니 담기' : 'Add to Cart')}
               </button>
 
               <button
                 type="button"
-                disabled={product?.stock <= 0}
+                disabled={!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0}
                 onClick={handleBuyNow}
                 style={{
                   flex: 1,
@@ -520,15 +580,15 @@ export function ProductDetailPage() {
                   fontSize: '0.875rem',
                   fontWeight: 600,
                   letterSpacing: '0.04em',
-                  backgroundColor: product?.stock <= 0 ? '#e4e4e7' : '#18181b',
-                  color: product?.stock <= 0 ? '#a1a1aa' : '#ffffff',
-                  border: product?.stock <= 0 ? '1px solid #d4d4d8' : '1.5px solid #18181b',
+                  backgroundColor: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? '#e4e4e7' : '#18181b',
+                  color: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? '#a1a1aa' : '#ffffff',
+                  border: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? '1px solid #d4d4d8' : '1.5px solid #18181b',
                   borderRadius: '2px',
-                  cursor: product?.stock <= 0 ? 'not-allowed' : 'pointer',
+                  cursor: (!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0) ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
               >
-                {product?.stock <= 0
+                {(!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0)
                   ? (lang === 'ko' ? '품절 (Out of Stock)' : 'Out of Stock')
                   : (lang === 'ko' ? '바로 구매하기' : 'Buy Now')}
               </button>

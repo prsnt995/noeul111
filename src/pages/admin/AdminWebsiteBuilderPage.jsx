@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
 import {
@@ -62,8 +62,8 @@ export function AdminWebsiteBuilderPage() {
     setLoading(true);
     try {
       const [secRes, catRes] = await Promise.all([
-        api.get('/admin/builder/sections'),
-        api.get('/admin/categories'),
+        adminApi.get('/admin/builder/sections'),
+        adminApi.get('/admin/categories'),
       ]);
       if (secRes.success) setSections(secRes.data);
       if (catRes.success) setCategories(catRes.data);
@@ -90,7 +90,7 @@ export function AdminWebsiteBuilderPage() {
     setSections(newSections);
 
     try {
-      await api.patch('/admin/builder/sections/reorder', {
+      await adminApi.patch('/admin/builder/sections/reorder', {
         sectionIds: newSections.map((s) => s.id),
       });
       showToast('섹션 순서가 저장되었습니다.', 'success');
@@ -102,7 +102,7 @@ export function AdminWebsiteBuilderPage() {
 
   const handleToggle = async (id) => {
     try {
-      const res = await api.patch(`/admin/builder/sections/${id}/toggle`);
+      const res = await adminApi.patch(`/admin/builder/sections/${id}/toggle`);
       showToast(res.message, 'success');
       fetchSections();
     } catch (err) {
@@ -112,7 +112,7 @@ export function AdminWebsiteBuilderPage() {
 
   const handleDuplicate = async (id) => {
     try {
-      await api.post(`/admin/builder/sections/${id}/duplicate`);
+      await adminApi.post(`/admin/builder/sections/${id}/duplicate`);
       showToast('섹션이 복제되었습니다.', 'success');
       fetchSections();
     } catch (err) {
@@ -123,7 +123,7 @@ export function AdminWebsiteBuilderPage() {
   const handleDelete = async (id) => {
     if (!window.confirm('이 섹션을 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/builder/sections/${id}`);
+      await adminApi.delete(`/admin/builder/sections/${id}`);
       showToast('섹션이 삭제되었습니다.', 'info');
       fetchSections();
     } catch (err) {
@@ -145,7 +145,7 @@ export function AdminWebsiteBuilderPage() {
         filter_type: 'new',
         limit: 4,
         view_all_link: '/shop',
-        image_url: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1600&auto=format&fit=crop',
+        image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
         button_text_ko: '더보기',
         button_text_en: 'Shop Now',
         button_link: '/shop',
@@ -176,10 +176,10 @@ export function AdminWebsiteBuilderPage() {
     e.preventDefault();
     try {
       if (isEditMode) {
-        await api.put(`/admin/builder/sections/${editingId}`, formData);
+        await adminApi.put(`/admin/builder/sections/${editingId}`, formData);
         showToast('섹션이 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/builder/sections', formData);
+        await adminApi.post('/admin/builder/sections', formData);
         showToast('새 섹션이 생성되었습니다.', 'success');
       }
       setIsModalOpen(false);

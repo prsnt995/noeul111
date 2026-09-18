@@ -144,6 +144,10 @@ router.get('/products', (req, res) => {
     if (isBest === 'true' || isBest === '1') {
       sql += ' AND p.is_best = 1';
     }
+    // Finding #19: sale contract parity with /api/v1 (discounted rows only).
+    if (req.query.isSale === 'true' || req.query.isSale === '1' || req.query.sale === 'true' || req.query.is_sale === 'true') {
+      sql += ' AND p.discount_price IS NOT NULL';
+    }
     if (inStock === 'true' || inStock === '1') {
       sql += ' AND p.stock > 0';
     }

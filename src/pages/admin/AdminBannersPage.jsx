@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
 import { Image as ImageIcon, Plus, Edit2, Trash2, X, Eye, EyeOff, Calendar } from 'lucide-react';
@@ -36,7 +36,7 @@ export function AdminBannersPage() {
   const fetchBanners = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/content/banners');
+      const res = await adminApi.get('/admin/content/banners');
       if (res.success) setBanners(res.data);
     } catch (err) {
       console.error('Fetch banners failed:', err);
@@ -59,7 +59,7 @@ export function AdminBannersPage() {
       title_en: '',
       subtitle_ko: '',
       subtitle_en: '',
-      image_url: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1600&auto=format&fit=crop',
+      image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
       mobile_image_url: '',
       link_url: '/shop',
       button_text_ko: '신규 컬렉션 쇼핑하기',
@@ -98,10 +98,10 @@ export function AdminBannersPage() {
     e.preventDefault();
     try {
       if (isEditMode) {
-        await api.put(`/admin/content/banners/${editingId}`, formData);
+        await adminApi.put(`/admin/content/banners/${editingId}`, formData);
         showToast('배너가 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/content/banners', formData);
+        await adminApi.post('/admin/content/banners', formData);
         showToast('새 배너가 추가되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -114,7 +114,7 @@ export function AdminBannersPage() {
   const handleDelete = async (id) => {
     if (!window.confirm('이 배너를 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/content/banners/${id}`);
+      await adminApi.delete(`/admin/content/banners/${id}`);
       showToast('배너가 삭제되었습니다.', 'info');
       fetchBanners();
     } catch (err) {

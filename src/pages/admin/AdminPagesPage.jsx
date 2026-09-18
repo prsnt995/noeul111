@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
 import { FileText, Plus, Edit2, Trash2, X, ExternalLink, Eye, EyeOff } from 'lucide-react';
@@ -30,7 +30,7 @@ export function AdminPagesPage() {
   const fetchPages = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/pages');
+      const res = await adminApi.get('/admin/pages');
       if (res.success) setPages(res.data);
     } catch (err) {
       console.error('Fetch pages failed:', err);
@@ -51,7 +51,7 @@ export function AdminPagesPage() {
       slug: '',
       title_ko: '',
       title_en: '',
-      banner_image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1600&auto=format&fit=crop',
+      banner_image: '/products/men/tshirts/classic-tshirt/1.jpg',
       content_ko: '<h2>페이지 제목</h2>\n<p>여기에 본문 내용을 작성해주세요.</p>',
       content_en: '<h2>Page Title</h2>\n<p>Write your page content here.</p>',
       meta_title: '',
@@ -82,10 +82,10 @@ export function AdminPagesPage() {
     e.preventDefault();
     try {
       if (isEditMode) {
-        await api.put(`/admin/pages/${editingId}`, formData);
+        await adminApi.put(`/admin/pages/${editingId}`, formData);
         showToast('페이지가 성공적으로 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/pages', formData);
+        await adminApi.post('/admin/pages', formData);
         showToast('새 페이지가 생성되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -98,7 +98,7 @@ export function AdminPagesPage() {
   const handleDeletePage = async (id) => {
     if (!window.confirm('이 페이지를 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/pages/${id}`);
+      await adminApi.delete(`/admin/pages/${id}`);
       showToast('페이지가 삭제되었습니다.', 'info');
       fetchPages();
     } catch (err) {

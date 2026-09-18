@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
@@ -62,7 +62,7 @@ export function AdminOrdersPage() {
       let queryParams = `?status=${selectedStatus}&payment_status=${selectedPaymentStatus}`;
       if (search.trim()) queryParams += `&search=${encodeURIComponent(search.trim())}`;
 
-      const res = await api.get(`/admin/orders${queryParams}`);
+      const res = await adminApi.get(`/admin/orders${queryParams}`);
       if (res.success) {
         setOrders(res.data);
       }
@@ -85,7 +85,7 @@ export function AdminOrdersPage() {
 
   const handleUpdateStatus = async (id, nextStatus) => {
     try {
-      const res = await api.patch(`/admin/orders/${id}/status`, { order_status: nextStatus });
+      const res = await adminApi.patch(`/admin/orders/${id}/status`, { order_status: nextStatus });
       if (res.success && res.data) {
         // Sync to Firestore for real-time user notification
         await updateFirestoreOrderStatus(res.data.order_number, {
@@ -107,7 +107,7 @@ export function AdminOrdersPage() {
   // Admin Verification of Bank Transfer Screenshot
   const handleVerifyPayment = async (id, action) => {
     try {
-      const res = await api.patch(`/admin/orders/${id}/verify-payment`, {
+      const res = await adminApi.patch(`/admin/orders/${id}/verify-payment`, {
         action,
         notes: action === 'reject' ? '입금 금액 또는 입금자명 불일치' : null,
       });
@@ -141,7 +141,7 @@ export function AdminOrdersPage() {
     if (!trackingModalOrder || !trackingNumber.trim()) return;
 
     try {
-      const res = await api.patch(`/admin/orders/${trackingModalOrder.id}/tracking`, {
+      const res = await adminApi.patch(`/admin/orders/${trackingModalOrder.id}/tracking`, {
         courier_name: courierName,
         tracking_number: trackingNumber.trim(),
         auto_ship: true,

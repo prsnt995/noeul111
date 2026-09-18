@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { ImageUploader } from '../../components/admin/ImageUploader.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
@@ -82,8 +82,8 @@ export function AdminProductsPage() {
       if (specialFilter !== 'all') params.append('filterType', specialFilter);
 
       const [prodRes, catRes] = await Promise.all([
-        api.get(`/admin/products?${params.toString()}`),
-        api.get('/admin/categories'),
+        adminApi.get(`/admin/products?${params.toString()}`),
+        adminApi.get('/admin/categories'),
       ]);
 
       if (prodRes.success) setProducts(prodRes.data);
@@ -171,10 +171,10 @@ export function AdminProductsPage() {
       };
 
       if (isEditMode) {
-        await api.put(`/admin/products/${editingId}`, payload);
+        await adminApi.put(`/admin/products/${editingId}`, payload);
         showToast('상품 정보가 성공적으로 수정되었습니다.', 'success');
       } else {
-        await api.post('/admin/products', payload);
+        await adminApi.post('/admin/products', payload);
         showToast('새 상품이 등록되었습니다.', 'success');
       }
 
@@ -188,7 +188,7 @@ export function AdminProductsPage() {
   const handleToggleStatus = async (id, currentStatus) => {
     try {
       const nextStatus = currentStatus === 'active' ? 'hidden' : 'active';
-      await api.patch(`/admin/products/${id}/status`, { status: nextStatus });
+      await adminApi.patch(`/admin/products/${id}/status`, { status: nextStatus });
       showToast(`상품 상태가 ${nextStatus === 'active' ? '공개' : '비공개'}로 변경되었습니다.`, 'info');
       fetchProducts();
     } catch (err) {
@@ -198,7 +198,7 @@ export function AdminProductsPage() {
 
   const handleDeleteProduct = async (id) => {
     try {
-      const res = await api.delete(`/admin/products/${id}`);
+      const res = await adminApi.delete(`/admin/products/${id}`);
       showToast(res.message || '상품이 성공적으로 삭제되었습니다.', 'info');
       setDeleteConfirmId(null);
       fetchProducts();
@@ -210,7 +210,7 @@ export function AdminProductsPage() {
 
   const handleQuickStock = async (id, delta) => {
     try {
-      await api.patch(`/admin/products/${id}/stock`, { delta });
+      await adminApi.patch(`/admin/products/${id}/stock`, { delta });
       showToast('재고가 업데이트되었습니다.', 'success');
       fetchProducts();
     } catch (err) {
@@ -389,7 +389,7 @@ export function AdminProductsPage() {
                       <td style={{ padding: '14px 20px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <img
-                            src={p.images?.[0] || 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=300'}
+                            src={p.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
                             alt=""
                             style={{ width: '48px', height: '62px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #e4e4e7' }}
                           />

@@ -2,7 +2,6 @@ import express from 'express';
 import { query } from '../../db/database.js';
 import { verifyAdmin } from '../../middleware/auth.js';
 import { notificationService } from '../../services/notificationService.js';
-import { supabaseSync } from '../../lib/supabaseSync.js';
 
 const router = express.Router();
 router.use(verifyAdmin);
@@ -104,7 +103,6 @@ router.patch('/orders/:id/verify-payment', (req, res) => {
     const updated = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     const items = query.all('SELECT * FROM order_items WHERE order_id = ?', updated.id);
 
-    supabaseSync.updateOrderStatus(updated.id, updated.order_status, updated.payment_status).catch(err => console.error('Supabase order sync error:', err));
 
     res.json({
       success: true,
@@ -140,7 +138,6 @@ router.patch('/orders/:id/status', (req, res) => {
     const updated = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     const items = query.all('SELECT * FROM order_items WHERE order_id = ?', updated.id);
 
-    supabaseSync.updateOrderStatus(updated.id, updated.order_status, updated.payment_status).catch(err => console.error('Supabase order sync error:', err));
 
     res.json({
       success: true,

@@ -27,26 +27,6 @@ yarn-error.log*
 test_*.js
 scratch/
 .receipts/
-*.png
-*.jpg
-*.jpeg
-*.pdf
-*.svg
-*.gif
-*.webp
-*.xlsx
-*.csv
-
-# Test and config
-coverage/
-*.test.ts
-*.test.js
-vitest.config.ts
-eslint.config.js
-.prettierrc
-.github/
-.vscode/
-.idea/
-# TypeScript reference files (not runnable)
+# TypeScript reference files (not runnable) — keep JS reference implementation tracked
 api/*.ts
 !api/*.js

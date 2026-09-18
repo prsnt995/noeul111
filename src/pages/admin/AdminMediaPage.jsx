@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Film, Plus, Search, Copy, Trash2, X, Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
 
@@ -22,7 +22,7 @@ export function AdminMediaPage() {
   const fetchMedia = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/admin/media?search=${encodeURIComponent(search)}`);
+      const res = await adminApi.get(`/admin/media?search=${encodeURIComponent(search)}`);
       if (res.success) setMediaList(res.data);
     } catch (err) {
       console.error('Fetch media error:', err);
@@ -74,7 +74,7 @@ export function AdminMediaPage() {
   const handleAddMedia = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/admin/media', formData);
+      await adminApi.post('/admin/media', formData);
       showToast('새 미디어가 등록되었습니다.', 'success');
       setIsModalOpen(false);
       setFormData({ name: '', url: '', tags: '' });
@@ -92,7 +92,7 @@ export function AdminMediaPage() {
   const handleDelete = async (id) => {
     if (!window.confirm('이 미디어를 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/media/${id}`);
+      await adminApi.delete(`/admin/media/${id}`);
       showToast('미디어가 삭제되었습니다.', 'info');
       fetchMedia();
     } catch (err) {
@@ -268,7 +268,7 @@ export function AdminMediaPage() {
                   <input
                     type="url"
                     required
-                    placeholder="https://images.unsplash.com/..."
+                    placeholder="/products/men/tshirts/classic-tshirt/1.jpg"
                     value={formData.url}
                     onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                     className="form-input"

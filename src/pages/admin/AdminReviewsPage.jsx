@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Star, Eye, EyeOff, Trash2, Sparkles, Check, X } from 'lucide-react';
 
@@ -12,7 +12,7 @@ export function AdminReviewsPage() {
   const fetchReviews = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/reviews');
+      const res = await adminApi.get('/admin/reviews');
       if (res.success) setReviews(res.data);
     } catch (err) {
       console.error('Fetch reviews error:', err);
@@ -28,7 +28,7 @@ export function AdminReviewsPage() {
 
   const handleToggleStatus = async (id, currentStatus) => {
     try {
-      const res = await api.patch(`/admin/reviews/${id}/status`, { is_approved: !currentStatus });
+      const res = await adminApi.patch(`/admin/reviews/${id}/status`, { is_approved: !currentStatus });
       showToast(res.message, 'success');
       fetchReviews();
     } catch (err) {
@@ -38,7 +38,7 @@ export function AdminReviewsPage() {
 
   const handleToggleFeature = async (id, currentFeature) => {
     try {
-      const res = await api.patch(`/admin/reviews/${id}/feature`, { is_featured: !currentFeature });
+      const res = await adminApi.patch(`/admin/reviews/${id}/feature`, { is_featured: !currentFeature });
       showToast(res.message, 'success');
       fetchReviews();
     } catch (err) {
@@ -49,7 +49,7 @@ export function AdminReviewsPage() {
   const handleDelete = async (id) => {
     if (!window.confirm('이 리뷰를 삭제하시겠습니까?')) return;
     try {
-      await api.delete(`/admin/reviews/${id}`);
+      await adminApi.delete(`/admin/reviews/${id}`);
       showToast('리뷰가 삭제되었습니다.', 'info');
       fetchReviews();
     } catch (err) {

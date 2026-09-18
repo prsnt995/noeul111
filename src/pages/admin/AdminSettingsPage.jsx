@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Settings, Save, Building, Truck, Globe, Shield, CreditCard, Layout, Phone, Mail, MapPin } from 'lucide-react';
 
@@ -44,7 +44,7 @@ export function AdminSettingsPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/content/settings');
+      const res = await adminApi.get('/admin/content/settings');
       if (res.success && res.data) {
         setSettings((prev) => ({
           ...prev,
@@ -70,7 +70,7 @@ export function AdminSettingsPage() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      await api.put('/admin/content/settings', { settings });
+      await adminApi.put('/admin/content/settings', { settings });
       showToast('쇼핑몰 설정이 성공적으로 저장되었습니다.', 'success');
     } catch (err) {
       showToast('설정 저장 실패', 'error');

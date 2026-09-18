@@ -1,20 +1,42 @@
-import { createClient } from '@supabase/supabase-js';
-import { randomBytes } from 'node:crypto';
+import { getAdminClient, sleep, newLeaseToken, alertOps } from './client.js';
+import { notificationService } from '../services/notificationService.js';
 
 let workerRunning = false;
 
-const getWorker = () => {
-  const env = process.env;
-  if (!env.SUPABASE_URL) return null;
-  return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-  });
-};
+// Transactional-outbox dispatcher over app.outbox (migration 001).
+// Lease protocol: claim with a conditional update on lease_until so two
+// workers can never process the same event. Handlers are idempotent by
+// effect_key; at-least-once delivery yields one business effect.
+const LEASE_MS = 60_000;
+const MAX_ATTEMPTS = 5;
+const backoffMs = attempts => Math.min(1000 * 2 ** attempts, 300_000);
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function fetchOrder(supabase, orderId) {
+  const { data } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+  return data || null;
+}
+
+async function dispatch(supabase, event) {
+  const payload = typeof event.payload === 'string' ? JSON.parse(event.payload || '{}') : (event.payload || {});
+  const order = payload.order_id ? await fetchOrder(supabase, payload.order_id) : null;
+  switch (event.kind) {
+    case 'ORDER_CREATED':
+      if (order) await notificationService.sendOrderConfirmation({ ...order, items: [] });
+      break;
+    case 'ORDER_CANCELED':
+    case 'ORDER_EXPIRED':
+      if (order) await notificationService.sendCancellationNotification({ ...order, cancel_reason: event.kind === 'ORDER_EXPIRED' ? '결제 기한 만료' : (order.cancel_reason || '고객 요청') });
+      break;
+    case 'PAYMENT_CONFIRMED':
+      if (order) await notificationService.sendPaymentNotification(order);
+      break;
+    default:
+      console.log(`[Outbox] Unknown kind ${event.kind}; marking done.`);
+  }
+}
 
 export async function startOutboxWorker() {
-  const supabase = getWorker();
+  const supabase = getAdminClient();
   if (!supabase) { console.log('[Outbox] Supabase not configured. Worker skipped.'); return; }
   if (workerRunning) { console.log('[Outbox] Worker already running.'); return; }
   workerRunning = true;
@@ -22,38 +44,43 @@ export async function startOutboxWorker() {
 
   while (workerRunning) {
     try {
+      const now = new Date().toISOString();
       const { data: events } = await supabase
-        .from('outbox_events')
+        .from('outbox')
         .select('*')
-        .eq('processed', false)
-        .eq('status', 'queued')
-        .order('created_at', { ascending: true })
+        .is('done_at', null)
+        .is('dead_at', null)
+        .lte('available_at', now)
+        .or(`lease_until.is.null,lease_until.lt.${now}`)
+        .order('available_at', { ascending: true })
         .limit(10);
 
       if (!events || events.length === 0) { await sleep(5000); continue; }
 
       for (const event of events) {
-        const lockId = `${event.id}:${randomBytes(8).toString('hex')}`;
-        const { data: locked } = await supabase
-          .from('outbox_events')
-          .update({ status: 'processing', locked_at: new Date().toISOString(), lock_id: lockId })
+        const token = newLeaseToken();
+        const leaseUntil = new Date(Date.now() + LEASE_MS).toISOString();
+        const { data: claimed } = await supabase
+          .from('outbox')
+          .update({ lease_until: leaseUntil, lease_token: token })
           .eq('id', event.id)
-          .eq('status', 'queued')
-          .select()
+          .is('done_at', null)
+          .or(`lease_until.is.null,lease_until.lt.${now}`)
+          .select('id')
           .maybeSingle();
 
-        if (!locked) { await sleep(1000); continue; }
+        if (!claimed) continue;
 
         try {
-          await processEvent(locked);
-          await supabase.from('outbox_events').update({ status: 'delivered', processed_at: new Date().toISOString() }).eq('id', event.id);
+          await dispatch(supabase, event);
+          await supabase.from('outbox').update({ done_at: new Date().toISOString(), last_error: null }).eq('id', event.id);
         } catch (err) {
-          const retries = (event.retry_count || 0) + 1;
-          if (retries >= 5) {
-            await supabase.from('outbox_events').update({ status: 'failed', retry_count: retries, error: err.message }).eq('id', event.id);
+          const attempts = (event.attempts || 0) + 1;
+          if (attempts >= MAX_ATTEMPTS) {
+            await supabase.from('outbox').update({ dead_at: new Date().toISOString(), last_error: String(err?.message || err) }).eq('id', event.id);
+            await alertOps('outbox.dead_letter', { kind: event.kind, effect_key: event.effect_key, error: String(err?.message || err) });
           } else {
-            const backoff = Math.min(1000 * Math.pow(2, retries), 300000);
-            await supabase.from('outbox_events').update({ status: 'retrying', retry_count: retries, next_try_at: new Date(Date.now() + backoff).toISOString() }).eq('id', event.id);
+            await supabase.from('outbox').update({ attempts, last_error: String(err?.message || err), available_at: new Date(Date.now() + backoffMs(attempts)).toISOString(), lease_until: null, lease_token: null }).eq('id', event.id);
           }
         }
       }
@@ -62,11 +89,6 @@ export async function startOutboxWorker() {
     }
     await sleep(3000);
   }
-}
-
-async function processEvent(event) {
-  const payload = JSON.parse(event.payload || '{}');
-  console.log(`[Outbox] Processing ${event.kind} for ${payload.order_id || event.id}`);
 }
 
 export function stopOutboxWorker() { workerRunning = false; console.log('[Outbox] Worker stopped.'); }

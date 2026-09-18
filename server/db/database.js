@@ -320,7 +320,7 @@ export function initDatabase() {
       query.run(`
         INSERT INTO categories (slug, name_ko, name_en, description_ko, description_en, image_url, sort_order, is_active)
         VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-      `, 'socks', '양말/삭스', 'Socks', '프리미엄 코튼 및 데일리 삭스 컬렉션', 'Premium cotton and daily socks collection', 'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?q=80&w=900&auto=format&fit=crop', 9);
+      `, 'socks', '양말/삭스', 'Socks', '프리미엄 코튼 및 데일리 삭스 컬렉션', 'Premium cotton and daily socks collection', '/products/men/tshirts/classic-tshirt/1.jpg', 9);
     }
   } catch { /* eslint-disable-line no-empty */ }
 }

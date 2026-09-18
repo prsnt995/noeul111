@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Search, Plus, Check, X, Image as ImageIcon, Copy, Upload, Loader2 } from 'lucide-react';
 
@@ -18,7 +18,7 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }) {
   const fetchMedia = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/admin/media?search=${encodeURIComponent(search)}`);
+      const res = await adminApi.get(`/admin/media?search=${encodeURIComponent(search)}`);
       if (res.success) {
         setMediaList(res.data);
       }
@@ -76,7 +76,7 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }) {
     e.preventDefault();
     if (!newUrl) return;
     try {
-      await api.post('/admin/media', {
+      await adminApi.post('/admin/media', {
         name: newName || '업로드 이미지',
         url: newUrl,
         tags: newTags,

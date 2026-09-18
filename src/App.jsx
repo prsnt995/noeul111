@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { Route, Switch, useLocation } from 'wouter';
 
 // Context Providers
@@ -40,25 +40,26 @@ import { DisclaimerPage } from './pages/policy/DisclaimerPage.jsx';
 import { BusinessInfoPage } from './pages/policy/BusinessInfoPage.jsx';
 import { ContactPage } from './pages/policy/ContactPage.jsx';
 
-// Admin Pages
-import { AdminLoginPage } from './pages/admin/AdminLoginPage.jsx';
-import { AdminDashboardPage } from './pages/admin/AdminDashboardPage.jsx';
-import { AdminWebsiteBuilderPage } from './pages/admin/AdminWebsiteBuilderPage.jsx';
-import { AdminMenusPage } from './pages/admin/AdminMenusPage.jsx';
-import { AdminPagesPage } from './pages/admin/AdminPagesPage.jsx';
-import { AdminBannersPage } from './pages/admin/AdminBannersPage.jsx';
-import { AdminProductsPage } from './pages/admin/AdminProductsPage.jsx';
-import { AdminCategoriesPage } from './pages/admin/AdminCategoriesPage.jsx';
-import { AdminOrdersPage } from './pages/admin/AdminOrdersPage.jsx';
-import { AdminCouponsPage } from './pages/admin/AdminCouponsPage.jsx';
-import { AdminReviewsPage } from './pages/admin/AdminReviewsPage.jsx';
-import { AdminCustomersPage } from './pages/admin/AdminCustomersPage.jsx';
-import { AdminMediaPage } from './pages/admin/AdminMediaPage.jsx';
-import { AdminStaffPage } from './pages/admin/AdminStaffPage.jsx';
-import { AdminSettingsPage } from './pages/admin/AdminSettingsPage.jsx';
-import { AdminInventoryPage } from './pages/admin/AdminInventoryPage.jsx';
-import { AdminLanguagesPage } from './pages/admin/AdminLanguagesPage.jsx';
-import { AdminContentPage } from './pages/admin/AdminContentPage.jsx';
+// Admin Pages — route-split so the storefront bundle excludes back-office
+// code (finding #25: 1.5MB single chunk). Loaded on first /admin visit.
+const AdminLoginPage = lazy(() => import('./pages/admin/AdminLoginPage.jsx').then(m => ({ default: m.AdminLoginPage })));
+const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage.jsx').then(m => ({ default: m.AdminDashboardPage })));
+const AdminWebsiteBuilderPage = lazy(() => import('./pages/admin/AdminWebsiteBuilderPage.jsx').then(m => ({ default: m.AdminWebsiteBuilderPage })));
+const AdminMenusPage = lazy(() => import('./pages/admin/AdminMenusPage.jsx').then(m => ({ default: m.AdminMenusPage })));
+const AdminPagesPage = lazy(() => import('./pages/admin/AdminPagesPage.jsx').then(m => ({ default: m.AdminPagesPage })));
+const AdminBannersPage = lazy(() => import('./pages/admin/AdminBannersPage.jsx').then(m => ({ default: m.AdminBannersPage })));
+const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage.jsx').then(m => ({ default: m.AdminProductsPage })));
+const AdminCategoriesPage = lazy(() => import('./pages/admin/AdminCategoriesPage.jsx').then(m => ({ default: m.AdminCategoriesPage })));
+const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage.jsx').then(m => ({ default: m.AdminOrdersPage })));
+const AdminCouponsPage = lazy(() => import('./pages/admin/AdminCouponsPage.jsx').then(m => ({ default: m.AdminCouponsPage })));
+const AdminReviewsPage = lazy(() => import('./pages/admin/AdminReviewsPage.jsx').then(m => ({ default: m.AdminReviewsPage })));
+const AdminCustomersPage = lazy(() => import('./pages/admin/AdminCustomersPage.jsx').then(m => ({ default: m.AdminCustomersPage })));
+const AdminMediaPage = lazy(() => import('./pages/admin/AdminMediaPage.jsx').then(m => ({ default: m.AdminMediaPage })));
+const AdminStaffPage = lazy(() => import('./pages/admin/AdminStaffPage.jsx').then(m => ({ default: m.AdminStaffPage })));
+const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage.jsx').then(m => ({ default: m.AdminSettingsPage })));
+const AdminInventoryPage = lazy(() => import('./pages/admin/AdminInventoryPage.jsx').then(m => ({ default: m.AdminInventoryPage })));
+const AdminLanguagesPage = lazy(() => import('./pages/admin/AdminLanguagesPage.jsx').then(m => ({ default: m.AdminLanguagesPage })));
+const AdminContentPage = lazy(() => import('./pages/admin/AdminContentPage.jsx').then(m => ({ default: m.AdminContentPage })));
 
 function AppContent() {
   const [location] = useLocation();
@@ -76,6 +77,7 @@ function AppContent() {
 
       {/* Main Page Routing */}
       <div style={{ flex: 1 }}>
+        <Suspense fallback={<div className="container" style={{ textAlign: 'center', padding: '120px 0' }}><p>페이지를 불러오는 중...</p></div>}>
         <Switch>
           {/* Customer Storefront Routes */}
           <Route path="/" component={HomePage} />
@@ -127,6 +129,7 @@ function AppContent() {
             </div>
           </Route>
         </Switch>
+        </Suspense>
       </div>
 
       {/* Customer Store Footer */}

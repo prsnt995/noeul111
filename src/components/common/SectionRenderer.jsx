@@ -18,11 +18,11 @@ export function SectionRenderer({ section }) {
       setLoading(true);
       const filterType = content.filter_type || 'all';
       const limit = content.limit || 4;
-      let url = `/products?limit=${limit}`;
+      let url = `/catalog/products?limit=${limit}`;
 
-      if (filterType === 'new') url += '&badge=new';
-      else if (filterType === 'best') url += '&badge=best';
-      else if (filterType === 'featured') url += '&badge=featured';
+      if (filterType === 'new') url += '&isNew=true';
+      else if (filterType === 'best') url += '&isBest=true';
+      else if (filterType === 'featured') url += '&isBest=true';
       else if (content.category_id) url += `&category=${content.category_id}`;
 
       api.get(url)
@@ -34,7 +34,7 @@ export function SectionRenderer({ section }) {
     }
 
     if (section.type === 'categories_grid') {
-      api.get('/categories')
+      api.get('/catalog/categories')
         .then((res) => {
           if (res.success) setCategories(res.data);
         })
@@ -49,8 +49,8 @@ export function SectionRenderer({ section }) {
     // 1. KOREAN SPLIT HERO COLLAGE (Matches 66girls hero photo layout)
     case 'hero': {
       const heroPhotos = content.images || [
-        'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=1200&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=1200&auto=format&fit=crop',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
       ];
       const mainPhoto = content.image_url || heroPhotos[0];
       const secondPhoto = content.secondary_image_url || heroPhotos[1];
@@ -99,7 +99,7 @@ export function SectionRenderer({ section }) {
           tag_sub: '간절기',
           title: '셔츠코디',
           subtitle_script: 'Season of Shirt',
-          image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=800&auto=format&fit=crop',
+          image: '/products/men/tshirts/classic-tshirt/1.jpg',
           label: '셔츠의 계절',
           hashtags: ['#셔츠', '#체크셔츠', '#코디추천'],
           link: '/shop?category=shirts',
@@ -108,7 +108,7 @@ export function SectionRenderer({ section }) {
           tag_sub: 'BRAND',
           title: 'SlgTho',
           subtitle_script: 'Slog & Thought',
-          image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?q=80&w=800&auto=format&fit=crop',
+          image: '/products/men/tshirts/classic-tshirt/1.jpg',
           label: 'SlgTho 슬토',
           hashtags: ['#Slog', '#Thought', '#브랜드'],
           link: '/shop?filter=featured',
@@ -117,7 +117,7 @@ export function SectionRenderer({ section }) {
           tag_sub: 'CUSTOM',
           title: '노을 데님',
           subtitle_script: 'now, here...',
-          image: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=800&auto=format&fit=crop',
+          image: '/products/men/tshirts/classic-tshirt/1.jpg',
           label: 'now, here...',
           hashtags: ['#잘만든', '#데님', '#와이드핏'],
           link: '/shop?category=pants',
@@ -371,7 +371,7 @@ export function SectionRenderer({ section }) {
                   }}
                 >
                   <img
-                    src={cat.image_url || 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=600&auto=format&fit=crop'}
+                    src={cat.image_url || '/products/men/tshirts/classic-tshirt/1.jpg'}
                     alt=""
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
@@ -437,12 +437,12 @@ export function SectionRenderer({ section }) {
       const instagramUsername = content.instagram_username || '@noeul.me';
       const instagramUrl = content.instagram_url || 'https://www.instagram.com/noeul.me/';
       const images = content.images || [
-        'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=600&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=600&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=600&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=600&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1550614000-4895a10e1bfd?q=80&w=600&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?q=80&w=600&auto=format&fit=crop',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.jpg',
       ];
 
       // Instagram gradient SVG icon

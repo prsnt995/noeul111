@@ -47,13 +47,15 @@ router.post('/products/:productId/reviews', (req, res) => {
 
     const numericRating = Math.min(5, Math.max(1, Number(rating)));
 
+    // Finding #25 (abuse controls): new reviews enter a moderation queue
+    // instead of publishing immediately.
     const result = query.run(`
       INSERT INTO reviews (product_id, author_name, rating, title, comment, image_url, is_approved, is_featured)
-      VALUES (?, ?, ?, ?, ?, ?, 1, 0)
-    `, Number(productId), author_name.trim(), numericRating, title || '', comment.trim(), image_url || '');
+      VALUES (?, ?, ?, ?, ?, ?, 0, 0)
+    `, Number(productId), author_name.trim().slice(0, 60), numericRating, String(title || '').slice(0, 120), comment.trim().slice(0, 2000), String(image_url || '').slice(0, 500));
 
     const created = query.get('SELECT * FROM reviews WHERE id = ?', Number(result.lastInsertRowid));
-    res.status(201).json({ success: true, message: '리뷰가 등록되었습니다. 감사합니다!', data: created });
+    res.status(201).json({ success: true, message: '리뷰가 접수되었습니다. 관리자 승인 후 표시됩니다.', data: created });
   } catch (error) {
     console.error('Submit review error:', error);
     res.status(500).json({ success: false, message: '리뷰 등록 실패' });

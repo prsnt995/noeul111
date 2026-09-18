@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api } from '../../utils/api.js';
+import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Globe, CheckCircle2, AlertCircle, Edit2, Search, Languages } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export function AdminLanguagesPage() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/products');
+      const res = await adminApi.get('/admin/products');
       if (res.success) {
         setProducts(res.data);
       }
