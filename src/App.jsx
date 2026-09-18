@@ -15,6 +15,7 @@ import { CartDrawer } from './components/common/CartDrawer.jsx';
 import { QuickSearch } from './components/common/QuickSearch.jsx';
 import { ToastContainer } from './components/common/ToastContainer.jsx';
 import { RightFloatingBar } from './components/common/RightFloatingBar.jsx';
+import { CookieConsentBanner } from './components/common/CookieConsentBanner.jsx';
 
 // Customer Pages
 import { HomePage } from './pages/HomePage.jsx';
@@ -142,6 +143,7 @@ function AppContent() {
 
       {/* Global Toast Alerts */}
       <ToastContainer />
+      <CookieConsentBanner />
     </div>
   );
 }
