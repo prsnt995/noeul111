@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRoute, useLocation, Link } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
+import { getOptimizedImageUrl, getProductPlaceholder } from '../utils/imageHelper.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useWishlist } from '../context/WishlistContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
@@ -39,13 +40,13 @@ export function ProductDetailPage() {
   const [activeTab, setActiveTab] = useState('details');
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
 
-  // 1. Fetch product by ID (API with graceful local dataset fallback)
+  // 1. Fetch the canonical product from Supabase-backed API only.
   useEffect(() => {
     async function loadProduct() {
       if (!params?.id) return;
       setLoading(true);
       try {
-        const res = await fetch(`/api/products/${params.id}`);
+        const res = await fetch(`/api/v1/catalog/products/${params.id}`);
         const data = await res.json();
         if (data.success && data.data) {
           setProduct(data.data);
@@ -53,23 +54,12 @@ export function ProductDetailPage() {
           if (data.data.sizes?.length > 0) setSelectedSize(data.data.sizes[0]);
           if (data.data.colors?.length > 0) setSelectedColor(data.data.colors[0]);
         } else {
-          // Fallback to master dataset
-          const localItem = getProductById(params.id);
-          if (localItem) {
-            setProduct(localItem);
-            setRelated(getRelatedProducts(localItem));
-            if (localItem.sizes?.length > 0) setSelectedSize(localItem.sizes[0]);
-            if (localItem.colors?.length > 0) setSelectedColor(localItem.colors[0]);
-          }
+          setProduct(null);
+          setRelated([]);
         }
       } catch (err) {
-        const localItem = getProductById(params.id);
-        if (localItem) {
-          setProduct(localItem);
-          setRelated(getRelatedProducts(localItem));
-          if (localItem.sizes?.length > 0) setSelectedSize(localItem.sizes[0]);
-          if (localItem.colors?.length > 0) setSelectedColor(localItem.colors[0]);
-        }
+        setProduct(null);
+        setRelated([]);
       } finally {
         setLoading(false);
       }
@@ -93,7 +83,7 @@ export function ProductDetailPage() {
     }
     if (list.length === 0 && product.image_url) list = [product.image_url];
     if (list.length === 0) {
-      list = ['https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=1000&auto=format&fit=crop'];
+      list = [getProductPlaceholder(product)];
     }
     return list;
   })();
@@ -207,7 +197,7 @@ export function ProductDetailPage() {
               }}
             >
               <img
-                src={currentMainImage}
+                src={getOptimizedImageUrl(currentMainImage, 1200)}
                 alt={productName}
                 style={{
                   width: '100%',
@@ -242,7 +232,9 @@ export function ProductDetailPage() {
                     }}
                   >
                     <img
-                      src={img}
+                      src={getOptimizedImageUrl(img, 240)}
+                      loading="lazy"
+                      decoding="async"
                       alt={`Thumbnail ${idx + 1}`}
                       style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     />

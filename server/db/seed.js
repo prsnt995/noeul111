@@ -1,30 +1,9 @@
-import bcrypt from 'bcryptjs';
-import { db, initDatabase, query } from './database.js';
+import { initDatabase, query } from './database.js';
+
 
 export function seed() {
-  console.log('🌱 Initializing and seeding NOEUL Korean K-Fashion Mall database...');
+  console.log('🌱 Initializing NOEUL Korean K-Fashion Mall database...');
   initDatabase();
-
-  // 1. Create Default Users (Admin & Customer)
-  const salt = bcrypt.genSaltSync(10);
-  const adminPassword = bcrypt.hashSync('admin1234!', salt);
-  const customerPassword = bcrypt.hashSync('customer1234!', salt);
-
-  const existingAdmin = query.get("SELECT id FROM users WHERE email = 'admin@noeul.kr'");
-  if (!existingAdmin) {
-    query.run(`
-      INSERT INTO users (email, password_hash, name, phone, postal_code, address, detail_address, role)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'super_admin')
-    `, 'admin@noeul.kr', adminPassword, '노을 최고관리자', '010-1234-5678', '06001', '서울특별시 강남구 압구정로 165', '노을 스튜디오 4층');
-  }
-
-  const existingCustomer = query.get("SELECT id FROM users WHERE email = 'customer@noeul.kr'");
-  if (!existingCustomer) {
-    query.run(`
-      INSERT INTO users (email, password_hash, name, phone, postal_code, address, detail_address, role)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'customer')
-    `, 'customer@noeul.kr', customerPassword, '이지은 (Ji-eun Lee)', '010-9876-5432', '06001', '서울특별시 강남구 압구정로 165', '현대아파트 102동 1405호');
-  }
 
   // 2. Seed Categories (Upsert)
   const categoriesData = [
@@ -222,6 +201,7 @@ export function seed() {
   };
 
   query.run('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', 'payment_info', JSON.stringify(paymentInfo));
+  query.run('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', 'business_info', JSON.stringify(businessInfo));
   // 6. Ensure products have 5 curated editorial images
   const productFiveImages = [
     {
@@ -308,7 +288,7 @@ export function seed() {
   for (const item of productFiveImages) {
     try {
       query.run('UPDATE products SET images = ? WHERE id = ?', JSON.stringify(item.images), item.id);
-    } catch {}
+    } catch { /* eslint-disable-line no-empty */ }
   }
 
   console.log('✅ NOEUL Korean K-Fashion Mall database seeded successfully!');

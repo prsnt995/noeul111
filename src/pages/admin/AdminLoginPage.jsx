@@ -9,9 +9,9 @@ export function AdminLoginPage() {
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
 
+  const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
@@ -23,7 +23,7 @@ export function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await adminLogin(email, password);
+      await adminLogin();
       showToast('관리자 인증에 성공했습니다.', 'success');
       setLocation('/admin');
     } catch (err) {
@@ -31,11 +31,6 @@ export function AdminLoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFillDemo = () => {
-    setEmail('admin@noeul.kr');
-    setPassword('admin1234!');
   };
 
   return (
@@ -95,7 +90,7 @@ export function AdminLoginPage() {
               <Mail size={16} color="#71717a" style={{ position: 'absolute', top: '14px', left: '12px' }} />
               <input
                 type="email"
-                required
+                disabled
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@noeul.kr"
@@ -121,7 +116,7 @@ export function AdminLoginPage() {
               <Lock size={16} color="#71717a" style={{ position: 'absolute', top: '14px', left: '12px' }} />
               <input
                 type="password"
-                required
+                disabled
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -175,17 +170,10 @@ export function AdminLoginPage() {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#a1a1aa', fontWeight: 600 }}>Demo Admin</span>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              style={{ color: 'var(--accent-sunset)', fontWeight: 600, textDecoration: 'underline' }}
-            >
-              Fill Credentials
-            </button>
+            <span style={{ color: '#a1a1aa', fontWeight: 600 }}>Staff access</span>
           </div>
           <p style={{ color: '#71717a', marginTop: '6px', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-            admin@noeul.kr / admin1234!
+            Staff must use an allowlisted Google account with MFA.
           </p>
         </div>
 

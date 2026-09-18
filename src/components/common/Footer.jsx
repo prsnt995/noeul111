@@ -353,10 +353,10 @@ export function Footer() {
                   <Link href="/shop">전체 상품 (Shop All)</Link>
                 </li>
                 <li>
-                  <Link href="/shop?category=men">남성 (Men)</Link>
+                  <Link href="/shop?gender=men">남성 (Men)</Link>
                 </li>
                 <li>
-                  <Link href="/shop?category=women">여성 (Women)</Link>
+                  <Link href="/shop?gender=women">여성 (Women)</Link>
                 </li>
                 <li>
                   <Link href="/shop?filter=new">신상품 (New Arrivals)</Link>

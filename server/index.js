@@ -4,9 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { CONFIG } from './config.js';
 import { initDatabase } from './db/database.js';
+import rateLimit from 'express-rate-limit';
+import apiRouter from './routes/api.js';
+import { startOutboxWorker } from './workers/outbox.js';
+
+const legacyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
 
 // Route Imports - Customer Storefront
-import authRoutes from './routes/auth.js';
+// NOTE: authRoutes removed - Google authentication now handled by /api/v1 (api/app.js)
 import productsRoutes from './routes/products.js';
 import ordersRoutes from './routes/orders.js';
 import categoriesRoutes from './routes/categories.js';
@@ -37,6 +42,20 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// Legacy server is a read-only migration aid, never a production runtime.
+const productionBlock = (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    const protectedPaths = ['/orders', '/auth', '/me', '/profile', '/inquiries', '/upload', '/payment-receipt', '/admin'];
+    const isProtected = protectedPaths.some(p => req.path.startsWith(p));
+    const isMutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    if (isProtected || isMutating) {
+      return res.status(503).json({ success: false, code: 'LEGACY_DISABLED', message: 'Use the Google-authenticated /api/v1 service.' });
+    }
+  }
+  next();
+};
+app.use('/api', legacyLimiter, productionBlock);
+
 // Middleware
 app.use(cors({
   origin: true,
@@ -47,15 +66,11 @@ app.use(cors({
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// Static uploads directory for locally uploaded product/banner images
-const uploadsPath = path.join(__dirname, '../uploads');
-app.use('/uploads', express.static(uploadsPath, {
-  setHeaders: (res, filePath) => {
-    if (!path.extname(filePath)) {
-      res.set('Content-Type', 'image/jpeg');
-    }
-  }
-}));
+// Legacy uploads are available only in development and are never a production asset origin.
+if (process.env.NODE_ENV !== 'production') {
+  const uploadsPath = path.join(__dirname, '../uploads');
+  app.use('/uploads', express.static(uploadsPath, { fallthrough: false }));
+}
 
 // Static products directory for /products/men/..., /products/women/...
 const productsStaticPath = path.join(__dirname, '../public/products');
@@ -73,9 +88,10 @@ app.use((req, res, next) => {
 // Initialize Database Schema
 initDatabase();
 
-// Mount Customer APIs
-app.use('/api/auth', authRoutes);
-app.use('/api', authRoutes); // Alias mount for direct /api/login, /api/admin-login, /api/register
+// Mount NEW production API routes (bridge from api/app.js)
+app.use('/api/v1', apiRouter);
+
+// Mount Customer APIs (legacy auth removed - use /api/v1)
 app.use('/api', productsRoutes);
 app.use('/api', ordersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -114,13 +130,13 @@ app.get('*', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
   console.error('Server error:', err);
   res.status(500).json({ success: false, message: '서버 내부 오류가 발생했습니다: ' + err.message });
 });
 
 // Start Server
-app.listen(CONFIG.PORT, () => {
+app.listen(CONFIG.PORT, () => { startOutboxWorker();
   console.log(`✨ NOEUL Backend API Server running on port ${CONFIG.PORT}`);
   console.log(`🔗 API Base: http://localhost:${CONFIG.PORT}/api`);
 });

@@ -4,8 +4,8 @@ import { useLanguage } from './LanguageContext.jsx';
 
 const CartContext = createContext();
 
-const FREE_SHIPPING_THRESHOLD = 70000; // ₩70,000 KRW
-const DEFAULT_SHIPPING_FEE = 3000;     // ₩3,000 KRW
+const FREE_SHIPPING_THRESHOLD = 70000;
+const DEFAULT_SHIPPING_FEE = 3000;
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {

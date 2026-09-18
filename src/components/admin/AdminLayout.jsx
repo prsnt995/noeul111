@@ -30,8 +30,7 @@ export function AdminLayout({ children, activePage }) {
 
   // Security guard check
   useEffect(() => {
-    const adminToken = localStorage.getItem('noeul_admin_token');
-    if (!adminToken && location !== '/admin/login') {
+    if (!isAdmin && location !== '/admin/login') {
       setLocation('/admin/login');
     }
   }, [location, setLocation]);
@@ -276,4 +275,3 @@ export function AdminLayout({ children, activePage }) {
     </div>
   );
 }
-

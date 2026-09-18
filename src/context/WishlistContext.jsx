@@ -25,7 +25,7 @@ export function WishlistProvider({ children }) {
     async function syncWishlist() {
       if (isLoggedIn) {
         try {
-          const res = await api.get('/wishlist');
+          const res = await api.get('/api/v1/wishlist');
           if (res.success && Array.isArray(res.data)) {
             setWishlist(res.data);
           }
@@ -62,7 +62,7 @@ export function WishlistProvider({ children }) {
 
     if (isLoggedIn) {
       try {
-        await api.post('/wishlist/toggle', { product_id: product.id });
+        await api.post('/api/v1/wishlist/toggle', { product_id: product.id });
       } catch (err) {
         console.error('Toggle backend wishlist failed:', err);
       }

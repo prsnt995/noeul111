@@ -43,32 +43,19 @@ export function HomePage() {
         if (selectedCategory !== 'all') params.append('category', selectedCategory);
         if (activeFilter === 'new') params.append('isNew', 'true');
         if (activeFilter === 'best') params.append('isBest', 'true');
-        if (activeFilter === 'sale') params.append('isSale', 'true');
+        if (activeFilter === 'sale') params.append('sale', 'true');
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
 
-        const res = await fetch(`/api/products?${params.toString()}`);
+        const res = await fetch(`/api/v1/catalog/products?${params.toString()}`);
         const json = await res.json();
 
         if (res.ok && json.success && Array.isArray(json.data)) {
           setProducts(json.data);
         } else {
-          // Fallback to master local dataset if API fails
-          const fallback = getFilteredProducts({
-            gender: selectedGender,
-            category: selectedCategory,
-            filter: activeFilter,
-            search: searchQuery,
-          });
-          setProducts(fallback);
+          setProducts([]);
         }
       } catch (err) {
-        const fallback = getFilteredProducts({
-          gender: selectedGender,
-          category: selectedCategory,
-          filter: activeFilter,
-          search: searchQuery,
-        });
-        setProducts(fallback);
+        setProducts([]);
       } finally {
         setLoading(false);
       }

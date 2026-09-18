@@ -22,7 +22,6 @@ import {
   Coins,
 } from 'lucide-react';
 
-import { subscribeUserOrders } from '../utils/firestoreOrders.js';
 
 export function CustomerAccountPage() {
   const { user, isLoggedIn, logout, updateProfile } = useAuth();
@@ -62,36 +61,8 @@ export function CustomerAccountPage() {
     const tabParam = searchParams.get('tab');
     if (tabParam) setActiveTab(tabParam);
 
-    const firebaseUid = user?.uid || user?.id;
-
-    if (!firebaseUid) {
-      setLoadingOrders(false);
-      return;
-    }
-
     setLoadingOrders(true);
-
-    // 1. Subscribe to Firestore real-time order updates for currentUser.uid
-    const unsubscribeFS = subscribeUserOrders(firebaseUid, (fsOrders) => {
-      if (fsOrders && fsOrders.length > 0) {
-        setOrders(fsOrders);
-        setLoadingOrders(false);
-      } else {
-        // 2. Fallback fetch from server API
-        api.get(`/orders/my-orders?firebase_uid=${encodeURIComponent(firebaseUid)}`)
-          .then((res) => {
-            if (res.success && res.data) {
-              setOrders(res.data);
-            }
-          })
-          .catch((err) => console.error('Fetch my orders error:', err))
-          .finally(() => setLoadingOrders(false));
-      }
-    });
-
-    return () => {
-      if (unsubscribeFS) unsubscribeFS();
-    };
+    api.get('/orders').then((res) => setOrders(res.data || [])).catch((err) => console.error('Fetch my orders error:', err)).finally(() => setLoadingOrders(false));
   }, [isLoggedIn, user, setLocation, location]);
 
   const handleSaveProfile = async (e) => {

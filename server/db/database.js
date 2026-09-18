@@ -251,67 +251,67 @@ export function initDatabase() {
   // Safe migrations for table columns
   try {
     db.exec('ALTER TABLE products ADD COLUMN is_featured INTEGER DEFAULT 0');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE products ADD COLUMN display_order INTEGER DEFAULT 0');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE banners ADD COLUMN mobile_image_url TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE banners ADD COLUMN start_date DATE');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE banners ADD COLUMN end_date DATE');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN payment_receipt_url TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN firebase_uid TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN payment_sender_name TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN receipt_uploaded_at DATETIME');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN payment_verified_at DATETIME');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN payment_verified_by TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN payment_admin_notes TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE orders ADD COLUMN coupon_code TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec("ALTER TABLE products ADD COLUMN gender TEXT DEFAULT 'unisex'");
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE products ADD COLUMN subcategory TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE products ADD COLUMN material TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE products ADD COLUMN color_name TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE products ADD COLUMN is_sale INTEGER DEFAULT 0');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE products ADD COLUMN material_ko TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
   try {
     db.exec('ALTER TABLE products ADD COLUMN material_en TEXT');
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
 
   // Ensure default categories exist
   try {
@@ -322,5 +322,5 @@ export function initDatabase() {
         VALUES (?, ?, ?, ?, ?, ?, ?, 1)
       `, 'socks', '양말/삭스', 'Socks', '프리미엄 코튼 및 데일리 삭스 컬렉션', 'Premium cotton and daily socks collection', 'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?q=80&w=900&auto=format&fit=crop', 9);
     }
-  } catch {}
+  } catch { /* eslint-disable-line no-empty */ }
 }

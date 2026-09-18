@@ -1,21 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearchParams } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { ProductPreviewModal } from '../components/common/ProductPreviewModal.jsx';
-import { CATEGORIES_BY_GENDER, getFilteredProducts, PRODUCTS } from '../data/products.js';
 import { SlidersHorizontal, X, ChevronRight } from 'lucide-react';
 
 export function ShopPage() {
   const { lang, t } = useLanguage();
-  const [location, setLocation] = useLocation();
-
-  // Filters parsed from URL query
-  const [selectedGender, setSelectedGender] = useState('all'); // 'all' | 'men' | 'women'
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState(''); // 'new' | 'best' | 'sale' | ''
-  const [sortBy, setSortBy] = useState('newest');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedGender = searchParams.get('gender') || 'all';
+  const selectedCategory = searchParams.get('category') || 'all';
+  const searchQuery = searchParams.get('search') || '';
+  const activeFilter = searchParams.get('filter') || '';
+  const sortBy = searchParams.get('sort') || 'newest';
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,35 +45,19 @@ export function ShopPage() {
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
         if (activeFilter === 'new') params.append('isNew', 'true');
         if (activeFilter === 'best') params.append('isBest', 'true');
-        if (activeFilter === 'sale') params.append('isSale', 'true');
+        if (activeFilter === 'sale') params.append('sale', 'true');
         if (sortBy) params.append('sort', sortBy);
 
-        const res = await fetch(`/api/products?${params.toString()}`);
+        const res = await fetch(`/api/v1/catalog/products?${params.toString()}`);
         const json = await res.json();
 
         if (res.ok && json.success && Array.isArray(json.data)) {
           setProducts(json.data);
         } else {
-          // Fallback to local master dataset if API fails
-          const fallback = getFilteredProducts({
-            gender: selectedGender,
-            category: selectedCategory,
-            search: searchQuery,
-            filter: activeFilter,
-            sort: sortBy,
-          });
-          setProducts(fallback);
+          setProducts([]);
         }
       } catch (err) {
-        // Fallback to local master dataset
-        const fallback = getFilteredProducts({
-          gender: selectedGender,
-          category: selectedCategory,
-          search: searchQuery,
-          filter: activeFilter,
-          sort: sortBy,
-        });
-        setProducts(fallback);
+        setProducts([]);
       } finally {
         setLoading(false);
       }
@@ -87,39 +68,23 @@ export function ShopPage() {
 
   // Update URL helper without full page reload
   const updateUrl = (newGender, newCategory, newFilter, newSearch, newSort) => {
-    const params = new URLSearchParams();
     const g = newGender !== undefined ? newGender : selectedGender;
     const c = newCategory !== undefined ? newCategory : selectedCategory;
     const f = newFilter !== undefined ? newFilter : activeFilter;
     const s = newSearch !== undefined ? newSearch : searchQuery;
     const sort = newSort !== undefined ? newSort : sortBy;
-
+    const params = new URLSearchParams();
     if (g && g !== 'all') params.set('gender', g);
     if (c && c !== 'all') params.set('category', c);
     if (f) params.set('filter', f);
     if (s) params.set('search', s);
     if (sort && sort !== 'newest') params.set('sort', sort);
-
-    const qs = params.toString();
-    const target = `/shop${qs ? `?${qs}` : ''}`;
-    window.history.pushState({}, '', target);
-    setLocation(target);
+    setSearchParams(params);
   };
 
   // Available categories based on selected gender
   const availableCategories = useMemo(() => {
-    if (selectedGender === 'men') {
-      return CATEGORIES_BY_GENDER.men;
-    }
-    if (selectedGender === 'women') {
-      return CATEGORIES_BY_GENDER.women;
-    }
-    // All categories combined unique
-    const set = new Map();
-    [...CATEGORIES_BY_GENDER.women, ...CATEGORIES_BY_GENDER.men].forEach((item) => {
-      if (!set.has(item.key)) set.set(item.key, item);
-    });
-    return Array.from(set.values());
+    return [];
   }, [selectedGender]);
 
   // Title formatting

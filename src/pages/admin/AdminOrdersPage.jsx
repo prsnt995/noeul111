@@ -38,7 +38,7 @@ const PAYMENT_STATUS_MAP = {
   failed: { label: '결제 실패', bg: '#fee2e2', text: '#991b1b' },
 };
 
-import { updateFirestoreOrderStatus } from '../../utils/firestoreOrders.js';
+const updateFirestoreOrderStatus = async () => {};
 
 export function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);

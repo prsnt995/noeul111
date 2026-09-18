@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../db/database.js';
 import { emailService } from '../services/emailService.js';
+import { verifyAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -48,7 +49,7 @@ router.post('/inquiries', async (req, res) => {
 });
 
 // 2. Admin Get All Inquiries
-router.get('/admin/inquiries', (req, res) => {
+router.get('/admin/inquiries', verifyAdmin, (req, res) => {
   try {
     const rows = query.all('SELECT * FROM customer_inquiries ORDER BY id DESC');
     res.json({ success: true, data: rows });
@@ -58,7 +59,7 @@ router.get('/admin/inquiries', (req, res) => {
 });
 
 // 3. Admin Update Inquiry Status
-router.patch('/admin/inquiries/:id', (req, res) => {
+router.patch('/admin/inquiries/:id', verifyAdmin, (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;

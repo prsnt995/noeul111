@@ -1,6 +1,6 @@
 import express from 'express';
 import { query, db } from '../db/database.js';
-import { optionalAuth, verifyToken } from '../middleware/auth.js';
+import { verifyToken, optionalAuth } from '../middleware/auth.js';
 import { paymentService } from '../services/paymentService.js';
 import { notificationService } from '../services/notificationService.js';
 import { CONFIG } from '../config.js';
@@ -34,8 +34,6 @@ router.post('/orders', optionalAuth, async (req, res) => {
       coupon_code,
       payment_method = 'bank_transfer',
       payment_sender_name,
-      user_id,
-      firebase_uid
     } = req.body;
 
     if (!customer_name || !customer_phone || !postal_code || !address) {
@@ -154,9 +152,9 @@ router.post('/orders', optionalAuth, async (req, res) => {
       order_status = payment_status === 'paid' ? 'confirmed' : 'pending_verification';
     }
 
-    const numericUserId = req.user ? req.user.id : (typeof user_id === 'number' ? user_id : null);
-    const fbUid = firebase_uid || (typeof user_id === 'string' ? user_id : null) || (req.user?.uid || null);
     const senderName = payment_sender_name ? payment_sender_name.trim() : customer_name.trim();
+    const numericUserId = req.user ? req.user.id : null;
+    const fbUid = req.user ? null : null;
 
     // 5. Save order to database & update stock atomically
     const insertOrderStmt = db.prepare(`
@@ -249,8 +247,8 @@ router.post('/orders', optionalAuth, async (req, res) => {
   }
 });
 
-// 2. Upload Payment Screenshot / Receipt (Customer)
-router.post('/orders/:orderNumber/payment-receipt', upload.single('receipt'), (req, res) => {
+// 2. Upload Payment Screenshot / Receipt (Authenticated Customer Only)
+router.post('/orders/:orderNumber/payment-receipt', verifyToken, upload.single('receipt'), (req, res) => {
   try {
     const { orderNumber } = req.params;
     const { sender_name } = req.body;
@@ -292,22 +290,18 @@ router.post('/orders/:orderNumber/payment-receipt', upload.single('receipt'), (r
   }
 });
 
-// 3. Get My Orders (Customer Account)
-router.get('/orders/my-orders', optionalAuth, (req, res) => {
+// 3. Get My Orders (Authenticated Customer Only)
+router.get('/orders/my-orders', verifyToken, (req, res) => {
   try {
-    const firebaseUid = req.query.firebase_uid || req.query.userId || req.query.user_id || (req.user ? req.user.uid || req.user.id : null);
-    const numericUserId = req.user ? req.user.id : null;
-
-    if (!firebaseUid && !numericUserId) {
+    const numericUserId = req.user.id;
+    if (!numericUserId) {
       return res.json({ success: true, data: [] });
     }
-
     const orders = query.all(`
       SELECT * FROM orders
-      WHERE (firebase_uid = ? AND firebase_uid IS NOT NULL AND firebase_uid != '')
-         OR (user_id = ? AND user_id IS NOT NULL)
+      WHERE user_id = ?
       ORDER BY created_at DESC
-    `, firebaseUid || '', numericUserId || 0);
+    `, numericUserId);
 
     const ordersWithItems = orders.map(order => {
       const items = query.all('SELECT * FROM order_items WHERE order_id = ?', order.id);
@@ -324,8 +318,8 @@ router.get('/orders/my-orders', optionalAuth, (req, res) => {
   }
 });
 
-// 4. Get Specific Order Details by Order Number
-router.get('/orders/:orderNumber', optionalAuth, (req, res) => {
+// 4. Get Specific Order Details by Order Number (Authenticated + Ownership)
+router.get('/orders/:orderNumber', verifyToken, (req, res) => {
   try {
     const { orderNumber } = req.params;
     const order = query.get('SELECT * FROM orders WHERE order_number = ?', orderNumber);
@@ -334,8 +328,7 @@ router.get('/orders/:orderNumber', optionalAuth, (req, res) => {
       return res.status(404).json({ success: false, message: '주문 정보를 찾을 수 없습니다.' });
     }
 
-    // If order has user_id, ensure owner or admin can view
-    if (order.user_id && req.user && req.user.role !== 'admin' && req.user.role !== 'super_admin' && req.user.id !== order.user_id) {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && order.user_id !== req.user.id) {
       return res.status(403).json({ success: false, message: '주문 조회 권한이 없습니다.' });
     }
 

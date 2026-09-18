@@ -1,35 +1,21 @@
-const API_BASE = '/api';
-
+const API_BASE = '/api/v1';
+let csrfToken = '';
+export function setCsrfToken(value) { csrfToken = value || ''; }
 export async function apiRequest(endpoint, options = {}) {
-  const token = localStorage.getItem('noeul_token') || localStorage.getItem('noeul_admin_token');
-
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || 'API 요청 중 오류가 발생했습니다.');
-  }
-
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = { ...(options.headers || {}) };
+  if (options.body !== undefined && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  const response = await fetch(`${API_BASE}${endpoint}`, { ...options, method, headers, credentials: 'include' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.code || 'API request failed');
+  if (data.csrf) csrfToken = data.csrf;
   return data;
 }
-
 export const api = {
-  get: (endpoint) => apiRequest(endpoint, { method: 'GET' }),
-  post: (endpoint, body) => apiRequest(endpoint, { method: 'POST', body: JSON.stringify(body) }),
+  get: endpoint => apiRequest(endpoint),
+  post: (endpoint, body) => apiRequest(endpoint, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) }),
   put: (endpoint, body) => apiRequest(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
   patch: (endpoint, body) => apiRequest(endpoint, { method: 'PATCH', body: JSON.stringify(body) }),
-  delete: (endpoint) => apiRequest(endpoint, { method: 'DELETE' }),
+  delete: endpoint => apiRequest(endpoint, { method: 'DELETE' }),
 };

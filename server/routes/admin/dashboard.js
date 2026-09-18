@@ -50,7 +50,7 @@ router.get('/dashboard/stats', (req, res) => {
       refunded: 0
     };
     statusRows.forEach(r => {
-      if (orderStatuses.hasOwnProperty(r.order_status)) {
+      if (Object.hasOwn(orderStatuses, r.order_status)) {
         orderStatuses[r.order_status] = Number(r.count);
       }
     });
