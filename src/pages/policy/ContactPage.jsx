@@ -37,7 +37,7 @@ export function ContactPage() {
 
 
   return (
-    <div style={{ backgroundColor: 'var(--bg-primary, #0b0b0c)', color: 'var(--text-primary, #f4f4f5)', minHeight: '100vh', padding: '60px 0 100px' }}>
+    <div style={{ minHeight: '100vh', padding: '60px 0 100px' }}>
       <div className="container" style={{ maxWidth: '1000px', margin: '0 auto', padding: '0 24px' }}>
         
         {/* Back link */}
@@ -49,17 +49,17 @@ export function ContactPage() {
         </div>
 
         {/* Page Header */}
-        <div style={{ borderBottom: '1px solid var(--border-color, #232328)', paddingBottom: '32px', marginBottom: '40px' }}>
+        <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '32px', marginBottom: '40px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
             <Headphones size={28} color="var(--accent-sunset, #e05638)" />
             <span style={{ fontSize: '0.8125rem', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--accent-sunset, #e05638)' }}>
               NOEUL CUSTOMER SERVICE
             </span>
           </div>
-          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: '#ffffff' }}>
+          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>
             고객센터 (Customer Service)
           </h1>
-          <p style={{ color: '#8e8e93', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
             궁금하신 점이나 상품 및 배송 관련 문의사항이 있으시면 언제든지 편하게 문의해 주세요.
           </p>
         </div>
@@ -68,53 +68,53 @@ export function ContactPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '48px' }}>
           
           {/* Card 1: Phone */}
-          <div style={{ backgroundColor: '#141416', border: '1px solid #232328', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ backgroundColor: '#232328', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ backgroundColor: 'var(--bg-secondary)', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Phone size={20} color="var(--accent-sunset, #e05638)" />
               </div>
               <div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>전화 상담</h3>
-                <span style={{ fontSize: '0.75rem', color: '#8e8e93' }}>대표 고객센터</span>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>전화 상담</h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>대표 고객센터</span>
               </div>
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
               010-8361-5305
             </div>
-            <div style={{ fontSize: '0.8125rem', color: '#8e8e93', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Clock size={14} />
               <span>평일 09:00 - 17:00 (월~금)</span>
             </div>
           </div>
 
           {/* Card 2: Email */}
-          <div style={{ backgroundColor: '#141416', border: '1px solid #232328', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ backgroundColor: '#232328', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ backgroundColor: 'var(--bg-secondary)', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Mail size={20} color="var(--accent-sunset, #e05638)" />
               </div>
               <div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>이메일 문의</h3>
-                <span style={{ fontSize: '0.75rem', color: '#8e8e93' }}>공식 비즈니스</span>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>이메일 문의</h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>공식 비즈니스</span>
               </div>
             </div>
             <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--accent-sunset, #e05638)', wordBreak: 'break-all' }}>
               noeulenterprises@gmail.com
             </div>
-            <div style={{ fontSize: '0.8125rem', color: '#8e8e93' }}>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
               24시간 상시 접수 (순차 답변)
             </div>
           </div>
 
           {/* Card 3: KakaoTalk */}
-          <div style={{ backgroundColor: '#141416', border: '1px solid #232328', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ backgroundColor: '#fee500', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000000' }}>
                 <KakaoIcon size={20} />
               </div>
               <div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>카카오톡 채널</h3>
-                <span style={{ fontSize: '0.75rem', color: '#8e8e93' }}>실시간 메신저</span>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>카카오톡 채널</h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>실시간 메신저</span>
               </div>
             </div>
             <a
@@ -145,7 +145,7 @@ export function ContactPage() {
 
         {/* FAQ Section */}
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '20px' }}>
             자주 묻는 질문 (FAQ)
           </h2>
 
@@ -156,8 +156,8 @@ export function ContactPage() {
                 <div
                   key={idx}
                   style={{
-                    backgroundColor: '#121214',
-                    border: '1px solid #232328',
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border-light)',
                     borderRadius: '10px',
                     overflow: 'hidden',
                   }}
@@ -170,7 +170,7 @@ export function ContactPage() {
                       padding: '16px 20px',
                       backgroundColor: 'transparent',
                       border: 'none',
-                      color: '#ffffff',
+                      color: 'var(--text-primary)',
                       fontWeight: 600,
                       fontSize: '0.875rem',
                       textAlign: 'left',
@@ -188,7 +188,7 @@ export function ContactPage() {
                   </button>
 
                   {isOpen && (
-                    <div style={{ padding: '0 20px 18px', fontSize: '0.84375rem', lineHeight: 1.7, color: '#a1a1a6', borderTop: '1px solid #1a1a1e', paddingTop: '12px' }}>
+                    <div style={{ padding: '0 20px 18px', fontSize: '0.84375rem', lineHeight: 1.7, color: 'var(--text-secondary)', borderTop: '1px solid var(--border-light)', paddingTop: '12px' }}>
                       {faq.a}
                     </div>
                   )}

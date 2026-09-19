@@ -7,7 +7,7 @@ export function PrivacyPage() {
   const { lang } = useLanguage();
 
   return (
-    <div style={{ backgroundColor: 'var(--bg-primary, #0b0b0c)', color: 'var(--text-primary, #f4f4f5)', minHeight: '100vh', padding: '60px 0 100px' }}>
+    <div style={{ minHeight: '100vh', padding: '60px 0 100px' }}>
       <div className="container" style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px' }}>
         
         {/* Navigation Back Link */}
@@ -19,20 +19,20 @@ export function PrivacyPage() {
         </div>
 
         {/* Page Header */}
-        <div style={{ borderBottom: '1px solid var(--border-color, #232328)', paddingBottom: '32px', marginBottom: '40px' }}>
+        <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '32px', marginBottom: '40px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
             <Shield size={28} color="var(--accent-sunset, #e05638)" />
             <span style={{ fontSize: '0.8125rem', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--accent-sunset, #e05638)' }}>
               NOEUL LEGAL POLICY
             </span>
           </div>
-          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: '#ffffff' }}>
+          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>
             개인정보처리방침
           </h1>
-          <p style={{ color: '#8e8e93', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
             주식회사 페리어스엔지(이하 "회사")는 회원님의 개인정보를 소중하게 생각하며, 「개인정보 보호법」 및 「정보통신망 이용촉진 및 정보보호 등에 관한 법률」 등 관련 법령을 준수합니다.
           </p>
-          <div style={{ display: 'flex', gap: '16px', marginTop: '16px', fontSize: '0.8125rem', color: '#68686d' }}>
+          <div style={{ display: 'flex', gap: '16px', marginTop: '16px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
             <span>시행일자: 2026년 9월 17일</span>
             <span>|</span>
             <span>최종 수정일: 2026년 9월 17일</span>
@@ -40,18 +40,18 @@ export function PrivacyPage() {
         </div>
 
         {/* Legal Policy Content */}
-        <div className="policy-body" style={{ fontSize: '0.9375rem', lineHeight: 1.85, color: '#c7c7cc' }}>
+        <div className="policy-body" style={{ fontSize: '0.9375rem', lineHeight: 1.85, color: 'var(--text-secondary)' }}>
           
           {/* Section 1 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               1. 개인정보의 수집 항목 및 수집 방법
             </h2>
             <p style={{ marginBottom: '12px' }}>
               회사는 회원가입, 주문 처리, 고객 상담 및 서비스 제공을 위해 아래와 같은 минимальный 범위의 개인정보를 수집하고 있습니다.
             </p>
-            <div style={{ backgroundColor: '#141416', borderRadius: '8px', padding: '20px', border: '1px solid #232328', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', marginBottom: '10px' }}>가. 수집 항목</h3>
+            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '10px' }}>가. 수집 항목</h3>
               <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <li><strong>회원 가입 시:</strong> 이름, 이메일 주소, 비밀번호, 휴대폰 번호</li>
                 <li><strong>상품 주문 및 배송 시:</strong> 수령인 이름, 수령인 연락처, 배송지 주소, 배송 요청사항</li>
@@ -63,7 +63,7 @@ export function PrivacyPage() {
 
           {/* Section 2 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               2. 개인정보의 수집 및 이용 목적
             </h2>
             <p style={{ marginBottom: '12px' }}>
@@ -78,13 +78,13 @@ export function PrivacyPage() {
 
           {/* Section 3 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               3. 개인정보의 보유 및 이용 기간
             </h2>
             <p style={{ marginBottom: '12px' }}>
               원칙적으로 개인정보 수집 및 이용 목적이 달성된 후에는 해당 정보를 지체 없이 파기합니다. 단, 관계법령의 규정에 의하여 보존할 필요가 있는 경우 회사는 아래와 같이 관계법령에서 정한 일정한 기간 동안 회원정보를 보관합니다.
             </p>
-            <div style={{ backgroundColor: '#141416', borderRadius: '8px', padding: '20px', border: '1px solid #232328' }}>
+            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
               <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <li><strong>계약 또는 청약철회 등에 관한 기록:</strong> 5년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
                 <li><strong>대금결제 및 재화 등의 공급에 관한 기록:</strong> 5년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
@@ -96,7 +96,7 @@ export function PrivacyPage() {
 
           {/* Section 4 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               4. 개인정보의 제3자 제공
             </h2>
             <p style={{ marginBottom: '12px' }}>
@@ -106,7 +106,7 @@ export function PrivacyPage() {
 
           {/* Section 5 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               5. 개인정보 처리 위탁
             </h2>
             <p style={{ marginBottom: '12px' }}>
@@ -115,19 +115,19 @@ export function PrivacyPage() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#18181c', color: '#ffffff' }}>
-                    <th style={{ padding: '12px 16px', border: '1px solid #282830' }}>수탁업체</th>
-                    <th style={{ padding: '12px 16px', border: '1px solid #282830' }}>위탁 업무 내용</th>
+                  <tr style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
+                    <th style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>수탁업체</th>
+                    <th style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>위탁 업무 내용</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td style={{ padding: '12px 16px', border: '1px solid #282830' }}>CJ대한통운 / 로젠택배 등 지정 택배사</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid #282830' }}>상품 배송 업무</td>
+                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>CJ대한통운 / 로젠택배 등 지정 택배사</td>
+                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>상품 배송 업무</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '12px 16px', border: '1px solid #282830' }}>토스페이먼츠 주식회사</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid #282830' }}>전자 결제 수단 제공 및 결제 대행</td>
+                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>토스페이먼츠 주식회사</td>
+                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>전자 결제 수단 제공 및 결제 대행</td>
                   </tr>
                 </tbody>
               </table>
@@ -136,7 +136,7 @@ export function PrivacyPage() {
 
           {/* Section 6 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               6. 이용자의 권리와 행사 방법
             </h2>
             <p>
@@ -146,13 +146,13 @@ export function PrivacyPage() {
 
           {/* Section 7 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               7. 개인정보 보호책임자
             </h2>
             <p style={{ marginBottom: '16px' }}>
               회사는 개인정보 처리에 관한 업무를 총괄해서 책임지고, 개인정보 처리와 관련한 이용자의 불만처리 및 피해구제 등을 위하여 아래와 같이 개인정보 보호책임자를 지정하고 있습니다.
             </p>
-            <div style={{ backgroundColor: '#141416', borderRadius: '8px', padding: '20px', border: '1px solid #232328' }}>
+            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div><strong>성명:</strong> 박기성 대표이사</div>
                 <div><strong>소속/직책:</strong> 주식회사 페리어스엔지 개인정보 보호책임자</div>
@@ -164,7 +164,7 @@ export function PrivacyPage() {
 
           {/* Section 8 */}
           <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #1f1f24' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
               8. 개인정보 침해 신고 및 문의
             </h2>
             <p style={{ marginBottom: '12px' }}>

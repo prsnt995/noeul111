@@ -7,7 +7,7 @@ export function DisclaimerPage() {
   const { lang } = useLanguage();
 
   return (
-    <div style={{ backgroundColor: 'var(--bg-primary, #0b0b0c)', color: 'var(--text-primary, #f4f4f5)', minHeight: '100vh', padding: '60px 0 100px' }}>
+    <div style={{ minHeight: '100vh', padding: '60px 0 100px' }}>
       <div className="container" style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px' }}>
         
         {/* Navigation Back Link */}
@@ -19,26 +19,26 @@ export function DisclaimerPage() {
         </div>
 
         {/* Page Header */}
-        <div style={{ borderBottom: '1px solid var(--border-color, #232328)', paddingBottom: '32px', marginBottom: '40px' }}>
+        <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '32px', marginBottom: '40px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
             <ShieldAlert size={28} color="var(--accent-sunset, #e05638)" />
             <span style={{ fontSize: '0.8125rem', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--accent-sunset, #e05638)' }}>
               NOEUL LEGAL DISCLAIMER
             </span>
           </div>
-          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: '#ffffff' }}>
+          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>
             면책조항
           </h1>
-          <p style={{ color: '#8e8e93', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
             주식회사 페리어스엔지가 운영하는 NOEUL 웹사이트의 상품 정보, 색상 차이, 가격 표기 및 서비스 제공 한계에 관한 면책사항 안내입니다.
           </p>
         </div>
 
         {/* Policy Body */}
-        <div style={{ fontSize: '0.9375rem', lineHeight: 1.85, color: '#c7c7cc' }}>
+        <div style={{ fontSize: '0.9375rem', lineHeight: 1.85, color: 'var(--text-secondary)' }}>
           
           <section style={{ marginBottom: '36px' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '12px' }}>
               1. 상품 정보 및 정보의 정확성
             </h2>
             <p>
@@ -47,7 +47,7 @@ export function DisclaimerPage() {
           </section>
 
           <section style={{ marginBottom: '36px' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '12px' }}>
               2. 모니터 해상도 및 촬영 조명에 따른 색상 차이
             </h2>
             <p>
@@ -56,7 +56,7 @@ export function DisclaimerPage() {
           </section>
 
           <section style={{ marginBottom: '36px' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '12px' }}>
               3. 가격 및 재고 변동
             </h2>
             <p>
@@ -65,7 +65,7 @@ export function DisclaimerPage() {
           </section>
 
           <section style={{ marginBottom: '36px' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '12px' }}>
               4. 외부 링크 및 제3자 사이트
             </h2>
             <p>
@@ -74,7 +74,7 @@ export function DisclaimerPage() {
           </section>
 
           <section style={{ marginBottom: '36px' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '12px' }}>
               5. 웹사이트 이용 및 서비스 점검
             </h2>
             <p>
@@ -83,7 +83,7 @@ export function DisclaimerPage() {
           </section>
 
           <section>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '12px' }}>
               6. 문의처
             </h2>
             <p>
