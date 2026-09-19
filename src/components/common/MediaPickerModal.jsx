@@ -44,16 +44,9 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }) {
     files.forEach((f) => fd.append('images', f));
 
     try {
-      const token = localStorage.getItem('noeul_auth_token');
-      const response = await fetch('/api/admin/upload-multiple', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: fd,
-      });
-
-      const data = await response.json();
+      // Cookie session via adminApi (CSRF + credentials included); the legacy
+      // Bearer-token path is retired with password auth.
+      const data = await adminApi.post('/admin/upload-multiple', fd);
       if (data.success && data.data) {
         showToast(`${data.data.length}개 파일이 업로드되었습니다.`, 'success');
         fetchMedia();

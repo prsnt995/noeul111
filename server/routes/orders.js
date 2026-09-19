@@ -300,11 +300,11 @@ router.post('/orders/:orderNumber/payment-receipt', verifyToken, upload.single('
       return res.status(409).json({ success: false, message: '정산이 완료된 주문의 영수증은 변경할 수 없습니다.' });
     }
 
-    if (!req.file && !req.body.receipt_url) {
-      return res.status(400).json({ success: false, message: '결제 영수증 또는 이체 스크린샷 파일을 선택해주세요.' });
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '결제 영수증 이미지 파일을 선택해주세요.' });
     }
 
-    const receiptUrl = req.file ? `/uploads/${req.file.filename}` : req.body.receipt_url;
+    const receiptUrl = `/uploads/${req.file.filename}`;
     const finalSenderName = sender_name ? sender_name.trim() : (order.payment_sender_name || order.customer_name);
 
     query.run(`

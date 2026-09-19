@@ -153,7 +153,7 @@ export function QuickSearch({ isOpen, onClose }) {
                 {results.map((product) => (
                   <Link
                     key={product.id}
-                    href={`/product/${product.id}`}
+                    href={`/product/${product.slug || product.id}`}
                     onClick={onClose}
                     style={{
                       display: 'flex',

@@ -4,6 +4,7 @@ import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { api, adminApi } from '../../utils/api.js';
 import { formatKRW, ORDER_STATUS_MAP } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { DashboardSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import {
   DollarSign,
   ShoppingBag,
@@ -20,17 +21,30 @@ import {
 export function AdminDashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
   const { showToast } = useToast();
 
   const fetchStats = async () => {
     try {
+      setErrorMsg('');
       const res = await adminApi.get('/admin/dashboard/stats');
       if (res.success) {
         setData(res);
+      } else {
+        throw new Error(res.message || '통계 데이터를 불러오지 못했습니다.');
       }
     } catch (err) {
+      const msg = err?.message || '';
       console.error('Failed to load dashboard stats:', err);
-      showToast('통계 데이터를 불러오지 못했습니다.', 'error');
+      // 401/403 → likely not logged in as admin; AdminLayout will redirect, avoid duplicate toast
+      if (msg.includes('401') || msg.includes('SIGN_IN_REQUIRED') || msg.includes('SESSION_EXPIRED')) {
+        setErrorMsg('관리자 로그인이 필요합니다. /admin/login 에서 Google 계정으로 로그인하세요.');
+      } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
+        setErrorMsg('관리자 권한이 없습니다. staff_members에 super_admin/admin으로 등록된 Google 계정으로 로그인하세요.');
+      } else {
+        setErrorMsg(msg || '통계 데이터를 불러오지 못했습니다.');
+        showToast(msg || '통계 데이터를 불러오지 못했습니다.', 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -63,8 +77,9 @@ export function AdminDashboardPage() {
   if (loading) {
     return (
       <AdminLayout activePage="dashboard">
-        <div style={{ textAlign: 'center', padding: '80px 0', color: '#71717a' }}>
-          대시보드 통계 로딩 중...
+        <div style={{ padding: '24px' }}>
+          <DashboardSkeleton />
+          <p style={{ textAlign: 'center', color: '#71717a', fontSize: '0.875rem', marginTop: 16 }}>Supabase free-tier: cached, lazy loaded...</p>
         </div>
       </AdminLayout>
     );
@@ -74,6 +89,7 @@ export function AdminDashboardPage() {
   const orderStatuses = stats.orderStatuses || {};
   const recentOrders = data?.recentOrders || [];
   const lowStockItems = data?.lowStockItems || [];
+  const hasError = !!errorMsg && !data;
   const salesTrend = data?.salesTrend || [];
 
   return (
@@ -92,6 +108,14 @@ export function AdminDashboardPage() {
             <span>새 상품 등록</span>
           </Link>
         </div>
+
+        {hasError && (
+          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '14px 18px', borderRadius: '8px', marginBottom: '20px', fontSize: '0.875rem', lineHeight: 1.5 }}>
+            <strong>대시보드 로드 실패:</strong> {errorMsg}
+            <button onClick={fetchStats} style={{ marginLeft: 12, padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem' }}>다시 시도</button>
+            <Link href="/admin/login" style={{ marginLeft: 8, color: '#dc2626', textDecoration: 'underline', fontSize: '0.8125rem' }}>로그인 페이지로 이동 →</Link>
+          </div>
+        )}
 
         {/* 1. All 8 Specified KPI Metric Cards */}
         <div
@@ -225,8 +249,8 @@ export function AdminDashboardPage() {
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.lowStockCount > 0 ? '#dc2626' : '#18181b' }}>
               {stats.lowStockCount || 0}개
             </h2>
-            <Link href="/admin/inventory" style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600, marginTop: '4px', display: 'block' }}>
-              재고 보충 관리 →
+            <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600, marginTop: '4px', display: 'block' }}>
+              상품 재고 관리 →
             </Link>
           </div>
         </div>

@@ -502,7 +502,7 @@ export function Footer() {
         }
 
         .footer-links a {
-          color: #8e8e93;
+          color: #c7c7cc;
           text-decoration: none;
           font-size: 0.8125rem;
           transition: color 0.2s ease, transform 0.2s ease;
@@ -515,7 +515,7 @@ export function Footer() {
         }
 
         .legal-nav-link {
-          color: #8e8e93;
+          color: #d1d1d6;
           text-decoration: none;
           font-weight: 500;
           transition: color 0.2s ease;
@@ -527,7 +527,7 @@ export function Footer() {
         }
 
         .legal-nav-link.highlight {
-          color: #d1d1d6;
+          color: #f4f2ed;
           font-weight: 700;
         }
 

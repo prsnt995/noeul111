@@ -86,11 +86,25 @@ export function AdminCouponsPage() {
   const handleSaveCoupon = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        discount_value: Number(formData.discount_value),
+        min_order_amount: Number(formData.min_order_amount) || 0,
+        max_discount_amount: formData.max_discount_amount === '' || formData.max_discount_amount == null ? '' : Number(formData.max_discount_amount),
+      };
+      if (payload.discount_type === 'percentage' && (!Number.isInteger(payload.discount_value) || payload.discount_value < 1 || payload.discount_value > 100)) {
+        showToast('비율 할인은 1~100% 사이의 정수로 입력하세요.', 'error');
+        return;
+      }
+      if (payload.discount_type === 'fixed' && (!Number.isInteger(payload.discount_value) || payload.discount_value <= 0)) {
+        showToast('고정 금액 할인은 1원 이상의 정수로 입력하세요.', 'error');
+        return;
+      }
       if (isEditMode) {
-        await adminApi.put(`/admin/coupons/${editingId}`, formData);
+        await adminApi.put(`/admin/coupons/${editingId}`, payload);
         showToast('쿠폰 정보가 수정되었습니다.', 'success');
       } else {
-        await adminApi.post('/admin/coupons', formData);
+        await adminApi.post('/admin/coupons', payload);
         showToast('새 할인 쿠폰이 발행되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -289,10 +303,15 @@ export function AdminCouponsPage() {
                     <input
                       type="number"
                       required
+                      min={1}
+                      max={formData.discount_type === 'percentage' ? 100 : undefined}
                       value={formData.discount_value}
                       onChange={(e) => setFormData({ ...formData, discount_value: Number(e.target.value) })}
                       className="form-input"
                     />
+                    <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>
+                      {formData.discount_type === 'percentage' ? '1~100% 정수. 최대 할인 한도로 상한 설정 가능.' : '원 단위 정수.'}
+                    </span>
                   </div>
                 </div>
 

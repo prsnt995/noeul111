@@ -3,18 +3,22 @@ import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { api, adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Search, Eye, Users, ShoppingBag, X } from 'lucide-react';
+import { Search, Eye, Users, ShoppingBag, X, MapPin, Phone, Mail, Calendar, Ban, CheckCircle } from 'lucide-react';
+import { TableSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 
 export function AdminCustomersPage() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [detailLoading, setDetailLoading] = useState(false);
   const { showToast } = useToast();
 
   const fetchCustomers = async () => {
     setLoading(true);
     try {
+      setErrorMsg('');
       const params = new URLSearchParams();
       if (search) params.append('search', search);
 
@@ -23,8 +27,16 @@ export function AdminCustomersPage() {
         setCustomers(res.data);
       }
     } catch (err) {
+      const msg = err?.message || '';
       console.error('Fetch admin customers failed:', err);
-      showToast('고객 목록을 불러오지 못했습니다.', 'error');
+      if (msg.includes('401') || msg.includes('SIGN_IN_REQUIRED')) {
+        setErrorMsg('관리자 로그인이 필요합니다. /admin/login 에서 Google 계정으로 로그인하세요.');
+      } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
+        setErrorMsg('관리자 권한이 없습니다.');
+      } else {
+        setErrorMsg(msg || '고객 목록을 불러오지 못했습니다.');
+        showToast(msg || '고객 목록을 불러오지 못했습니다.', 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -40,13 +52,26 @@ export function AdminCustomersPage() {
   };
 
   const openCustomerDetail = async (id) => {
+    setDetailLoading(true);
     try {
       const res = await adminApi.get(`/admin/customers/${id}`);
       if (res.success) {
-        setSelectedCustomer(res.data);
+        // Backend now returns flat {...profile, phone, address, orders, addresses} (was {profile, orders})
+        const raw = res.data;
+        const normalized = raw.profile ? { ...raw.profile, orders: raw.orders, addresses: raw.addresses, phone: raw.phone || raw.profile.phone, address: raw.address || raw.profile.address } : raw;
+        // Ensure phone/address from latest address if present
+        if (raw.addresses?.[0] && !normalized.phone) {
+          normalized.phone = raw.addresses[0].phone;
+          normalized.postal_code = raw.addresses[0].postal_code;
+          normalized.address = raw.addresses[0].address;
+          normalized.detail_address = raw.addresses[0].detail_address;
+        }
+        setSelectedCustomer(normalized);
       }
     } catch (err) {
       showToast('고객 상세 정보를 불러오지 못했습니다.', 'error');
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -63,7 +88,15 @@ export function AdminCustomersPage() {
           </div>
         </div>
 
-        {/* Search Bar */}
+        {errorMsg && (
+          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '14px 18px', borderRadius: '8px', marginBottom: '18px', fontSize: '0.875rem', lineHeight: 1.5 }}>
+            <strong>고객 로드 실패:</strong> {errorMsg}
+            <button onClick={fetchCustomers} style={{ marginLeft: 12, padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem' }}>다시 시도</button>
+            <a href="/admin/login" style={{ marginLeft: 8, color: '#dc2626', textDecoration: 'underline', fontSize: '0.8125rem' }}>로그인 페이지로 이동 →</a>
+          </div>
+        )}
+
+        {/* Search Bar — free-tier: no phone column in profiles, search is name/email only */}
         <div
           style={{
             backgroundColor: '#ffffff',
@@ -78,6 +111,7 @@ export function AdminCustomersPage() {
         >
           <span style={{ fontSize: '0.875rem', color: '#71717a' }}>
             총 <strong>{customers.length}</strong>명의 회원이 등록되어 있습니다.
+            <span style={{ fontSize: '0.6875rem', color: '#a1a1aa', marginLeft: 8 }}>Supabase free-tier: 100명 lazy</span>
           </span>
 
           <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px' }}>
@@ -87,7 +121,7 @@ export function AdminCustomersPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="이름, 이메일, 연락처 검색"
+                placeholder="이름, 이메일 검색"
                 className="form-input"
                 style={{ padding: '8px 12px 8px 34px', fontSize: '0.875rem', width: '240px' }}
               />
@@ -122,10 +156,10 @@ export function AdminCustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {loading && customers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: '#888' }}>
-                      고객 데이터를 불러오는 중...
+                    <td colSpan={7} style={{ padding: 0 }}>
+                      <TableSkeleton rows={5} cols={7} />
                     </td>
                   </tr>
                 ) : customers.length === 0 ? (
@@ -208,12 +242,29 @@ export function AdminCustomersPage() {
                 </button>
               </div>
 
-              {/* Profile details */}
+              {/* Profile details — latest address from app.addresses, free-tier lazy */}
               <div style={{ backgroundColor: '#fafafa', padding: '18px', borderRadius: '8px', marginBottom: '24px', fontSize: '0.875rem', lineHeight: 1.7 }}>
-                <p><strong>고객 성함:</strong> {selectedCustomer.name}</p>
-                <p><strong>연락처:</strong> {selectedCustomer.phone || '미등록'}</p>
-                <p><strong>등록 배송지:</strong> [{selectedCustomer.postal_code || '-'}] {selectedCustomer.address || '주소 없음'} {selectedCustomer.detail_address}</p>
-                <p><strong>가입일시:</strong> {selectedCustomer.created_at}</p>
+                {detailLoading ? (
+                  <p style={{ color: '#71717a' }}>고객 상세 로딩 중...</p>
+                ) : (
+                  <>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Mail size={14} /> <strong>이메일:</strong> {selectedCustomer.email}</p>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Phone size={14} /> <strong>연락처:</strong> {selectedCustomer.phone || '미등록 (프로필에 저장된 주소 없음)'}</p>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MapPin size={14} /> <strong>등록 배송지:</strong> [{selectedCustomer.postal_code || '-'}] {selectedCustomer.address || '주소 없음'} {selectedCustomer.detail_address} {selectedCustomer.recipient ? `(${selectedCustomer.recipient})` : ''}</p>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={14} /> <strong>가입일시:</strong> {selectedCustomer.created_at?.split('T')[0] || selectedCustomer.created_at}</p>
+                    {selectedCustomer.disabled && <p style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6 }}><Ban size={14} /> <strong>계정 상태:</strong> 비활성화됨</p>}
+                    {selectedCustomer.addresses?.length > 1 && (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #e4e4e7' }}>
+                        <p style={{ fontWeight: 700, marginBottom: 6 }}>저장된 배송지 ({selectedCustomer.addresses.length}개)</p>
+                        {selectedCustomer.addresses.slice(0, 3).map((a, i) => (
+                          <p key={i} style={{ fontSize: '0.8125rem', color: '#52525b', marginBottom: 4 }}>
+                            [{a.postal_code}] {a.address} {a.detail_address} — {a.recipient} ({a.phone})
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Orders List */}

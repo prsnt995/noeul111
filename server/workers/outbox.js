@@ -30,10 +30,12 @@ async function dispatch(supabase, event) {
     case 'PAYMENT_CONFIRMED':
       if (order) await notificationService.sendPaymentNotification(order);
       break;
-    default:
-      console.log(`[Outbox] Unknown kind ${event.kind}; marking done.`);
-  }
-}
+     default: {
+        await supabase.from('outbox').update({ dead_at: new Date().toISOString(), last_error: `Unknown outbox kind: ${event.kind}`, lease_until: null, lease_token: null }).eq('id', event.id);
+        await alertOps('outbox.dead_letter', { kind: event.kind, effect_key: event.effect_key, error: `Unknown outbox kind: ${event.kind}` });
+      }
+   }
+ }
 
 export async function startOutboxWorker() {
   const supabase = getAdminClient();
@@ -71,10 +73,10 @@ export async function startOutboxWorker() {
 
         if (!claimed) continue;
 
-        try {
-          await dispatch(supabase, event);
-          await supabase.from('outbox').update({ done_at: new Date().toISOString(), last_error: null }).eq('id', event.id);
-        } catch (err) {
+         try {
+           await dispatch(supabase, event);
+           await supabase.from('outbox').update({ done_at: new Date().toISOString(), last_error: null, lease_until: null, lease_token: null }).eq('id', event.id);
+         } catch (err) {
           const attempts = (event.attempts || 0) + 1;
           if (attempts >= MAX_ATTEMPTS) {
             await supabase.from('outbox').update({ dead_at: new Date().toISOString(), last_error: String(err?.message || err) }).eq('id', event.id);

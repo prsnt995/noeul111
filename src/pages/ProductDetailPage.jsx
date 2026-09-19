@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRoute, useLocation, Link } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { getOptimizedImageUrl, getProductPlaceholder } from '../utils/imageHelper.js';
@@ -7,7 +7,6 @@ import { useWishlist } from '../context/WishlistContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { SizeGuideModal } from '../components/common/SizeGuideModal.jsx';
 import { ProductReviews } from '../components/common/ProductReviews.jsx';
-import { getProductById, getRelatedProducts } from '../data/products.js';
 import {
   Heart,
   Plus,
@@ -40,23 +39,29 @@ export function ProductDetailPage() {
   const [activeTab, setActiveTab] = useState('details');
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
 
-  // 1. Fetch the canonical product from Supabase-backed API only.
+  // 1. Fetch the canonical product — API supports both numeric id and slug.
+  // No fixture fallback: failures render not-found explicitly (audit #24).
   useEffect(() => {
     async function loadProduct() {
       if (!params?.id) return;
       setLoading(true);
+      // Clear all selection state up-front so nothing stale survives an ID change.
+      setSelectedImageIndex(0);
+      setSelectedSize('');
+      setSelectedColor(null);
+      setQuantity(1);
+      setRelated([]);
       try {
         const { api } = await import('../utils/api.js');
-        const data = await api.get(`/catalog/products/${params.id}`);
+        const data = await api.get(`/catalog/products/${encodeURIComponent(params.id)}`);
         if (data.success && data.data) {
           setProduct(data.data);
-          setRelated(data.related || getRelatedProducts(data.data));
+          setRelated(data.related || []);
           if (data.data.sizes?.length > 0) setSelectedSize(data.data.sizes[0]);
           if (data.data.colors?.length > 0) setSelectedColor(data.data.colors[0]);
-        } else {
-          setProduct(null);
-          setRelated([]);
+          return;
         }
+        throw new Error('not found');
       } catch (err) {
         setProduct(null);
         setRelated([]);
@@ -65,12 +70,10 @@ export function ProductDetailPage() {
       }
     }
     loadProduct();
-    setSelectedImageIndex(0);
-    setQuantity(1);
     window.scrollTo(0, 0);
   }, [params?.id]);
 
-  // Normalized product images array
+  // Normalized product images array (all 5, e.g., 2 blue + 3 green)
   const images = (() => {
     if (!product) return [];
     let list = [];
@@ -88,42 +91,39 @@ export function ProductDetailPage() {
     return list;
   })();
 
-  if (loading) {
-    return (
-      <div className="container" style={{ textAlign: 'center', padding: '120px 0', color: 'var(--text-muted)' }}>
-        <p>{lang === 'ko' ? '상품 정보를 불러오는 중입니다...' : 'Loading product details...'}</p>
-      </div>
-    );
-  }
+  // Reorder plan: show all 5 but move selected color's images first (e.g., blue 2 first, green 3 after)
+  const orderedImages = useMemo(() => {
+    if (!product || !selectedColor) return images;
+    const colorName = selectedColor.name_en || selectedColor.name || selectedColor.name_ko;
+    const media = product.media || product.product_media || [];
+    const colorUrls = media.filter(m => m.color === colorName).map(m => m.url);
+    if (colorUrls.length === 0) return images;
+    const others = images.filter(url => !colorUrls.includes(url));
+    return [...colorUrls, ...others];
+  }, [images, selectedColor, product]);
 
-  if (!product) {
-    return (
-      <div className="container" style={{ textAlign: 'center', padding: '120px 0' }}>
-        <h2>{lang === 'ko' ? '상품을 찾을 수 없습니다.' : 'Product not found.'}</h2>
-        <Link href="/shop" className="btn-primary" style={{ marginTop: '20px' }}>
-          {t('cart.continue_shopping')}
-        </Link>
-      </div>
-    );
-  }
+  useEffect(() => {
+    // When color changes, reset to first image of that color (reordered position 0)
+    setSelectedImageIndex(0);
+  }, [selectedColor]);
 
-  const sizes = Array.isArray(product.sizes) ? product.sizes : ['FREE'];
-  const colors = Array.isArray(product.colors) ? product.colors : [];
-  const details = product.details || {};
-  const isWish = isWishlisted(product.id);
-  const productName = lang === 'ko' ? (product.name_ko || product.name_en) : (product.name_en || product.name_ko);
-  const variants = Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : [];
+  const sizes = product && Array.isArray(product.sizes) ? product.sizes : ['FREE'];
+  const colors = product && Array.isArray(product.colors) ? product.colors : [];
+  const details = product?.details || {};
+  const isWish = product ? isWishlisted(product.id) : false;
+  const productName = product ? (lang === 'ko' ? (product.name_ko || product.name_en) : (product.name_en || product.name_ko)) : '';
+  const variants = product ? (Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : []) : [];
   const getVariant = (colorObj, sizeVal) => {
     const cName = colorObj?.name_en || colorObj?.name || colorObj;
     return variants.find(v => v.color === cName && v.size === sizeVal) || variants.find(v => v.color === cName) || variants.find(v => v.size === sizeVal) || null;
   };
   const currentVariant = getVariant(selectedColor, selectedSize) || variants[0] || null;
-  const basePrice = product.discount_price || product.price;
+  const basePrice = product ? (product.discount_price || product.price) : 0;
   const finalPrice = currentVariant ? Math.max(1, basePrice + (currentVariant.price_delta || 0)) : basePrice;
   const isVariantAvailable = (colorObj, sizeVal) => {
     const v = getVariant(colorObj || selectedColor, sizeVal || selectedSize);
     if (!v) return false;
-    const stock = (v.stock ?? product.stock ?? 0);
+    const stock = (v.stock ?? product?.stock ?? 0);
     const reserved = (v.reserved ?? 0);
     return (stock - reserved) > 0;
   };
@@ -152,22 +152,46 @@ export function ProductDetailPage() {
     }
   }, [product?.id]);
 
+  // Show slug in URL instead of numeric id for SEO / shareability
+  useEffect(() => {
+    if (!product?.slug) return;
+    const raw = String(params?.id || '');
+    if (/^\d+$/.test(raw) && raw !== String(product.slug)) {
+      const url = new URL(window.location.href);
+      url.pathname = `/product/${product.slug}`;
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [product?.slug, product?.id]);
+
   // Material extraction
   const productMaterial =
-    product.material ||
+    product?.material ||
     details.fabric ||
     details.fabric_ko ||
     (lang === 'ko' ? '100% 최고급 코튼' : '100% Combed Cotton');
 
-  const currentMainImage = (() => {
-    if (currentVariant) {
-      const mediaForVariant = Array.isArray(product.product_media) ? product.product_media.find(m=> m.variant_id===currentVariant.id) : null;
-      if (mediaForVariant?.url) return mediaForVariant.url;
-      const byColor = Array.isArray(product.product_media) ? product.product_media.find(m=> m.color=== (selectedColor?.name_en||selectedColor?.name)) : null;
-      if (byColor?.url) return byColor.url;
-    }
-    return images[selectedImageIndex] || images[0];
-  })();
+  const currentMainImage = orderedImages[selectedImageIndex] || orderedImages[0] || images[0];
+
+  if (loading) {
+    return (
+      <div className="container" style={{ textAlign: 'center', padding: '120px 0', color: 'var(--text-muted)' }}>
+        <p>{lang === 'ko' ? '상품 정보를 불러오는 중입니다...' : 'Loading product details...'}</p>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="container" style={{ textAlign: 'center', padding: '120px 0' }}>
+        <h2>{lang === 'ko' ? '상품을 찾을 수 없습니다.' : 'Product not found.'}</h2>
+        <Link href="/shop" className="btn-primary" style={{ marginTop: '20px' }}>
+          {t('cart.continue_shopping')}
+        </Link>
+      </div>
+    );
+  }
+
+
 
   const handleAddToCart = () => {
     addToCart(product, selectedSize, selectedColor, quantity);
@@ -254,10 +278,10 @@ export function ProductDetailPage() {
               />
             </div>
 
-            {/* Clickable Thumbnails (Only if product has multiple images) */}
-            {images.length > 1 && (
+            {/* Clickable Thumbnails — shows all 5 but reordered by color (e.g., 2 blue first when blue selected) */}
+            {orderedImages.length > 1 && (
               <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-                {images.map((img, idx) => (
+                {orderedImages.map((img, idx) => (
                   <button
                     key={idx}
                     type="button"

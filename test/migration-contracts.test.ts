@@ -34,9 +34,13 @@ describe('Phase 5-7 — Code↔migration contract alignment', () => {
       "from('outbox_events')", "from('site_settings')", "from('carts')",
       "from('homepage_sections')", "from('menu_items')",
       'discount_amount', 'payment_status',
-      'payment_method', 'discount_value', 'discount_type', 'start_date',
+      'payment_method', 'discount_value', 'start_date',
       'end_date', 'existing.length', 'order.total_amount',
     ];
+    // discount_type is a live app.coupons column since 014 (fixed/percentage),
+    // not a retired legacy identifier.
+    expect(read('supabase/migrations/202609180014_coupon_percentage.sql').includes('discount_type')).toBe(true);
+    expect(app.includes('couponDiscountForSubtotal')).toBe(true);
     for (const token of retired) {
       expect(app.includes(token), `retired identifier still in api/app.js: ${token}`).toBe(false);
     }

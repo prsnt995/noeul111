@@ -20,25 +20,25 @@ export async function apiRequest(endpoint, options = {}) {
   return data;
 }
 export const api = {
-  get: endpoint => apiRequest(endpoint),
-  post: (endpoint, body) => apiRequest(endpoint, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) }),
-  put: (endpoint, body) => apiRequest(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
-  patch: (endpoint, body) => apiRequest(endpoint, { method: 'PATCH', body: JSON.stringify(body) }),
-  delete: endpoint => apiRequest(endpoint, { method: 'DELETE' }),
+  get: (endpoint, options) => apiRequest(endpoint, { ...options }),
+  post: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) }),
+  put: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'PUT', body: JSON.stringify(body) }),
+  patch: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'PATCH', body: JSON.stringify(body) }),
+  delete: (endpoint, options) => apiRequest(endpoint, { ...options, method: 'DELETE' }),
 };
 // Scoped clients (finding #17): use adminApi for back-office calls and
 // customerApi for storefront calls when both sessions may coexist.
 export const customerApi = {
-  get: endpoint => apiRequest(endpoint, { scope: 'customer' }),
-  post: (endpoint, body) => apiRequest(endpoint, { method: 'POST', scope: 'customer', body: body instanceof FormData ? body : JSON.stringify(body) }),
-  put: (endpoint, body) => apiRequest(endpoint, { method: 'PUT', scope: 'customer', body: JSON.stringify(body) }),
-  patch: (endpoint, body) => apiRequest(endpoint, { method: 'PATCH', scope: 'customer', body: JSON.stringify(body) }),
-  delete: endpoint => apiRequest(endpoint, { method: 'DELETE', scope: 'customer' }),
+  get: (endpoint, options) => apiRequest(endpoint, { ...options, scope: 'customer' }),
+  post: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'POST', scope: 'customer', body: body instanceof FormData ? body : JSON.stringify(body) }),
+  put: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'PUT', scope: 'customer', body: JSON.stringify(body) }),
+  patch: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'PATCH', scope: 'customer', body: JSON.stringify(body) }),
+  delete: (endpoint, options) => apiRequest(endpoint, { ...options, method: 'DELETE', scope: 'customer' }),
 };
 export const adminApi = {
-  get: endpoint => apiRequest(endpoint, { scope: 'admin' }),
-  post: (endpoint, body) => apiRequest(endpoint, { method: 'POST', scope: 'admin', body: body instanceof FormData ? body : JSON.stringify(body) }),
-  put: (endpoint, body) => apiRequest(endpoint, { method: 'PUT', scope: 'admin', body: JSON.stringify(body) }),
-  patch: (endpoint, body) => apiRequest(endpoint, { method: 'PATCH', scope: 'admin', body: JSON.stringify(body) }),
-  delete: endpoint => apiRequest(endpoint, { method: 'DELETE', scope: 'admin' }),
+  get: (endpoint, options) => apiRequest(endpoint, { ...options, scope: 'admin' }),
+  post: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'POST', scope: 'admin', body: body instanceof FormData ? body : JSON.stringify(body) }),
+  put: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'PUT', scope: 'admin', body: JSON.stringify(body) }),
+  patch: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'PATCH', scope: 'admin', body: JSON.stringify(body) }),
+  delete: (endpoint, options) => apiRequest(endpoint, { ...options, method: 'DELETE', scope: 'admin' }),
 };

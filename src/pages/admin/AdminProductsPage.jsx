@@ -4,6 +4,7 @@ import { ImageUploader } from '../../components/admin/ImageUploader.jsx';
 import { api, adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { TableSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import {
   Plus,
   Edit2,
@@ -41,6 +42,11 @@ export function AdminProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
   const [specialFilter, setSpecialFilter] = useState('all');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
+  const LIMIT = 20;
   const { showToast } = useToast();
 
   // Modal State
@@ -72,37 +78,57 @@ export function AdminProductsPage() {
     colors: [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }],
   });
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (reset = true) => {
+    const targetPage = reset ? 0 : page;
+    if (reset) setPage(0);
     setLoading(true);
     try {
+      setErrorMsg('');
       const params = new URLSearchParams();
       if (search.trim()) params.append('search', search.trim());
       if (selectedCategory !== 'all') params.append('category', selectedCategory);
       if (stockFilter !== 'all') params.append('stockStatus', stockFilter);
       if (specialFilter !== 'all') params.append('filterType', specialFilter);
+      params.append('limit', String(LIMIT));
+      params.append('offset', String(targetPage * LIMIT));
 
       const [prodRes, catRes] = await Promise.all([
         adminApi.get(`/admin/products?${params.toString()}`),
-        adminApi.get('/admin/categories'),
+        reset ? adminApi.get('/admin/categories') : Promise.resolve({ success: false }),
       ]);
 
-      if (prodRes.success) setProducts(prodRes.data);
+      if (prodRes.success) {
+        const list = prodRes.data || [];
+        setProducts(prev => reset ? list : [...prev, ...list]);
+        setTotal(prodRes.total ?? list.length);
+        setHasMore(list.length === LIMIT && (prodRes.total ?? 0) > (targetPage + 1) * LIMIT);
+        if (reset) setPage(1);
+        else setPage(p => p + 1);
+      }
       if (catRes.success) setCategories(catRes.data);
     } catch (err) {
+      const msg = err?.message || '';
       console.error('Fetch admin products failed:', err);
-      showToast('상품 목록을 불러오지 못했습니다.', 'error');
+      if (msg.includes('401') || msg.includes('SIGN_IN_REQUIRED') || msg.includes('SESSION_EXPIRED')) {
+        setErrorMsg('관리자 로그인이 필요합니다. /admin/login 에서 Google 계정으로 로그인하세요.');
+      } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
+        setErrorMsg('관리자 권한이 없습니다. staff_members에 super_admin/admin으로 등록된 Google 계정으로 로그인하세요.');
+      } else {
+        setErrorMsg(msg || '상품 목록을 불러오지 못했습니다.');
+        showToast(msg || '상품 목록을 불러오지 못했습니다.', 'error');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchProducts();
+    fetchProducts(true);
   }, [selectedCategory, stockFilter, specialFilter]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchProducts();
+    fetchProducts(true);
   };
 
   const openAddModal = () => {
@@ -135,6 +161,10 @@ export function AdminProductsPage() {
   const openEditModal = (p) => {
     setIsEditMode(true);
     setEditingId(p.id);
+    // Preserve per-image color mapping for reorder plan (media has color, images is fallback)
+    const mediaWithColor = Array.isArray(p.media) && p.media.length
+      ? p.media.map(m => ({ url: m.url, color: m.color || null, variant_id: m.variant_id || null }))
+      : (p.images || []).map(url => (typeof url === 'string' ? { url, color: null } : url));
     setFormData({
       sku: p.sku || '',
       category_id: p.category_id,
@@ -152,7 +182,7 @@ export function AdminProductsPage() {
       is_best: Boolean(p.is_best),
       display_order: p.display_order || 0,
       status: p.status || 'active',
-      images: p.images?.length > 0 ? p.images : [],
+      images: mediaWithColor,
       sizes: p.sizes?.length > 0 ? p.sizes : ['FREE'],
       colors: p.colors?.length > 0 ? p.colors : [{ name_ko: '블랙', name_en: 'Black', hex: '#111' }],
     });
@@ -243,6 +273,13 @@ export function AdminProductsPage() {
   return (
     <AdminLayout activePage="products">
       <div>
+        {errorMsg && (
+          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '14px 18px', borderRadius: '8px', marginBottom: '18px', fontSize: '0.875rem', lineHeight: 1.5 }}>
+            <strong>상품 로드 실패:</strong> {errorMsg}
+            <button onClick={fetchProducts} style={{ marginLeft: 12, padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem' }}>다시 시도</button>
+            <a href="/admin/login" style={{ marginLeft: 8, color: '#dc2626', textDecoration: 'underline', fontSize: '0.8125rem' }}>로그인 페이지로 이동 →</a>
+          </div>
+        )}
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
           <div>
@@ -365,10 +402,10 @@ export function AdminProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {loading && products.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '60px', color: '#888' }}>
-                      상품 데이터를 불러오는 중...
+                    <td colSpan={8} style={{ padding: 0 }}>
+                      <TableSkeleton rows={5} cols={8} />
                     </td>
                   </tr>
                 ) : products.length === 0 ? (
@@ -512,7 +549,29 @@ export function AdminProductsPage() {
               </tbody>
             </table>
           </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid #f0f0f2', backgroundColor: '#fafafa', fontSize: '0.75rem', color: '#71717a' }}>
+            <span>총 {total}개 중 {products.length}개 표시</span>
+            <span style={{ fontSize: '0.6875rem', color: '#a1a1aa' }}>Supabase free-tier: 20개씩 lazy load</span>
+          </div>
         </div>
+
+        {hasMore && (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <button
+              onClick={() => fetchProducts(false)}
+              disabled={loading}
+              className="btn-secondary"
+              style={{ padding: '10px 24px', fontSize: '0.875rem', opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
+            >
+              {loading ? '로딩 중...' : `더 보기 (${products.length}/${total})`}
+            </button>
+          </div>
+        )}
+        {!hasMore && products.length > 0 && (
+          <div style={{ textAlign: 'center', padding: '16px', color: '#71717a', fontSize: '0.8125rem' }}>
+            모든 상품을 불러왔습니다. ({total}개)
+          </div>
+        )}
 
         {/* Delete Confirmation Modal */}
         {deleteConfirmId && (
@@ -817,12 +876,13 @@ export function AdminProductsPage() {
                   </div>
                 </div>
 
-                {/* 6. Product Image Manager */}
+                {/* 6. Product Image Manager — reorder plan: each image can be linked to a color (e.g., 2 blue, 3 green). On storefront, selecting blue reorders that color's images first, still shows all 5. */}
                 <ImageUploader
                   images={formData.images}
                   onChange={(imgs) => setFormData({ ...formData, images: imgs })}
                   maxImages={10}
-                  label="상품 이미지 관리 (Product Photos - 첫 번째 사진이 메인 대표 이미지)"
+                  label="상품 이미지 관리 (Product Photos - 첫 번째 사진이 메인, 색상 지정 시 해당 색상 선택 시 먼저 표시)"
+                  availableColors={formData.colors}
                 />
 
                 {/* 7. Badges & Visibility Status Flags */}

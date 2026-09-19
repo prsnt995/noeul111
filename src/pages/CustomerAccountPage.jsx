@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useLanguage } from '../context/LanguageContext.jsx';
@@ -35,6 +35,12 @@ export function CustomerAccountPage() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
 
+  // Coupons & Reward Points State
+  const [coupons, setCoupons] = useState([]);
+  const [loadingCoupons, setLoadingCoupons] = useState(true);
+  const [rewardPoints, setRewardPoints] = useState(null);
+  const [loadingRewards, setLoadingRewards] = useState(true);
+
   // Profile Form State
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -42,6 +48,35 @@ export function CustomerAccountPage() {
   const [address, setAddress] = useState('');
   const [detailAddress, setDetailAddress] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  const fetchCoupons = useCallback(async () => {
+    setLoadingCoupons(true);
+    try {
+      const res = await api.get('/me/coupons');
+      if (res.success) setCoupons(res.data);
+    } catch (err) {
+      console.error('Fetch coupons failed:', err);
+    } finally {
+      setLoadingCoupons(false);
+    }
+  }, []);
+
+  const fetchRewardPoints = useCallback(async () => {
+    setLoadingRewards(true);
+    try {
+      const res = await api.get('/me/reward-points');
+      if (res.success) setRewardPoints(res.data);
+    } catch (err) {
+      console.error('Fetch reward points failed:', err);
+    } finally {
+      setLoadingRewards(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCoupons();
+    fetchRewardPoints();
+  }, [fetchCoupons, fetchRewardPoints, user]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -92,9 +127,12 @@ export function CustomerAccountPage() {
 
   const orderSteps = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
 
+  // Backend statuses → stepper position. Terminal states return -1 (stepper hidden).
   const getStepIndex = (status) => {
-    return orderSteps.indexOf(status);
+    const map = { pending_payment: 0, confirming: 0, pending: 0, paid: 1, confirmed: 1, processing: 2, shipped: 3, delivered: 4 };
+    return map[status] ?? -1;
   };
+  const isTerminalOrder = (status) => ['canceled', 'cancelled', 'expired', 'refunded', 'refund_pending'].includes(status);
 
   return (
     <div style={{ padding: '40px 0 80px', backgroundColor: 'var(--bg-secondary)', minHeight: 'calc(100vh - 200px)' }}>
@@ -172,14 +210,16 @@ export function CustomerAccountPage() {
             </div>
           </div>
 
-          {/* Points & Coupon Summary Widgets */}
+          {/* Points & Coupon Summary Widgets - Dynamic from API */}
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '12px 20px', borderRadius: '8px', textAlign: 'center', minWidth: '110px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 <Coins size={13} color="var(--accent-sunset)" />
                 <span>{t('account.points')}</span>
               </div>
-              <p style={{ fontSize: '1.125rem', fontWeight: 700, marginTop: '2px' }}>2,500P</p>
+              <p style={{ fontSize: '1.125rem', fontWeight: 700, marginTop: '2px' }}>
+                {loadingRewards ? '...' : (rewardPoints?.balance || 0).toLocaleString()}P
+              </p>
             </div>
 
             <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '12px 20px', borderRadius: '8px', textAlign: 'center', minWidth: '110px' }}>
@@ -187,7 +227,9 @@ export function CustomerAccountPage() {
                 <Gift size={13} color="var(--accent-sunset)" />
                 <span>{t('account.coupons_count')}</span>
               </div>
-              <p style={{ fontSize: '1.125rem', fontWeight: 700, marginTop: '2px' }}>1장</p>
+              <p style={{ fontSize: '1.125rem', fontWeight: 700, marginTop: '2px' }}>
+                {loadingCoupons ? '...' : coupons.length}장
+              </p>
             </div>
 
             <button
@@ -252,8 +294,8 @@ export function CustomerAccountPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {orders.map((order) => {
-                  const statusInfo = ORDER_STATUS_MAP[order.order_status] || ORDER_STATUS_MAP['pending'];
-                  const stepIndex = getStepIndex(order.order_status);
+                  const statusInfo = ORDER_STATUS_MAP[order.status] || ORDER_STATUS_MAP['pending'];
+                  const stepIndex = getStepIndex(order.status);
 
                   return (
                     <div
@@ -295,7 +337,7 @@ export function CustomerAccountPage() {
                       </div>
 
                       {/* Live 5-Step Korean Order Tracking Stepper */}
-                      {order.order_status !== 'cancelled' && order.order_status !== 'refunded' && (
+                      {!isTerminalOrder(order.status) && stepIndex >= 0 && (
                         <div
                           style={{
                             backgroundColor: 'var(--bg-secondary)',
@@ -395,25 +437,23 @@ export function CustomerAccountPage() {
                         </div>
                       )}
 
-                      {/* Payment Verification / Receipt CTA for Bank Transfer */}
-                      {order.payment_status !== 'paid' && (
+                      {/* Payment state CTA for card checkout (no receipt workflow) */}
+                      {(order.status) === 'pending_payment' && (
                         <div
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            backgroundColor: order.payment_status === 'under_review' ? '#fefce8' : '#fff1f2',
-                            border: order.payment_status === 'under_review' ? '1px solid #fef08a' : '1px solid #fecdd3',
+                            backgroundColor: '#fff1f2',
+                            border: '1px solid #fecdd3',
                             borderRadius: '6px',
                             padding: '12px 16px',
                             marginBottom: '16px',
                             fontSize: '0.8125rem',
                           }}
                         >
-                          <span style={{ color: order.payment_status === 'under_review' ? '#854d0e' : '#9f1239', fontWeight: 600 }}>
-                            {order.payment_status === 'under_review'
-                              ? '⭐ 영수증 등록 완료 (관리자 입금 확인 검수중)'
-                              : '⚠️ 무통장 입금 및 영수증 등록이 필요합니다.'}
+                          <span style={{ color: '#9f1239', fontWeight: 600 }}>
+                            ⚠️ 카드 결제가 필요합니다.
                           </span>
                           <Link
                             href={`/order-success/${order.order_number}`}
@@ -426,22 +466,38 @@ export function CustomerAccountPage() {
                               fontSize: '0.75rem',
                             }}
                           >
-                            입금 계좌 / 영수증 업로드 →
+                            결제 계속하기 →
                           </Link>
                         </div>
                       )}
+                      {(order.status) === 'confirming' && (
+                        <div
+                          style={{
+                            backgroundColor: '#fefce8',
+                            border: '1px solid #fef08a',
+                            borderRadius: '6px',
+                            padding: '12px 16px',
+                            marginBottom: '16px',
+                            fontSize: '0.8125rem',
+                            color: '#854d0e',
+                            fontWeight: 600,
+                          }}
+                        >
+                          ⭐ 결제 확인 중입니다. 잠시만 기다려주세요.
+                        </div>
+                      )}
 
-                      {/* Shipping Address Details */}
-                      {(order.address || order.customer_name) && (
+                      {/* Shipping Address Details (canonical: order.address jsonb) */}
+                      {((order.address && (order.address.recipient || order.address.address)) || order.customer_name) && (
                         <div style={{ backgroundColor: '#fafafa', borderRadius: '6px', padding: '12px 16px', marginBottom: '16px', fontSize: '0.8125rem', border: '1px solid #f0f0f2' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#52525b', fontWeight: 700, marginBottom: '4px' }}>
                             <MapPin size={14} color="var(--accent-sunset)" />
                             <span>배송지 정보 (Shipping Address)</span>
                           </div>
                           <p style={{ color: '#18181b', lineHeight: 1.4 }}>
-                            <strong>{order.customer_name}</strong> ({order.customer_phone})<br />
-                            [{order.postal_code}] {order.address} {order.detail_address}
-                            {order.shipping_memo && <span style={{ color: '#71717a', display: 'block', marginTop: '2px' }}>요청사항: {order.shipping_memo}</span>}
+                            <strong>{order.address?.recipient || order.customer_name}</strong> ({order.address?.phone || order.customer_phone})<br />
+                            [{order.address?.postal_code || order.postal_code}] {order.address?.address || order.address} {order.address?.detail_address || order.detail_address}
+                            {(order.address?.shipping_memo || order.shipping_memo) && <span style={{ color: '#71717a', display: 'block', marginTop: '2px' }}>요청사항: {order.address?.shipping_memo || order.shipping_memo}</span>}
                           </p>
                         </div>
                       )}
@@ -452,7 +508,7 @@ export function CustomerAccountPage() {
                           {lang === 'ko' ? '총 결제 금액' : 'Total Amount'}
                         </span>
                         <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {formatKRW(order.total_amount)}
+                          {formatKRW(order.amount)}
                         </span>
                       </div>
                     </div>
@@ -499,7 +555,7 @@ export function CustomerAccountPage() {
                       flexDirection: 'column',
                     }}
                   >
-                    <Link href={`/product/${item.id}`} style={{ display: 'block', aspectRatio: '3 / 4' }}>
+                    <Link href={`/product/${item.slug || item.id}`} style={{ display: 'block', aspectRatio: '3 / 4' }}>
                       <img
                         src={item.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
                         alt={item.name_ko}

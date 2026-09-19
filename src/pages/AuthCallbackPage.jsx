@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { supabase } from '../lib/supabase.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import { api } from '../utils/api.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -11,44 +10,19 @@ export function AuthCallbackPage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // Cookie-session landing: the backend OAuth callback sets the session
+    // cookie and lands on /account directly. If anything routes here,
+    // verify the canonical session instead of any provider SDK state.
     async function handleAuthCallback() {
       try {
-        // Supabase client automatically processes code / hash in URL
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          throw sessionError;
-        }
-
-        if (session && session.user) {
-          const user = session.user;
-          const fullName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0];
-          
-          showToast(`환영합니다, ${fullName}님! Google 로그인 완료.`, 'success');
-          // Short delay for user experience, then redirect to account page
+        const { user } = await api.get('/me');
+        if (user) {
+          showToast(`환영합니다, ${user.name || user.email}님! Google 로그인 완료.`, 'success');
           setTimeout(() => {
             setLocation('/account');
           }, 600);
         } else {
-          // If no session found right away, listen once for auth state change
-          const { data: { subscription } } = supabase.auth.onAuthStateChanged((event, currentSession) => {
-            if (currentSession && currentSession.user) {
-              const u = currentSession.user;
-              const name = u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0];
-              showToast(`환영합니다, ${name}님!`, 'success');
-              subscription.unsubscribe();
-              setLocation('/account');
-            }
-          });
-
-          // Timeout fallback after 4 seconds
-          setTimeout(() => {
-            subscription.unsubscribe();
-            setError('인증 정보를 확인 중입니다. 잠시만 기다려주세요...');
-            setTimeout(() => {
-              setLocation('/account');
-            }, 1000);
-          }, 3000);
+          throw new Error('로그인 세션을 확인하지 못했습니다.');
         }
       } catch (err) {
         console.error('OAuth Callback Error:', err);

@@ -1,6 +1,6 @@
 import express from 'express';
 import { query } from '../../db/database.js';
-import { verifyAdmin } from '../../middleware/auth.js';
+import { verifyAdmin, verifyRole } from '../../middleware/auth.js';
 import { notificationService } from '../../services/notificationService.js';
 
 const router = express.Router();
@@ -63,8 +63,11 @@ router.get('/orders/:id', (req, res) => {
   }
 });
 
-// 3. Admin Bank Transfer Payment Verification
-router.patch('/orders/:id/verify-payment', (req, res) => {
+// 3. Admin Bank Transfer Payment Verification (Wave 5: state-guarded.
+// Approve moves under_review → paid/confirmed ONLY from unsettled states;
+// paid/confirmed are never assigned to settled/terminal orders, and reject
+// only returns unsettled orders to pending. Editors excluded.)
+router.patch('/orders/:id/verify-payment', verifyRole(['super_admin', 'admin']), (req, res) => {
   try {
     const { id } = req.params;
     const { action = 'approve', notes } = req.body;
@@ -75,8 +78,12 @@ router.patch('/orders/:id/verify-payment', (req, res) => {
     }
 
     const adminName = req.user?.name || '관리자';
+    const UNSETTLED = ['pending_payment', 'pending_verification', 'under_review'];
 
     if (action === 'approve') {
+      if (!UNSETTLED.includes(existing.payment_status)) {
+        return res.status(409).json({ success: false, message: '미결제 상태의 주문만 승인할 수 있습니다.' });
+      }
       query.run(`
         UPDATE orders
         SET
@@ -86,9 +93,15 @@ router.patch('/orders/:id/verify-payment', (req, res) => {
           payment_verified_by = ?,
           paid_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = ? AND payment_status IN ('pending_payment', 'pending_verification', 'under_review')
       `, adminName, Number(id));
     } else {
+      if (!UNSETTLED.includes(existing.payment_status) && existing.payment_status !== 'paid') {
+        return res.status(409).json({ success: false, message: '처리 불가 상태의 주문입니다.' });
+      }
+      if (existing.payment_status === 'paid') {
+        return res.status(409).json({ success: false, message: '결제 완료된 주문은 반려할 수 없습니다.' });
+      }
       query.run(`
         UPDATE orders
         SET
@@ -96,7 +109,7 @@ router.patch('/orders/:id/verify-payment', (req, res) => {
           order_status = 'pending_verification',
           payment_admin_notes = ?,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = ? AND payment_status IN ('pending_payment', 'pending_verification', 'under_review')
       `, notes || '입금 내역 불일치로 인한 재확인 요청', Number(id));
     }
 
@@ -115,25 +128,46 @@ router.patch('/orders/:id/verify-payment', (req, res) => {
   }
 });
 
-// 4. Update order status
-router.patch('/orders/:id/status', (req, res) => {
+// 4. Update order status (Wave 5: fulfillment transitions only. paid and
+// confirmed are NEVER assigned here — only the verification path above
+// produces them. Terminal states are immutable.)
+router.patch('/orders/:id/status', verifyRole(['super_admin', 'admin', 'order_manager']), (req, res) => {
   try {
     const { id } = req.params;
-    const { order_status, payment_status } = req.body;
+    const { order_status } = req.body;
 
     const existing = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     if (!existing) {
       return res.status(404).json({ success: false, message: '주문을 찾을 수 없습니다.' });
     }
 
-    const newOrderStatus = order_status || existing.order_status;
-    const newPaymentStatus = payment_status || (newOrderStatus === 'confirmed' ? 'paid' : existing.payment_status);
+    if (['cancelled', 'refunded', 'delivered'].includes(existing.order_status)) {
+      return res.status(409).json({ success: false, message: '종료된 주문의 상태는 변경할 수 없습니다.' });
+    }
+    if (['paid', 'confirmed'].includes(order_status)) {
+      return res.status(409).json({ success: false, message: '결제 상태는 입금 검수 경로로만 변경할 수 있습니다.' });
+    }
 
-    query.run(`
+    const allowed = {
+      pending_payment: ['pending_verification', 'cancelled'],
+      pending_verification: ['cancelled', 'processing'],
+      under_review: ['cancelled', 'processing'],
+      confirmed: ['processing', 'shipped', 'cancelled'],
+      processing: ['shipped', 'delivered', 'cancelled'],
+      shipped: ['delivered'],
+    };
+    if (!allowed[existing.order_status]?.includes(order_status)) {
+      return res.status(409).json({ success: false, message: '허용되지 않은 상태 전이입니다.' });
+    }
+
+    const result = query.run(`
       UPDATE orders
-      SET order_status = ?, payment_status = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, newOrderStatus, newPaymentStatus, Number(id));
+      SET order_status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND order_status = ?
+    `, order_status, Number(id), existing.order_status);
+    if (!result.changes) {
+      return res.status(409).json({ success: false, message: '주문 상태가 이미 변경되었습니다.' });
+    }
 
     const updated = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     const items = query.all('SELECT * FROM order_items WHERE order_id = ?', updated.id);
@@ -141,7 +175,7 @@ router.patch('/orders/:id/status', (req, res) => {
 
     res.json({
       success: true,
-      message: `주문 상태가 '${newOrderStatus}'(으)로 변경되었습니다.`,
+      message: `주문 상태가 '${order_status}'(으)로 변경되었습니다.`,
       data: { ...updated, items }
     });
   } catch (error) {
@@ -150,24 +184,36 @@ router.patch('/orders/:id/status', (req, res) => {
   }
 });
 
-// 5. Update tracking information
-router.patch('/orders/:id/tracking', (req, res) => {
+// 5. Update tracking information (Wave 5: paid/confirmed/processing orders
+// only; courier and tracking number required; editors excluded.)
+router.patch('/orders/:id/tracking', verifyRole(['super_admin', 'admin', 'order_manager']), (req, res) => {
   try {
     const { id } = req.params;
-    const { courier_name, tracking_number, auto_ship = true } = req.body;
+    const { courier_name, tracking_number } = req.body;
 
     const existing = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     if (!existing) {
       return res.status(404).json({ success: false, message: '주문을 찾을 수 없습니다.' });
     }
 
-    const nextStatus = auto_ship ? 'shipped' : existing.order_status;
+    if (!['paid', 'confirmed', 'processing'].includes(existing.payment_status) && !['confirmed', 'processing'].includes(existing.order_status)) {
+      return res.status(409).json({ success: false, message: '결제 완료된 주문만 배송 처리할 수 있습니다.' });
+    }
 
-    query.run(`
+    const courier = String(courier_name || '').trim();
+    const tracking = String(tracking_number || '').trim();
+    if (!courier || !tracking) {
+      return res.status(400).json({ success: false, message: '택배사와 운송장 번호를 모두 입력해주세요.' });
+    }
+
+    const result = query.run(`
       UPDATE orders
-      SET courier_name = ?, tracking_number = ?, order_status = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, courier_name || 'CJ대한통운', tracking_number ? tracking_number.trim() : null, nextStatus, Number(id));
+      SET courier_name = ?, tracking_number = ?, order_status = 'shipped', updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND order_status IN ('confirmed', 'processing')
+    `, courier, tracking, Number(id));
+    if (!result.changes) {
+      return res.status(409).json({ success: false, message: '배송 처리 불가 상태의 주문입니다.' });
+    }
 
     const updated = query.get('SELECT * FROM orders WHERE id = ?', Number(id));
     notificationService.sendShippingUpdate(updated).catch(err => console.error(err));

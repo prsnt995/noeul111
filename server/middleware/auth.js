@@ -41,9 +41,8 @@ export function verifyToken(req, res, next) {
 
 export const verifyAuth = verifyToken;
 
-// Role hierarchy (highest privilege first). Per-action gates must use
-// verifyRole() with the minimal role set — never treat all staff equally.
-export const STAFF_ROLES = ['super_admin', 'admin', 'order_manager', 'editor'];
+// Role hierarchy — lean cloth store: only super_admin + admin (editor/order_manager retired)
+export const STAFF_ROLES = ['super_admin', 'admin'];
 
 export function verifyRole(allowedRoles) {
   return (req, res, next) => {
@@ -70,11 +69,10 @@ export function requireSuperAdmin(req, res, next) {
   });
 }
 
-// Legacy compat: general admin-area gate. Prefer verifyRole() with a
-// minimal role list on new routes.
+// Legacy compat — collapsed to 2 roles
 export function verifyAdmin(req, res, next) {
   verifyToken(req, res, () => {
-    const adminRoles = ['super_admin', 'admin', 'editor', 'order_manager'];
+    const adminRoles = ['super_admin', 'admin'];
     if (req.user && adminRoles.includes(req.user.role)) {
       next();
     } else {

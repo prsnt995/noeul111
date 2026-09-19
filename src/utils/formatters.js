@@ -37,6 +37,12 @@ export function formatDate(dateString, lang = 'ko') {
  * Status mapping for order fulfillment
  */
 export const ORDER_STATUS_MAP = {
+  pending_payment: { ko: '결제대기', en: 'Pending Payment', bg: '#fef3c7', text: '#92400e', color: '#b45309' },
+  confirming: { ko: '결제확인중', en: 'Confirming', bg: '#fef3c7', text: '#92400e', color: '#b45309' },
+  paid: { ko: '결제완료', en: 'Paid', bg: '#e0f2fe', text: '#0369a1', color: '#0284c7' },
+  canceled: { ko: '주문취소', en: 'Cancelled', bg: '#fee2e2', text: '#991b1b', color: '#dc2626' },
+  expired: { ko: '주문만료', en: 'Expired', bg: '#fee2e2', text: '#991b1b', color: '#dc2626' },
+  refund_pending: { ko: '환불진행중', en: 'Refund Pending', bg: '#f1f5f9', text: '#475569', color: '#64748b' },
   pending_verification: { ko: '결제대기(검수중)', en: 'Pending Verification', bg: '#fef3c7', text: '#92400e', color: '#b45309' },
   pending: { ko: '결제대기', en: 'Pending Payment', bg: '#fef3c7', text: '#92400e', color: '#b45309' },
   confirmed: { ko: '주문확정', en: 'Confirmed', bg: '#e0f2fe', text: '#0369a1', color: '#0284c7' },

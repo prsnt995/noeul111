@@ -31,6 +31,11 @@ async function sweepExpired(supabase, now) {
     .lt('expires_at', now)
     .limit(50);
   for (const row of (candidates || [])) {
+    /* Wave 2: atomic RPC first; JS claim path below is fallback. */
+    try {
+      const { data: rel, error: relErr } = await supabase.rpc('release_hold', { p_order_id: row.id, p_from: ['pending_payment'], p_to: 'expired', p_effect_key: `order-expired:${row.id}`, p_kind: 'ORDER_EXPIRED' });
+      if (!relErr && rel && (rel.outcome === 'released' || rel.outcome === 'already')) continue;
+    } catch { /* RPC unavailable; JS path below */ }
     const { data: claimed } = await supabase
       .from('orders')
       .update({ status: 'expired' })

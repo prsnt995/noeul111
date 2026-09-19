@@ -37,7 +37,8 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
 
   const handleOpenDetail = () => {
     onClose();
-    setLocation(`/product/${product.id}`);
+    const slug = product.slug || product.id;
+    setLocation(`/product/${slug}`);
   };
 
   return (

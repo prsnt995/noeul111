@@ -91,23 +91,23 @@ export function HomePage() {
           3. MINIMAL CATEGORY SUB-BAR (전체 / 여성)
           Full width, responsive, item count aligned on the right
           ========================================================= */}
-      <div
-        className="noeul-category-bar"
-        style={{
-          borderBottom: '1px solid #f0f0f0',
-          padding: '8px 12px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          backgroundColor: '#ffffff',
-          position: 'sticky',
-          top: '56px',
-          zIndex: 95,
-          width: '100%',
-          maxWidth: '100%',
-          boxSizing: 'border-box',
-        }}
-      >
+       <div
+         className="noeul-category-bar"
+         style={{
+           borderBottom: '1px solid #f0f0f0',
+           padding: '8px 12px',
+           display: 'flex',
+           justifyContent: 'space-between',
+           alignItems: 'center',
+           backgroundColor: '#ffffff',
+           position: 'sticky',
+           top: 0,
+           zIndex: 95,
+           width: '100%',
+           maxWidth: '100%',
+           boxSizing: 'border-box',
+         }}
+       >
         {/* Left: Interactive Category Navigation Bar (전체 / 여성) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
           {[
@@ -166,7 +166,7 @@ export function HomePage() {
           width: '100%',
           maxWidth: '100%',
           boxSizing: 'border-box',
-          padding: '4px 4px 60px',
+          padding: '4px 4px 40px',
           margin: 0,
           overflowX: 'hidden',
         }}
@@ -199,7 +199,7 @@ export function HomePage() {
             </button>
           </div>
         ) : (
-          <div className="product-grid noeul-product-grid" style={{ margin: 0, padding: 0 }}>
+          <div className="product-grid noeul-product-grid">
             {products.map((prod) => (
               <ProductCard
                 key={prod.id}

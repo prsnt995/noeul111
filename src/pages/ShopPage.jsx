@@ -3,6 +3,7 @@ import { useSearchParams } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { ProductPreviewModal } from '../components/common/ProductPreviewModal.jsx';
+import { CategorySidebar } from '../components/common/CategorySidebar.jsx';
 import { CATEGORIES_BY_GENDER } from '../data/products.js';
 import { api } from '../utils/api.js';
 import { SlidersHorizontal, X, ChevronRight } from 'lucide-react';
@@ -29,9 +30,9 @@ export function ShopPage() {
         if (selectedGender !== 'all') params.append('gender', selectedGender);
         if (selectedCategory !== 'all') params.append('category', selectedCategory);
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
-        if (activeFilter === 'new') params.append('isNew', 'true');
-        if (activeFilter === 'best') params.append('isBest', 'true');
-        if (activeFilter === 'sale') params.append('sale', 'true');
+        if (activeFilter === 'new') params.append('is_new', 'true');
+        if (activeFilter === 'best') params.append('is_best', 'true');
+        if (activeFilter === 'sale') params.append('is_sale', 'true');
         if (sortBy) params.append('sort', sortBy);
 
         const json = await api.get(`/catalog/products?${params.toString()}`);
@@ -50,7 +51,8 @@ export function ShopPage() {
     fetchProducts();
   }, [selectedGender, selectedCategory, searchQuery, activeFilter, sortBy]);
 
-  // Update URL helper without full page reload
+  // Update URL helper — filter is cleared when category changes,
+  // otherwise preserved so a filtered sort/view stays coherent.
   const updateUrl = (newGender, newCategory, newFilter, newSearch, newSort) => {
     const g = newGender !== undefined ? newGender : selectedGender;
     const c = newCategory !== undefined ? newCategory : selectedCategory;
@@ -60,7 +62,9 @@ export function ShopPage() {
     const params = new URLSearchParams();
     if (g && g !== 'all') params.set('gender', g);
     if (c && c !== 'all') params.set('category', c);
-    if (f) params.set('filter', f);
+    // Clear stale filter when category/gender changes; only keep explicit valid filters
+    const genderOrCatChanged = (newGender !== undefined || newCategory !== undefined);
+    if (!genderOrCatChanged && f && f !== '' && f !== 'featured') params.set('filter', f);
     if (s) params.set('search', s);
     if (sort && sort !== 'newest') params.set('sort', sort);
     setSearchParams(params);
@@ -113,7 +117,7 @@ export function ShopPage() {
 
   return (
     <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
-      {/* Category Sub-Bar */}
+      {/* Category Sub-Bar — fixed at top */}
       <div
         className="noeul-category-bar"
         style={{
@@ -123,8 +127,10 @@ export function ShopPage() {
           justifyContent: 'space-between',
           alignItems: 'center',
           backgroundColor: '#ffffff',
-          position: 'sticky',
-          top: '56px',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
           zIndex: 95,
           width: '100%',
           maxWidth: '100%',
@@ -164,10 +170,13 @@ export function ShopPage() {
         </div>
 
         {/* Selected Subcategory Indicator */}
-        {selectedCategory !== 'all' && (
+        {selectedCategory !== 'all' && (() => {
+          const catObj = availableCategories.find((c) => c.key === selectedCategory);
+          const catLabel = catObj ? `${catObj.label_ko} ${catObj.label}` : selectedCategory;
+          return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#18181b', fontWeight: 600, flexShrink: 0 }}>
             <span>/</span>
-            <span>{selectedCategory}</span>
+            <span>{catLabel}</span>
             <button
               type="button"
               onClick={() => updateUrl(undefined, 'all', undefined, undefined, undefined)}
@@ -176,7 +185,8 @@ export function ShopPage() {
               <X size={12} />
             </button>
           </div>
-        )}
+          );
+        })()}
 
         {/* Right: Item Count & Sort Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, marginLeft: 'auto' }}>
@@ -205,13 +215,25 @@ export function ShopPage() {
         </div>
       </div>
 
-      {/* Product Images Grid directly below category sub-bar */}
+      {/* Horizontal Category Bar */}
+      <CategorySidebar
+        categories={liveCategories}
+        selectedCategory={selectedCategory}
+        onSelect={(slug) => {
+          const params = new URLSearchParams(searchParams.toString());
+          if (slug === 'all') { params.delete('category'); } else { params.set('category', slug); }
+          const qs = params.toString();
+          setSearchParams(qs ? qs : '');
+        }}
+      />
+
+      {/* Product Images Grid */}
       <main
         style={{
           width: '100%',
           maxWidth: '100%',
           boxSizing: 'border-box',
-          padding: '4px 4px 60px',
+          padding: '4px 4px 40px',
           margin: 0,
           overflowX: 'hidden',
         }}
@@ -251,8 +273,8 @@ export function ShopPage() {
               {t('home.view_all_products')}
             </button>
           </div>
-        ) : (
-          <div className="noeul-product-grid product-grid" style={{ margin: 0, padding: 0 }}>
+           ) : (
+          <div className="noeul-product-grid product-grid">
             {products.map((prod) => (
               <ProductCard
                 key={prod.id}

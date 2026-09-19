@@ -7,12 +7,7 @@ import {
   ClipboardList,
   Users,
   FolderTree,
-  Boxes,
-  Globe,
   Settings,
-  Layers,
-  Menu as MenuIcon,
-  FileText,
   Image as ImageIcon,
   Tag,
   Star,
@@ -21,6 +16,7 @@ import {
   LogOut,
   ExternalLink,
   X,
+  Menu as MenuIcon,
 } from 'lucide-react';
 
 export function AdminLayout({ children, activePage }) {
@@ -35,22 +31,17 @@ export function AdminLayout({ children, activePage }) {
     }
   }, [location, setLocation]);
 
-  // Main 8 required admin sidebar navigation items + CMS sub-navigation
+  // Lean cloth store — 6 main + 5 CMS (builder/menus/pages/languages/inventory removed)
   const mainNavItems = [
     { id: 'dashboard', label: '대시보드 (Dashboard)', href: '/admin', icon: LayoutDashboard },
     { id: 'products', label: '상품 관리 (Products)', href: '/admin/products', icon: ShoppingBag },
     { id: 'orders', label: '주문 관리 (Orders)', href: '/admin/orders', icon: ClipboardList },
     { id: 'customers', label: '고객 관리 (Customers)', href: '/admin/customers', icon: Users },
     { id: 'categories', label: '카테고리 (Categories)', href: '/admin/categories', icon: FolderTree },
-    { id: 'inventory', label: '재고 관리 (Inventory)', href: '/admin/inventory', icon: Boxes },
-    { id: 'languages', label: '언어 관리 (Languages)', href: '/admin/languages', icon: Globe },
     { id: 'settings', label: '환경 설정 (Settings)', href: '/admin/settings', icon: Settings },
   ];
 
   const cmsNavItems = [
-    { id: 'builder', label: '홈페이지 빌더', href: '/admin/builder', icon: Layers },
-    { id: 'menus', label: '네비게이션 메뉴', href: '/admin/menus', icon: MenuIcon },
-    { id: 'pages', label: '커스텀 페이지', href: '/admin/pages', icon: FileText },
     { id: 'banners', label: '배너 매니저', href: '/admin/banners', icon: ImageIcon },
     { id: 'media', label: '미디어 라이브러리', href: '/admin/media', icon: Film },
     { id: 'coupons', label: '쿠폰 및 프로모션', href: '/admin/coupons', icon: Tag },

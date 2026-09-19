@@ -41,12 +41,9 @@ import { BusinessInfoPage } from './pages/policy/BusinessInfoPage.jsx';
 import { ContactPage } from './pages/policy/ContactPage.jsx';
 
 // Admin Pages — route-split so the storefront bundle excludes back-office
-// code (finding #25: 1.5MB single chunk). Loaded on first /admin visit.
+// code (finding #25: 1.5MB single chunk). Lean cloth store: builder/menus/pages/languages/inventory/content removed.
 const AdminLoginPage = lazy(() => import('./pages/admin/AdminLoginPage.jsx').then(m => ({ default: m.AdminLoginPage })));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage.jsx').then(m => ({ default: m.AdminDashboardPage })));
-const AdminWebsiteBuilderPage = lazy(() => import('./pages/admin/AdminWebsiteBuilderPage.jsx').then(m => ({ default: m.AdminWebsiteBuilderPage })));
-const AdminMenusPage = lazy(() => import('./pages/admin/AdminMenusPage.jsx').then(m => ({ default: m.AdminMenusPage })));
-const AdminPagesPage = lazy(() => import('./pages/admin/AdminPagesPage.jsx').then(m => ({ default: m.AdminPagesPage })));
 const AdminBannersPage = lazy(() => import('./pages/admin/AdminBannersPage.jsx').then(m => ({ default: m.AdminBannersPage })));
 const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage.jsx').then(m => ({ default: m.AdminProductsPage })));
 const AdminCategoriesPage = lazy(() => import('./pages/admin/AdminCategoriesPage.jsx').then(m => ({ default: m.AdminCategoriesPage })));
@@ -57,9 +54,6 @@ const AdminCustomersPage = lazy(() => import('./pages/admin/AdminCustomersPage.j
 const AdminMediaPage = lazy(() => import('./pages/admin/AdminMediaPage.jsx').then(m => ({ default: m.AdminMediaPage })));
 const AdminStaffPage = lazy(() => import('./pages/admin/AdminStaffPage.jsx').then(m => ({ default: m.AdminStaffPage })));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage.jsx').then(m => ({ default: m.AdminSettingsPage })));
-const AdminInventoryPage = lazy(() => import('./pages/admin/AdminInventoryPage.jsx').then(m => ({ default: m.AdminInventoryPage })));
-const AdminLanguagesPage = lazy(() => import('./pages/admin/AdminLanguagesPage.jsx').then(m => ({ default: m.AdminLanguagesPage })));
-const AdminContentPage = lazy(() => import('./pages/admin/AdminContentPage.jsx').then(m => ({ default: m.AdminContentPage })));
 
 function AppContent() {
   const [location] = useLocation();
@@ -100,22 +94,16 @@ function AppContent() {
           <Route path="/contact" component={ContactPage} />
           <Route path="/p/:slug" component={CustomPageView} />
 
-          {/* Admin Control Center & CMS Routes */}
+          {/* Admin Control Center — lean cloth store (10 routes, builder/menus/pages/languages/inventory/content removed) */}
           <Route path="/admin/login" component={AdminLoginPage} />
           <Route path="/admin" component={AdminDashboardPage} />
-          <Route path="/admin/builder" component={AdminWebsiteBuilderPage} />
-          <Route path="/admin/menus" component={AdminMenusPage} />
-          <Route path="/admin/pages" component={AdminPagesPage} />
           <Route path="/admin/banners" component={AdminBannersPage} />
           <Route path="/admin/products" component={AdminProductsPage} />
           <Route path="/admin/categories" component={AdminCategoriesPage} />
           <Route path="/admin/orders" component={AdminOrdersPage} />
-          <Route path="/admin/inventory" component={AdminInventoryPage} />
-          <Route path="/admin/languages" component={AdminLanguagesPage} />
           <Route path="/admin/coupons" component={AdminCouponsPage} />
           <Route path="/admin/reviews" component={AdminReviewsPage} />
           <Route path="/admin/customers" component={AdminCustomersPage} />
-          <Route path="/admin/content" component={AdminContentPage} />
           <Route path="/admin/media" component={AdminMediaPage} />
           <Route path="/admin/staff" component={AdminStaffPage} />
           <Route path="/admin/settings" component={AdminSettingsPage} />

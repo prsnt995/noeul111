@@ -34,6 +34,13 @@ const checks = [
   ['honest email delivery states', read('server/services/emailService.js').includes("transport: 'stream'")],
   ['payments fail closed by default', read('api/app.js').includes("PAYMENTS_ENABLED !== 'true'")],
   ['admin bundle is route-split', read('src/App.jsx').includes('React.lazy') || read('src/App.jsx').includes('lazy(')],
+  ['admin API surface registered', read('api/app.js').includes('registerAdminRoutes')],
+  ['admin products/orders/coupons endpoints', read('api/admin.js').includes('/api/v1/admin/products') && read('api/admin.js').includes('/api/v1/admin/orders') && read('api/admin.js').includes('/api/v1/admin/coupons')],
+  ['admin staff/settings', read('api/admin.js').includes('/api/v1/admin/users/staff') && read('api/admin.js').includes('/api/v1/admin/content/settings')],
+  ['review write path exists', read('api/app.js').includes("/api/v1/products/:id/reviews', checkoutLimiter")],
+  ['no Bearer-token legacy in UI', !read('src/components/common/MediaPickerModal.jsx').includes('noeul_auth_token') && !read('src/pages/admin/AdminMediaPage.jsx').includes('noeul_auth_token')],
+  ['no provider SDK in callback', !read('src/pages/AuthCallbackPage.jsx').includes('supabase')],
+  ['review featured migration', fs.existsSync(path.join(root, 'supabase/migrations/202609180010_review_featured.sql'))],
 
 ];
 const failed = checks.filter(([, ok]) => !ok);
