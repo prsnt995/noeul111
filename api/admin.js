@@ -962,17 +962,9 @@ export function registerAdminRoutes(app, ctx) {
   // ---------- Media library (content 'media' doc) + uploads ----------
   const __adminDirname = path.dirname(fileURLToPath(import.meta.url));
   const uploadDir = path.join(__adminDirname, '../uploads');
-  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
   const MIME_TO_EXT = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif' };
   const adminUpload = multer({
-    storage: multer.diskStorage({
-      destination: (req, file, cb) => cb(null, uploadDir),
-      filename: (req, file, cb) => {
-        const ext = MIME_TO_EXT[String(file.mimetype || '').toLowerCase()] || '.jpg';
-        cb(null, `image-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-      },
-    }),
+    storage: multer.memoryStorage(),
     fileFilter: (req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
       const mime = String(file.mimetype || '').toLowerCase();
@@ -1037,27 +1029,29 @@ export function registerAdminRoutes(app, ctx) {
         } catch {}
       }
       for (const file of req.files) {
-        let url = `/uploads/${file.filename}`;
+        let url = null;
         try {
           if (supabaseStorage) {
             const ext = path.extname(file.originalname) || MIME_TO_EXT[String(file.mimetype || '').toLowerCase()] || '.jpg';
             const objectPath = `products/${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
-            const body = await fs.promises.readFile(file.path);
-            const { error: upErr } = await supabaseStorage.storage.from(bucket).upload(objectPath, body, { contentType: file.mimetype || 'image/jpeg', upsert: false, cacheControl: '31536000' });
+            const { error: upErr } = await supabaseStorage.storage.from(bucket).upload(objectPath, file.buffer, { contentType: file.mimetype || 'image/jpeg', upsert: false, cacheControl: '31536000' });
             if (!upErr) {
               const { data } = supabaseStorage.storage.from(bucket).getPublicUrl(objectPath);
               url = data.publicUrl;
-              try { await fs.promises.unlink(file.path); } catch {}
             }
           }
-        } catch (e) { console.error('Supabase upload fallback to local', e?.message); }
+        } catch (e) { console.error('Supabase upload error', e?.message); }
+        if (!url) {
+          console.error('Supabase upload failed, no fallback in serverless');
+          return error(res, 503, 'UPLOAD_FAILED');
+        }
         const item = {
           id: uid(), name: file.originalname, url,
           file_type: 'image', size_bytes: file.size, alt_text: file.originalname,
           tags: 'uploaded,product', created_at: new Date().toISOString(),
         };
         await saveDocItem(database, 'media', item);
-        saved.push({ url: item.url, name: file.originalname, filename: file.filename, size: file.size });
+        saved.push({ url: item.url, name: file.originalname, size: file.size });
       }
       res.json({ success: true, message: `${saved.length}개의 이미지가 업로드되었습니다.`, data: saved });
     } catch (err) {
