@@ -96,21 +96,26 @@ function normalizeProduct(product) {
 }
 
 async function session(req, res, required = true) {
-  const id = parseCookies(req.headers.cookie)?.[cookieName];
-  if (!id) { if (required) error(res, 401, 'SIGN_IN_REQUIRED'); return null; }
+  const cookieHeader = req.headers.cookie || '';
+  const cookies = parseCookies(cookieHeader);
+  const id = cookies[cookieName];
+  console.log('[session] cookie check', { cookieName, hasCookie: !!id, cookieHeader: cookieHeader.slice(0,200), allCookies: Object.keys(cookies) });
+  if (!id) { console.log('[session] no session cookie'); if (required) error(res, 401, 'SIGN_IN_REQUIRED'); return null; }
   try {
     const { data: sessionRow, error: qErr } = await database().from('sessions').select('*').eq('id_hash', sha(id)).gt('expires_at', new Date().toISOString()).maybeSingle();
-    if (qErr || !sessionRow) { if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
+    console.log('[session] db query', { hasRow: !!sessionRow, qErr: !!qErr, expiresCheck: new Date().toISOString() });
+    if (qErr || !sessionRow) { console.log('[session] session not found or expired'); if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
     const [{ data: profile }, { data: staff }] = await Promise.all([
       database().from('profiles').select('email,name,disabled').eq('id', sessionRow.user_id).maybeSingle(),
       database().from('staff_members').select('role,active').eq('user_id', sessionRow.user_id).maybeSingle(),
     ]);
-    if (!profile || profile.disabled) { if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
+    if (!profile || profile.disabled) { console.log('[session] profile missing or disabled'); if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-      if (req.headers.origin !== origin || req.headers['x-csrf-token'] !== sessionRow.csrf) { error(res, 403, 'CSRF_REJECTED'); return null; }
+      if (req.headers.origin !== origin || req.headers['x-csrf-token'] !== sessionRow.csrf) { console.log('[session] CSRF rejected'); error(res, 403, 'CSRF_REJECTED'); return null; }
     }
+    console.log('[session] ok', { userId: sessionRow.user_id, role: staff?.active ? staff.role : 'customer' });
     return { ...sessionRow, profiles: profile, user_id: sessionRow.user_id, role: staff?.active ? staff.role : 'customer' };
-  } catch { if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
+  } catch (e) { console.error('[session] error', e); if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
 }
 
 const authenticate = async (req, res, next) => { const s = await session(req, res, false); if (!s) return error(res, 401, 'SIGN_IN_REQUIRED'); req.locals = { session: s }; next(); };
@@ -139,7 +144,7 @@ app.get('/api/v1/auth/google/start', authLimiter, async (req, res) => { try { co
 
 app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => { try { console.log('[callback] start', { code: req.query.code?.slice(0,10), hasCookie: !!req.headers.cookie, cookieHeader: req.headers.cookie?.slice(0,200) }); const cookies = parseCookies(req.headers.cookie); console.log('[callback] parsed cookies', Object.keys(cookies)); const state = cookies.noeul_oauth; console.log('[callback] state value', state?.slice(0,20)); if (!state || !req.query.code) { console.log('[callback] INVALID_CALLBACK'); return error(res, 400, 'INVALID_CALLBACK'); } const stateHash = sha(state); console.log('[callback] stateHash', stateHash); const { data: row, error: stateErr } = await database().from('oauth_states').delete().eq('id_hash', stateHash).gt('expires_at', new Date().toISOString()).select('verifier').maybeSingle(); console.log('[callback] oauth_states query', { row: !!row, stateErr, expiresCheck: new Date().toISOString() }); if (!row) { console.log('[callback] OAUTH_STATE_EXPIRED - no row found'); return error(res, 400, 'OAUTH_STATE_EXPIRED'); } console.log('[callback] row found', { hasVerifier: !!row.verifier }); const tokenRes = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=pkce`, { method: 'POST', headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ auth_code: req.query.code, code_verifier: row.verifier }) }); console.log('[callback] token exchange', { ok: tokenRes.ok, status: tokenRes.status }); const token = await tokenRes.json(); if (!tokenRes.ok || !token.access_token || !token.user) { console.log('[callback] GOOGLE_IDENTITY_REQUIRED', { token }); return error(res, 401, 'GOOGLE_IDENTITY_REQUIRED'); } console.log('[callback] token ok', { userId: token.user.id }); const id = random(); const csrf = random(); await database().from('profiles').upsert({ id: token.user.id, email: token.user.email, name: token.user.user_metadata?.full_name || '' }); console.log('[callback] profile upsert ok'); await database().from('sessions').insert({ id_hash: sha(id), user_id: token.user.id, encrypted_tokens: encryptSessionTokens(token), csrf, aal: token.user?.aal === 'aal2' ? 'aal2' : 'aal1', refreshed_at: new Date().toISOString(), expires_at: new Date(Date.now() + 24*60*60*1000).toISOString() }); console.log('[callback] session insert ok'); setCookie(res, cookieName, id); res.set('Set-Cookie', 'noeul_oauth=; Path=/; Max-Age=0'); res.set('Content-Type', 'text/html'); res.send(`<!DOCTYPE html><html><body><script>window.location.href = '/account';</script></body></html>`); console.log('[callback] sent HTML redirect'); } catch (e) { console.error('[callback] error', e); error(res, 503, 'AUTH_CALLBACK_FAILED'); } });
 
-app.get('/api/v1/me', authenticate, async (req, res) => { const s = req.locals.session; res.set('Cache-Control', 'no-store'); res.json({ success: true, user: { id: s.user_id, uid: s.user_id, name: s.profiles.name, email: s.profiles.email, role: s.role }, csrf: s.csrf, debug: { cookieReceived: req.headers.cookie } }); });
+app.get('/api/v1/me', authenticate, async (req, res) => { const s = req.locals.session; console.log('[/me] success', { userId: s.user_id, role: s.role }); res.set('Cache-Control', 'no-store'); res.json({ success: true, user: { id: s.user_id, uid: s.user_id, name: s.profiles.name, email: s.profiles.email, role: s.role }, csrf: s.csrf, debug: { cookieReceived: req.headers.cookie } }); });
 app.get('/api/v1/debug/cookies', async (req, res) => { res.json({ success: true, cookies: req.headers.cookie, parsed: parseCookies(req.headers.cookie) }); });
 app.post('/api/v1/auth/logout', authenticate, async (req, res) => { const s = req.locals.session; if (s) await database().from('sessions').delete().eq('id_hash', s.id_hash); clearCookie(res); res.json({ success: true }); });
 app.post('/api/v1/auth/logout-all', authenticate, async (req, res) => { const s = req.locals.session; if (s) await database().from('sessions').delete().eq('user_id', s.user_id); clearCookie(res); res.json({ success: true }); });
