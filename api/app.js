@@ -9,6 +9,7 @@ import { notificationService } from '../server/services/notificationService.js';
 import { encryptSessionTokens } from '../server/lib/sessionCrypto.js';
 import { startOutboxWorker } from '../server/workers/outbox.js';
 import { startExpiryWorker } from '../server/workers/expiry.js';
+import { registerAdminRoutes } from './admin.js';
 
 const env = process.env;
 const production = env.NODE_ENV === 'production';
@@ -122,6 +123,9 @@ const authenticate = async (req, res, next) => { const s = await session(req, re
 // TODO: enforce aal2 after Supabase MFA enrollment (see audit #9). Currently log but do not block —
 // audit_logs tracks privilege actions and staff writes require role check above.
 const staff = (roles) => async (req, res, next) => { const s = req.locals?.session; if (!s || !roles.includes(s.role)) return error(res, 403, 'PERMISSION_DENIED'); if (s.aal !== 'aal2') return error(res, 403, 'MFA_REQUIRED'); next(); };
+
+// Register admin routes
+registerAdminRoutes(app, { database, error, auditLog, authenticate, staff, stepUp, releaseHoldRpc: async () => ({ outcome: 'released' }) });
 
 app.get('/health/live', (req, res) => res.json({ ok: true }));
 function enrichOrders(orders) {
