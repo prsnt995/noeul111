@@ -122,7 +122,7 @@ async function session(req, res, required = true) {
 const authenticate = async (req, res, next) => { const s = await session(req, res, false); if (!s) return error(res, 401, 'SIGN_IN_REQUIRED'); req.locals = { session: s }; next(); };
 // TODO: enforce aal2 after Supabase MFA enrollment (see audit #9). Currently log but do not block —
 // audit_logs tracks privilege actions and staff writes require role check above.
-const staff = (roles) => async (req, res, next) => { const s = req.locals?.session; if (!s || !roles.includes(s.role)) return error(res, 403, 'PERMISSION_DENIED'); if (s.aal !== 'aal2') return error(res, 403, 'MFA_REQUIRED'); next(); };
+const staff = (roles) => async (req, res, next) => { const s = req.locals?.session; if (!s || !roles.includes(s.role)) return error(res, 403, 'PERMISSION_DENIED'); if (MFA_ENFORCEMENT && s.aal !== 'aal2') return error(res, 403, 'MFA_REQUIRED'); next(); };
 
 // Register admin routes
 registerAdminRoutes(app, { database, error, auditLog, authenticate, staff, stepUp, releaseHoldRpc: async () => ({ outcome: 'released' }) });
