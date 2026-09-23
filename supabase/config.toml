@@ -1,0 +1,32 @@
+# Supabase local config — generated for Phase E (tools only, not secrets)
+# Run `npx supabase start` to launch local Postgres + Auth + Storage with RLS seed
+project_id = "iylvehagkuuseetunqlz"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "app"]
+extra_search_path = ["public", "app"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/auth/callback"]
+jwt_expiry = 3600
+enable_signup = false
+enable_manual_linking = true
+
+[storage]
+enabled = true
+file_size_limit = "8MiB"
+
+# Required for migration authority check: `supabase db lint`, `supabase db push`
