@@ -115,11 +115,7 @@ describe('Wave 5 — Legacy lockdown', () => {
       expect(orders.includes("req.body.receipt_url")).toBe(false);
     });
 
-    it('webhook verifies order exists before inserting webhook_events', () => {
-      const app = read('api/app.js');
-      expect(app.includes("from('orders').select('id,order_number').eq('order_number', body.orderId)")).toBe(true);
-      expect(app.includes('order_id: order.id')).toBe(true);
-    });
+    // Webhook lookup/retrieval/persistence failures are tested in toss-payments.test.js.
   });
 
   describe('Outbox: lease cleanup and dead-letter surface', () => {

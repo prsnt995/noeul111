@@ -34,23 +34,5 @@ describe('Wave 2 — Atomicity and money-state guards', () => {
     });
   });
 
-  describe('H3 — refund cannot mark refunded on provider failure', () => {
-    it('checks Toss result, dedups, and keys provider idempotency', () => {
-      const app = read('api/app.js');
-      expect(app.includes('if (!tossRes.ok)')).toBe(true);
-      expect(app.includes("payment.status === 'refunded'")).toBe(true);
-      expect(app.includes("'Idempotency-Key': String(payment.cancel_key")).toBe(true);
-      expect(app.includes('REFUND_FAILED')).toBe(true);
-    });
-  });
-
-  describe('H6/M1 — terminal writes are state-qualified', () => {
-    it('paid write and reverts require confirming; cancel claims its transition', () => {
-      const app = read('api/app.js');
-      expect(app.includes("update({ status: 'paid' }).eq('id', order.id).eq('status', 'confirming')")).toBe(true);
-      expect(app.includes('payment.state_conflict')).toBe(true);
-      expect(app.includes(".in('status', ['pending_payment','paid'])")).toBe(true);
-      expect(app.includes('claimedCancel')).toBe(true);
-    });
-  });
+  // Refund and confirmation behavior moved to toss-payments.test.js.
 });

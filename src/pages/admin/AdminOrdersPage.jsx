@@ -1,26 +1,22 @@
+import AdminPaymentActions from '../../components/admin/AdminPaymentActions.jsx';
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api, adminApi } from '../../utils/api.js';
+import { adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
-  Package,
   Search,
   Truck,
   Eye,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Building,
-  Check,
   X,
-  ExternalLink,
-  ShieldCheck,
-  AlertTriangle,
   ImageIcon
 } from 'lucide-react';
 
 const ORDER_STATUS_MAP = {
+  pending_payment: { label: '결제 대기', bg: '#fef3c7', text: '#92400e' },
+  paid: { label: '결제 완료', bg: '#dcfce7', text: '#166534' },
+  confirming: { label: '결제 확인 중', bg: '#fef3c7', text: '#92400e' },
+  canceled: { label: '주문 취소', bg: '#fee2e2', text: '#991b1b' },
   pending_verification: { label: '주문접수 (검수대기)', bg: '#fef3c7', text: '#92400e' },
   pending: { label: '주문접수 (입금대기)', bg: '#fef3c7', text: '#92400e' },
   confirmed: { label: '결제완료 (주문확정)', bg: '#dcfce7', text: '#166534' },
@@ -101,32 +97,6 @@ export function AdminOrdersPage() {
       }
     } catch (err) {
       showToast('상태 변경 실패', 'error');
-    }
-  };
-
-  // Admin Verification of Bank Transfer Screenshot
-  const handleVerifyPayment = async (id, action) => {
-    try {
-      const res = await adminApi.patch(`/admin/orders/${id}/verify-payment`, {
-        action,
-        notes: action === 'reject' ? '입금 금액 또는 입금자명 불일치' : null,
-      });
-
-      if (res.success && res.data) {
-        // Sync to Firestore for real-time user notification
-        await updateFirestoreOrderStatus(res.data.order_number, {
-          payment_status: res.data.payment_status,
-          order_status: res.data.order_status
-        });
-
-        showToast(res.message, 'success');
-        fetchOrders();
-        if (selectedOrder && selectedOrder.id === id) {
-          setSelectedOrder(res.data);
-        }
-      }
-    } catch (err) {
-      showToast('입금 검수 처리 실패', 'error');
     }
   };
 
@@ -219,7 +189,7 @@ export function AdminOrdersPage() {
               <option value="processing">상품준비중</option>
               <option value="shipped">배송중</option>
               <option value="delivered">배송완료</option>
-              <option value="cancelled">주문취소</option>
+              <option value="canceled">미결제 주문 취소</option>
             </select>
           </div>
 
@@ -364,12 +334,8 @@ export function AdminOrdersPage() {
                               cursor: 'pointer',
                             }}
                           >
-                            <option value="pending_verification">검수대기</option>
-                            <option value="confirmed">결제완료</option>
-                            <option value="processing">상품준비중</option>
-                            <option value="shipped">배송중</option>
-                            <option value="delivered">배송완료</option>
-                            <option value="cancelled">주문취소</option>
+                            <option value={ord.order_status}>{statusInfo.label}</option>
+                            {({ pending_payment: ['canceled'], paid: ['processing'], processing: ['shipped', 'delivered'], shipped: ['delivered'] }[ord.order_status] || []).map(status => <option key={status} value={status}>{ORDER_STATUS_MAP[status].label}</option>)}
                           </select>
                         </td>
 
@@ -448,108 +414,7 @@ export function AdminOrdersPage() {
                 </button>
               </div>
 
-              {/* Payment Verification Card */}
-              <div
-                style={{
-                  backgroundColor: selectedOrder.payment_status === 'paid' ? '#f0fdf4' : (selectedOrder.payment_receipt_url ? '#fefce8' : '#fafafa'),
-                  border: selectedOrder.payment_status === 'paid' ? '1px solid #bbf7d0' : (selectedOrder.payment_receipt_url ? '1px solid #fef08a' : '1px solid #e4e4e7'),
-                  borderRadius: '10px',
-                  padding: '20px',
-                  marginBottom: '24px',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#18181b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <ShieldCheck size={18} color="var(--accent-sunset)" />
-                    <span>무통장 입금 검수 (Payment Verification)</span>
-                  </h4>
-
-                  <span
-                    style={{
-                      fontSize: '0.75rem',
-                      fontWeight: 800,
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      backgroundColor: selectedOrder.payment_status === 'paid' ? '#dcfce7' : '#fef9c3',
-                      color: selectedOrder.payment_status === 'paid' ? '#166534' : '#854d0e',
-                    }}
-                  >
-                    {selectedOrder.payment_status === 'paid' ? '입금 확인 승인됨' : (selectedOrder.payment_receipt_url ? '영수증 제출됨 (검수 필요)' : '영수증 미제출 (입금 대기)')}
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: '8px', fontSize: '0.875rem', marginBottom: '16px' }}>
-                  <span style={{ color: '#71717a' }}>결제 금액:</span>
-                  <strong style={{ fontSize: '1.0625rem', color: 'var(--accent-sunset)' }}>{formatKRW(selectedOrder.total_amount)}</strong>
-
-                  <span style={{ color: '#71717a' }}>입금자명:</span>
-                  <strong>{selectedOrder.payment_sender_name || selectedOrder.customer_name}</strong>
-
-                  {selectedOrder.payment_verified_by && (
-                    <>
-                      <span style={{ color: '#71717a' }}>승인자:</span>
-                      <span>{selectedOrder.payment_verified_by} ({selectedOrder.payment_verified_at?.replace('T', ' ')?.slice(0, 16)})</span>
-                    </>
-                  )}
-                </div>
-
-                {/* Uploaded Receipt Image Preview */}
-                {selectedOrder.payment_receipt_url ? (
-                  <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '14px', border: '1px solid #e4e4e7', marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#18181b' }}>고객 제출 영수증 / 이체 스크린샷:</span>
-                      <a
-                        href={selectedOrder.payment_receipt_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: '0.75rem', color: 'var(--accent-sunset)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                      >
-                        <span>원본 크게보기</span>
-                        <ExternalLink size={12} />
-                      </a>
-                    </div>
-                    <div style={{ height: '220px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <img
-                        src={selectedOrder.payment_receipt_url}
-                        alt="Payment Receipt"
-                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '12px', border: '1px dashed #d4d4d8', color: '#71717a', fontSize: '0.8125rem', textAlign: 'center', marginBottom: '16px' }}>
-                    아직 고객이 결제 영수증 스크린샷을 업로드하지 않았습니다.
-                  </div>
-                )}
-
-                {/* Verification Action Buttons */}
-                {selectedOrder.payment_status !== 'paid' ? (
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyPayment(selectedOrder.id, 'approve')}
-                      className="btn-primary"
-                      style={{ flex: 1, backgroundColor: '#16a34a', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.875rem' }}
-                    >
-                      <Check size={16} />
-                      <span>입금 확인 승인 (주문 확정)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyPayment(selectedOrder.id, 'reject')}
-                      style={{ padding: '12px 18px', backgroundColor: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}
-                    >
-                      반려 / 재요청
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#166534', fontWeight: 700, fontSize: '0.875rem' }}>
-                    <CheckCircle size={16} />
-                    <span>입금 검수가 승인 완료된 주문입니다.</span>
-                  </div>
-                )}
-              </div>
+              <AdminPaymentActions key={selectedOrder.id} orderId={selectedOrder.id} />
 
               {/* Customer & Shipping Details */}
               <div style={{ backgroundColor: '#fafafa', padding: '18px', borderRadius: '8px', marginBottom: '24px', fontSize: '0.875rem', lineHeight: 1.7 }}>

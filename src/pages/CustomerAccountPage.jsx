@@ -456,7 +456,7 @@ export function CustomerAccountPage() {
                             ⚠️ 카드 결제가 필요합니다.
                           </span>
                           <Link
-                            href={`/order-success/${order.order_number}`}
+                            href={`/checkout/toss?order=${encodeURIComponent(order.order_number)}`}
                             style={{
                               backgroundColor: 'var(--accent-sunset)',
                               color: '#ffffff',

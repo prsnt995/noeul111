@@ -7,7 +7,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
 
 function backendRoutes() {
-  const src = read('api/admin.js') + read('api/app.js');
+  const src = read('api/admin.js') + read('api/app.js') + read('server/payments/routes.js');
   const routes: { method: string; pattern: RegExp; raw: string }[] = [];
   for (const m of src.matchAll(/app\.(get|post|put|patch|delete)\('(\/api\/v1\/[^']+)'/g)) {
     const raw = m[2];

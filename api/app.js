@@ -10,6 +10,10 @@ import { encryptSessionTokens } from '../server/lib/sessionCrypto.js';
 import { startOutboxWorker } from '../server/workers/outbox.js';
 import { startExpiryWorker } from '../server/workers/expiry.js';
 import { registerAdminRoutes } from './admin.js';
+import { createPaymentService } from '../server/payments/toss.js';
+import { startPaymentRecoveryWorker } from '../server/payments/recovery.js';
+import { paymentStore } from '../server/payments/store.js';
+import { registerPaymentRoutes } from '../server/payments/routes.js';
 
 const env = process.env;
 const production = env.NODE_ENV === 'production';
@@ -26,6 +30,7 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' }, contentSecu
 app.use(cors({ origin, credentials: true, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Idempotency-Key'] }));
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') }));
 const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
+const paymentLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const checkoutLimiter = rateLimit({ windowMs: 15*60*1000, limit: 3, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') });
 app.use(express.json({ limit: '256kb', strict: true }));
 app.use((req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Referrer-Policy', 'strict-origin-when-cross-origin'); res.set('Cache-Control', req.method === 'GET' ? 'private, max-age=0' : 'no-store'); next(); });
@@ -125,7 +130,7 @@ const authenticate = async (req, res, next) => { const s = await session(req, re
 const staff = (roles) => async (req, res, next) => { const s = req.locals?.session; if (!s || !roles.includes(s.role)) return error(res, 403, 'PERMISSION_DENIED'); if (MFA_ENFORCEMENT && s.aal !== 'aal2') return error(res, 403, 'MFA_REQUIRED'); next(); };
 
 // Register admin routes
-registerAdminRoutes(app, { database, error, auditLog, authenticate, staff, stepUp, releaseHoldRpc: async () => ({ outcome: 'released' }) });
+registerAdminRoutes(app, { database, error, auditLog, authenticate, staff, stepUp, releaseHoldRpc: async (args) => { const result = await database().rpc('release_hold', args); if (result.error) throw result.error; return result.data; } });
 
 app.get('/health/live', (req, res) => res.json({ ok: true }));
 function enrichOrders(orders) {
@@ -211,15 +216,32 @@ app.get('/api/v1/orders/:publicId', authenticate, async (req, res) => { try { co
 // Cancel order (finding #21): idempotent release of stock reservations and
 // coupon holds. Only unsettled orders can cancel; already-canceled orders
 // return success without double-releasing.
-app.post('/api/v1/orders/:publicId/cancel', authenticate, async (req, res) => { try { const s = req.locals.session; const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).eq('user_id', s.user_id).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); if (order.status === 'canceled') return res.json({ success: true, data: order, duplicated: true }); if (!['pending_payment', 'paid'].includes(order.status)) return error(res, 409, 'ORDER_NOT_CANCELLABLE'); await database().from('orders').update({ status: 'canceled' }).eq('id', order.id); const { data: items } = await database().from('order_items').select('*').eq('order_id', order.id); for (const item of (items || [])) { const { data: pv } = await database().from('product_variants').select('reserved').eq('id', item.variant_id).maybeSingle(); if (pv && (pv.reserved || 0) >= item.quantity) { await database().from('product_variants').update({ reserved: pv.reserved - item.quantity }).eq('id', item.variant_id); } } if (order.coupon_code) { const { data: cRow } = await database().from('coupons').select('reserved').eq('code', order.coupon_code).maybeSingle(); if (cRow && (cRow.reserved || 0) > 0) await database().from('coupons').update({ reserved: cRow.reserved - 1 }).eq('code', order.coupon_code); } await database().rpc('release_hold', { p_order_id: order.id }); /* claimedCancel: state-qualified */ const claimedCancel = await database().from('orders').update({ status: 'canceled' }).eq('id', order.id).in('status', ['pending_payment','paid']).select('id').maybeSingle(); await database().from('outbox').insert({ effect_key: `order-cancel:${order.id}`, kind: 'ORDER_CANCELED', payload: { order_id: order.id } }); await notificationService.sendCancellationNotification(order); res.json({ success: true, data: { ...order, status: 'canceled' } }); } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); } });
+app.post('/api/v1/orders/:publicId/cancel', authenticate, async (req, res) => {
+  try {
+    const { data: order, error: lookupError } = await database().from('orders').select('*').eq('order_number', req.params.publicId).eq('user_id', req.locals.session.user_id).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
+    if (order.status === 'canceled') return res.json({ success: true, data: order, duplicated: true });
+    if (order.status !== 'pending_payment') return error(res, 409, 'ORDER_NOT_CANCELLABLE');
+    // HANDOFF(PG_ONLY): same row lock as claimConfirmation; no non-atomic fallback.
+    // Paid orders must use the authorized PG refund endpoint instead.
+    const { data: claimedCancel, error: cancelError } = await database().rpc('release_hold', {
+      p_order_id: order.id, p_from: ['pending_payment'], p_to: 'canceled',
+      p_effect_key: `order-cancel:${order.id}`, p_kind: 'ORDER_CANCELED',
+    });
+    if (cancelError) throw cancelError;
+    if (!['released', 'already'].includes(claimedCancel?.outcome)) return error(res, 409, 'ORDER_NOT_CANCELLABLE');
+    res.json({ success: true, data: { ...order, status: 'canceled' } });
+  } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); }
+});
 
-// TOSS PAYMENTS (finding #1: fail-closed until live payments are enabled;
-// only verified Toss results may move an order to paid)
-app.post('/api/v1/payments/toss/prepare', authenticate, checkoutLimiter, async (req, res) => { try { if (env.PAYMENTS_ENABLED !== 'true') return error(res, 503, 'PAYMENTS_DISABLED'); const s = req.locals.session; const { orderId } = req.body; const { data: order } = await database().from('orders').select('*').eq('order_number', orderId).eq('user_id', s.user_id).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); if (!['pending_payment'].includes(order.status)) return error(res, 409, 'ORDER_STATE_INVALID'); res.json({ success: true, data: { orderId: order.order_number, amount: order.amount, clientKey: env.TOSS_CLIENT_KEY || '' } }); } catch { error(res, 503, 'PAYMENTS_UNAVAILABLE'); } });
-app.post('/api/v1/payments/toss/confirm', authenticate, checkoutLimiter, async (req, res) => { try { if (env.PAYMENTS_ENABLED !== 'true') return error(res, 503, 'PAYMENTS_DISABLED'); const { paymentKey, orderId, amount } = req.body; const s = req.locals.session; if (!paymentKey || !orderId || !Number.isInteger(amount)) return error(res, 400, 'INVALID_PAYMENT'); const { data: order } = await database().from('orders').select('*').eq('order_number', orderId).eq('user_id', s.user_id).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); if (order.amount !== amount) return error(res, 400, 'AMOUNT_MISMATCH'); if (!['pending_payment', 'confirming'].includes(order.status)) return error(res, 409, 'ORDER_STATE_INVALID'); const { data: claimed } = await database().from('orders').update({ status: 'confirming' }).eq('id', order.id).in('status', ['pending_payment','confirming']).select('id').maybeSingle(); if (!claimed) return error(res, 409, 'ORDER_STATE_INVALID'); try { const tossRes = await fetch(`https://api.tosspayments.com/v1/payments/confirm`, { method: 'POST', headers: { Authorization: `Basic ${Buffer.from(`${env.TOSS_SECRET_KEY}:`).toString('base64')}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentKey, orderId, amount }) }); const payment = await tossRes.json(); if (!tossRes.ok) throw payment; const method = String(payment.method || payment.easyPay?.provider || '').toUpperCase(); if (method !== 'CARD' && method !== '카드') { await database().from('orders').update({ status: 'pending_payment' }).eq('id', order.id); return error(res, 400, 'CARD_ONLY'); } const state_conflict = await database().from('orders').update({ status: 'paid' }).eq('id', order.id).eq('status', 'confirming').select('id').maybeSingle(); if (!state_conflict) return error(res, 409, 'payment.state_conflict'); await database().from('outbox').insert({ effect_key: `payment:${order.id}`, kind: 'PAYMENT_CONFIRMED', payload: { order_id: order.id, status: 'paid', paymentKey } }); await earnRewardPoints(order.user_id, order.id, order.amount); res.json({ success: true, data: { orderId: order.order_number, status: 'paid' } }); } catch (err) { await database().from('orders').update({ status: 'pending_payment' }).eq('id', order.id); throw err; } } catch { error(res, 503, 'PAYMENTS_UNAVAILABLE'); } });
-app.post('/api/v1/payments/toss/webhook', async (req, res) => { try { res.sendStatus(200); const body = req.body; if (!body.orderId) return; const id = String(req.get('tosspayments-webhook-transmission-id') || `${body.orderId}:${body.status}`); const order = await database().from('orders').select('id,order_number').eq('order_number', body.orderId).maybeSingle(); if (!order) return; await database().from('webhook_events').insert({ id, order_number: body.orderId, order_id: order.id, status: body.status }).maybeSingle(); } catch { /* eslint-disable-line no-empty */ } });
-app.post('/api/v1/admin/payments/:id/refunds', authenticate, staff(['super_admin', 'admin', 'order_manager']), stepUp, async (req, res) => { try { if (env.PAYMENTS_ENABLED !== 'true') return error(res, 503, 'PAYMENTS_DISABLED'); const idempotencyKey = String(req.get('Idempotency-Key') || ''); if (idempotencyKey && !/^[A-Za-z0-9._:-]{8,200}$/.test(idempotencyKey)) return error(res, 400, 'IDEMPOTENCY_KEY_REQUIRED'); const { data: payment } = await database().from('payments').select('*,orders(*)').eq('order_id', req.params.id).maybeSingle(); if (!payment?.payment_key) return error(res, 404, 'PAYMENT_NOT_FOUND'); try { const tossRes = await fetch(`https://api.tosspayments.com/v1/payments/${payment.payment_key}/cancel`, { method: 'POST', headers: { Authorization: `Basic ${Buffer.from(`${env.TOSS_SECRET_KEY}:`).toString('base64')}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ cancelReason: req.body.reason }), 'Idempotency-Key': String(payment.cancel_key || req.body.reason) }); const result = await tossRes.json(); if (!tossRes.ok) throw result; if (payment.status === 'refunded') return res.json({ success: true, data: result, duplicated: true }); await database().from('payments').update({ status: 'refunded' }).eq('order_id', payment.order_id); await database().from('orders').update({ status: 'refunded' }).eq('id', payment.order_id); res.json({ success: true, data: result }); } catch (err) { error(res, 500, 'REFUND_FAILED'); } } catch { error(res, 503, 'PAYMENTS_UNAVAILABLE'); } });
-
+// HANDOFF(PG_ONLY): DB 담당자가 server/payments/README.md의 계약을 구현해야 합니다.
+// 키 입력만으로 결제는 활성화되지 않습니다.
+const paymentService = createPaymentService({ env, store: paymentStore });
+registerPaymentRoutes(app, {
+  service: paymentService,
+  authenticate, staff, stepUp, limiter: paymentLimiter,
+});
 
 // SHIPMENT / TRACKING
 app.post('/api/v1/orders/:publicId/shipments', authenticate, staff(['super_admin','admin','order_manager']), stepUp, async (req, res) => { try { const s = req.locals.session; const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); if (!['paid','processing'].includes(order.status)) return error(res, 409, 'ORDER_NOT_SHIPPABLE'); const { data: shipment } = await database().from('shipments').insert({ order_id: order.id, courier_name: req.body.courier || '', tracking_number: req.body.tracking_number || '', status: 'dispatched' }).select().maybeSingle(); await database().from('orders').update({ status: 'shipped' }).eq('id', order.id); await database().from('order_status_history').insert({ order_id: order.id, status: 'shipped', note: 'Shipment dispatched', actor_id: s.user_id }); await notificationService.sendShippingUpdate(order); res.json({ success: true, data: shipment }); } catch { error(res, 503, 'SHIPMENT_UNAVAILABLE'); } });
@@ -244,4 +266,4 @@ app.use((err, req, res, next) => { /* eslint-disable-line no-unused-vars */ cons
 const port = Number(env.PORT || 5001);
 export default app;
 export const router = app;
-if (process.argv[1] === new URL(import.meta.url).pathname) { app.listen(port, () => { console.log(`NOEUL production API listening on ${port}`); if (process.env.WORKERS_ENABLED !== '0') { startOutboxWorker().catch(err => console.error('[Outbox] start failed:', err.message)); startExpiryWorker().catch(err => console.error('[Expiry] start failed:', err.message)); } }); }
+if (process.argv[1] === new URL(import.meta.url).pathname) { app.listen(port, () => { console.log(`NOEUL production API listening on ${port}`); if (process.env.WORKERS_ENABLED !== '0') { startOutboxWorker().catch(err => console.error('[Outbox] start failed:', err.message)); startPaymentRecoveryWorker({ service: paymentService, store: paymentStore }); startExpiryWorker().catch(err => console.error('[Expiry] start failed:', err.message)); } }); }

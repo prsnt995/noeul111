@@ -855,13 +855,13 @@ export function registerAdminRoutes(app, ctx) {
       if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
       const allowed = {
         pending_payment: ['canceled'],
-        paid: ['processing', 'canceled'],
-        processing: ['shipped', 'delivered', 'canceled'],
+        paid: ['processing'],
+        processing: ['shipped', 'delivered'],
         shipped: ['delivered'],
       };
       if (!allowed[order.status]?.includes(next)) return error(res, 409, 'ORDER_STATE_INVALID');
       if (next === 'canceled') {
-        const rel = await releaseHoldRpc({ p_order_id: req.params.id, p_from: ['pending_payment', 'paid'], p_to: 'canceled', p_effect_key: `order-cancel:${req.params.id}`, p_kind: 'ORDER_CANCELED' });
+        const rel = await releaseHoldRpc({ p_order_id: req.params.id, p_from: ['pending_payment'], p_to: 'canceled', p_effect_key: `order-cancel:${req.params.id}`, p_kind: 'ORDER_CANCELED' });
         if (!rel || (rel.outcome !== 'released' && rel.outcome !== 'already')) return error(res, 409, 'ORDER_STATE_INVALID');
       } else {
         const { data: claimed } = await database().from('orders').update({ status: next }).eq('id', req.params.id).eq('status', order.status).select('id').maybeSingle();
@@ -887,7 +887,8 @@ export function registerAdminRoutes(app, ctx) {
         await auditLog(req, 'PAYMENT_VERIFY', { table: 'orders', id: order.id });
         res.json({ success: true, message: '입금이 성공적으로 승인 확인되었습니다. 주문이 확정되었습니다.', data: await adminOrderDetail(order.id) });
       } else {
-        const rel = await releaseHoldRpc({ p_order_id: order.id, p_from: ['pending_payment', 'paid'], p_to: 'canceled', p_effect_key: `order-cancel:${order.id}`, p_kind: 'ORDER_CANCELED' });
+        if (action !== 'reject' || order.status !== 'pending_payment') return error(res, 409, 'USE_PG_REFUND');
+        const rel = await releaseHoldRpc({ p_order_id: order.id, p_from: ['pending_payment'], p_to: 'canceled', p_effect_key: `order-cancel:${order.id}`, p_kind: 'ORDER_CANCELED' });
         if (!rel || (rel.outcome !== 'released' && rel.outcome !== 'already')) return error(res, 409, 'ORDER_NOT_CANCELLABLE');
         await auditLog(req, 'PAYMENT_REJECT', { table: 'orders', id: order.id, after: { notes: req.body?.notes || null } });
         res.json({ success: true, message: '입금 확인이 반려 처리되었습니다.', data: await adminOrderDetail(order.id) });

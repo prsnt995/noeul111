@@ -23,6 +23,7 @@ import { ShopPage } from './pages/ShopPage.jsx';
 import { ProductDetailPage } from './pages/ProductDetailPage.jsx';
 import { CartPage } from './pages/CartPage.jsx';
 import { CheckoutPage } from './pages/CheckoutPage.jsx';
+import { TossPaymentPage, TossPaymentSuccessPage, TossPaymentFailPage } from './pages/TossPaymentPage.jsx';
 import { OrderSuccessPage } from './pages/OrderSuccessPage.jsx';
 import { CustomerAuthPage } from './pages/CustomerAuthPage.jsx';
 import { AuthCallbackPage } from './pages/AuthCallbackPage.jsx';
@@ -78,6 +79,9 @@ function AppContent() {
           <Route path="/shop" component={ShopPage} />
           <Route path="/product/:id" component={ProductDetailPage} />
           <Route path="/cart" component={CartPage} />
+          <Route path="/checkout/toss/success" component={TossPaymentSuccessPage} />
+          <Route path="/checkout/toss/fail" component={TossPaymentFailPage} />
+          <Route path="/checkout/toss" component={TossPaymentPage} />
           <Route path="/checkout" component={CheckoutPage} />
           <Route path="/order-success/:orderNumber" component={OrderSuccessPage} />
           <Route path="/auth" component={CustomerAuthPage} />

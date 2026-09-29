@@ -1,0 +1,20 @@
+// 오직 루프백에서 실행하는 수동 검증실. .env/실제 키/운영 DB를 읽지 않습니다.
+import express from 'express';
+import {createServer} from 'vite';
+import react from '@vitejs/plugin-react';
+import {readFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {createLab} from '../test/pg-lab/fixture.js';
+import {registerPaymentRoutes} from '../server/payments/routes.js';
+const app=express(); app.use(express.json());
+let lab=createLab();
+const service=new Proxy({}, {get:(_t,name)=>(...args)=>lab.service[name](...args)});
+const pass=(_q,_s,n)=>n();
+app.get('/reset',(req,res)=>{lab=createLab(String(req.query.scenario));res.redirect(`/checkout/toss?order=lab_order_001&scenario=${encodeURIComponent(req.query.scenario || 'normal')}`);});
+app.get('/api/v1/me',(_req,res)=>res.json({success:true,csrf:'lab-only'}));
+app.get('/lab/state',(_req,res)=>res.json({order:lab.order,counters:lab.counters}));
+registerPaymentRoutes(app,{service,authenticate:(req,_res,next)=>{req.locals={session:{user_id:'lab-user'}};next();},staff:()=>pass,stepUp:pass,limiter:pass});
+const vite=await createServer({configFile:false,plugins:[react()],resolve:{alias:{'@tosspayments/tosspayments-sdk':fileURLToPath(new URL('../test/pg-lab/sdk.js',import.meta.url))}},server:{middlewareMode:true},appType:'custom'});
+app.use(vite.middlewares);
+app.use(async(req,res,next)=>{try{res.type('html').send(await vite.transformIndexHtml(req.originalUrl,await readFile(new URL('../test/pg-lab/index.html',import.meta.url),'utf8')));}catch(e){next(e);}});
+app.listen(5191,'127.0.0.1',()=>console.log('PG local mock lab: http://127.0.0.1:5191/reset?scenario=normal'));

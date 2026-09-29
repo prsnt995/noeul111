@@ -81,7 +81,7 @@ describe('Wave 1 — Session and token security', () => {
       expect(app.includes('s.aal && s.aal')).toBe(false);
       expect(app.includes('MFA_ENFORCEMENT')).toBe(true);
       expect(app.includes('MFA_REQUIRED')).toBe(true);
-      expect(app.includes("staff(['super_admin', 'admin', 'order_manager']), stepUp")).toBe(true);
+      expect(read('server/payments/routes.js').includes("staff(['super_admin','admin','order_manager']), stepUp")).toBe(true);
     });
   });
 
