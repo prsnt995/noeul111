@@ -54,17 +54,18 @@ export function Footer() {
     }));
   };
 
-  // Exact verified business registration details as requested
+  // 로제나 홈페이지의 사업자 정보. 주소는 사용자가 지정한 인천 주소를 사용합니다.
   const verifiedBusiness = {
     brandName: 'NOEUL',
     website: 'https://noeul.me',
     websiteShort: 'noeul.me',
-    companyName: '주식회사 페리어스엔지',
-    representative: '박기성',
-    businessNumber: '610-88-00182',
-    address: '경기도 파주시 송학2길 62-3, 1층(야당동)',
-    phone: '01083615305',
-    phoneFormatted: '010-8361-5305',
+    companyName: '주식회사 로제나',
+    representative: '김종성',
+    businessNumber: '548-87-03441',
+    corporationNumber: '285011-0061832',
+    address: '인천 남동구 논고개로 123번길, 45, 609호',
+    phone: '0324227131',
+    phoneFormatted: '032-422-7131',
     email: 'noeulenterprises@gmail.com',
     businessHours: '월요일 ~ 금요일 09:00 - 17:00 (Mon to Fri 9 to 5)',
     ecommerceNumber: '[수정 가능 / 확인 필요]',
@@ -141,12 +142,12 @@ export function Footer() {
               <div style={{ fontSize: '0.75rem', color: '#6e6e73' }}>
                 A business by{' '}
                 <a
-                  href="https://www.noeulenterprises.com"
+                  href="https://rozena.co.kr/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: '#d1d1d6', fontWeight: 600, textDecoration: 'underline' }}
                 >
-                  NOEUL ENTERPRISES
+                  ROZENA
                 </a>
               </div>
             </div>
@@ -300,6 +301,11 @@ export function Footer() {
                   <span style={{ color: '#d1d1d6', fontFamily: 'monospace', letterSpacing: '0.03em', fontWeight: 600 }}>
                     {verifiedBusiness.businessNumber}
                   </span>
+                </div>
+
+                <div>
+                  <span style={{ color: '#6e6e73' }}>법인등록번호: </span>
+                  <span style={{ color: '#d1d1d6' }}>{verifiedBusiness.corporationNumber}</span>
                 </div>
 
                 <div>

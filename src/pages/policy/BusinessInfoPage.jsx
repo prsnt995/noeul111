@@ -9,12 +9,13 @@ export function BusinessInfoPage() {
   const businessData = {
     brandName: 'NOEUL (노을)',
     website: 'https://noeul.me',
-    companyName: '주식회사 페리어스엔지',
-    representative: '박기성',
-    businessNumber: '610-88-00182',
-    address: '경기도 파주시 송학2길 62-3, 1층(야당동)',
-    phone: '01083615305',
-    phoneFormatted: '010-8361-5305',
+    companyName: '주식회사 로제나',
+    representative: '김종성',
+    businessNumber: '548-87-03441',
+    corporationNumber: '285011-0061832',
+    address: '인천 남동구 논고개로 123번길, 45, 609호',
+    phone: '0324227131',
+    phoneFormatted: '032-422-7131',
     email: 'noeulenterprises@gmail.com',
     businessType: '법인사업자',
     ecommerceNumber: '[수정 가능 / 확인 필요]',
@@ -102,6 +103,11 @@ export function BusinessInfoPage() {
               <span style={{ fontSize: '1.0625rem', fontWeight: 700, color: 'var(--accent-sunset, #e05638)', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
                 {businessData.businessNumber}
               </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span>법인등록번호 (Corporate Registration No.)</span>
+              <span>{businessData.corporationNumber}</span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
