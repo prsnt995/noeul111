@@ -39,3 +39,5 @@ api/*.ts
 *.p8
 *.jks
 *.keystore
+.vercel
+.env*
