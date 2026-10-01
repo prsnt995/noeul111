@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext.jsx';
 import { useWishlist } from '../context/WishlistContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { SizeGuideModal } from '../components/common/SizeGuideModal.jsx';
+import { CommercePolicyNotice } from '../components/common/CommercePolicyNotice.jsx';
 import { ProductReviews } from '../components/common/ProductReviews.jsx';
 import {
   Heart,
@@ -168,7 +169,7 @@ export function ProductDetailPage() {
     product?.material ||
     details.fabric ||
     details.fabric_ko ||
-    (lang === 'ko' ? '100% 최고급 코튼' : '100% Combed Cotton');
+    (lang === 'ko' ? '상품 상세 및 제품 라벨을 확인해주세요.' : 'Refer to the product description and label.');
 
   const currentMainImage = orderedImages[selectedImageIndex] || orderedImages[0] || images[0];
 
@@ -634,14 +635,14 @@ export function ProductDetailPage() {
                 <Truck size={16} color="#18181b" />
                 <span>
                   <strong>{lang === 'ko' ? '배송 정보' : 'Shipping'}:</strong>{' '}
-                  {lang === 'ko' ? '전국 무료배송 (₩70,000 이상 결제 시) / 기본 배송비 ₩3,000' : 'Complimentary shipping on orders over ₩70,000.'}
+                  {lang === 'ko' ? '배송비와 공급 일정은 아래 배송 안내에서 확인해주세요.' : 'See shipping information below for fees and dispatch timing.'}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <RefreshCw size={16} color="#18181b" />
                 <span>
                   <strong>{lang === 'ko' ? '교환 및 반품' : 'Returns'}:</strong>{' '}
-                  {lang === 'ko' ? '수령 후 7일 이내 간편 반품 및 교환 가능' : '7-day hassle-free returns and exchanges.'}
+                  {lang === 'ko' ? '수령 후 7일 이내 청약철회 가능. 상세 조건은 반품 안내를 확인해주세요.' : 'Withdrawal within 7 days of delivery; see the return conditions below.'}
                 </span>
               </div>
             </div>
@@ -740,7 +741,7 @@ export function ProductDetailPage() {
                 <div style={{ backgroundColor: '#fcfcfc', border: '1px solid #f0f0f1', padding: '16px 20px', borderRadius: '4px' }}>
                   <p style={{ margin: '4px 0' }}>• <strong>SKU:</strong> {product.sku}</p>
                   <p style={{ margin: '4px 0' }}>• <strong>Gender:</strong> {product.gender ? product.gender.toUpperCase() : 'UNISEX'}</p>
-                  <p style={{ margin: '4px 0' }}>• <strong>Origin:</strong> Made in Seoul, Republic of Korea</p>
+                  {(details.origin || product.origin) && <p style={{ margin: '4px 0' }}>• <strong>Origin:</strong> {details.origin || product.origin}</p>}
                 </div>
               </div>
             )}
@@ -756,32 +757,13 @@ export function ProductDetailPage() {
                 </h4>
                 <p>
                   {lang === 'ko'
-                    ? '첫 세탁은 드라이클리닝을 권장합니다. 찬물 단독 손세탁 또는 중성세제를 이용한 울코스 세탁을 추천하며 직사광선을 피해 그늘에서 건조하십시오.'
-                    : 'Machine wash cold delicate cycle with mild detergent. Lay flat to dry away from direct sunlight. Dry clean recommended for initial cleaning.'}
+                    ? (details.care_ko || details.care || '제품 라벨에 표시된 세탁·취급 방법을 따라주세요.')
+                    : (details.care || details.care_ko || 'Follow the washing and care instructions on the product label.')}
                 </p>
               </div>
             )}
 
-            {activeTab === 'shipping' && (
-              <div>
-                <h4 style={{ fontWeight: 700, color: '#18181b', marginBottom: '8px' }}>
-                  {lang === 'ko' ? '배송 안내 (Shipping)' : 'Shipping Information'}
-                </h4>
-                <p style={{ marginBottom: '16px' }}>
-                  {lang === 'ko'
-                    ? '우체국택배 및 CJ대한통운을 통해 평일 오후 2시 이전 결제 완료 시 당일 출고됩니다. ₩70,000 이상 구매 시 무료배송(기본 배송비 ₩3,000, 제주/도서산간 ₩3,000 추가) 혜택이 적용됩니다.'
-                    : 'Orders placed before 2:00 PM KST ship the same business day via standard courier. Complimentary delivery for orders over ₩70,000.'}
-                </p>
-                <h4 style={{ fontWeight: 700, color: '#18181b', marginBottom: '8px' }}>
-                  {lang === 'ko' ? '교환 및 반품 안내 (Returns & Exchanges)' : 'Return & Exchange Policy'}
-                </h4>
-                <p>
-                  {lang === 'ko'
-                    ? '상품 수령 후 7일 이내 마이페이지 주문조회 또는 고객센터를 통해 접수 가능합니다. 착용 흔적, 향수 냄새, 택 제거가 없는 온전한 상태여야 합니다.'
-                    : 'Returns and exchanges are accepted within 7 days of delivery. Items must be unworn, undamaged, with all original tags intact.'}
-                </p>
-              </div>
-            )}
+            {activeTab === 'shipping' && <CommercePolicyNotice />}
 
             {activeTab === 'reviews' && (
               <ProductReviews productId={product.id} />

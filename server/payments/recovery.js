@@ -1,4 +1,4 @@
-// HANDOFF(PG_ONLY): 서버/브라우저 재시작과 무관하게 DB의 복구 작업을 처리합니다.
+// 서버/브라우저 재시작과 무관하게 DB의 복구 작업을 처리합니다.
 // 결제 승인·환불을 재호출하지 않습니다. 조회 실패는 잠금을 유지하고 재조회합니다.
 export async function runPaymentRecoveryBatch({ service, store, now = Date.now() }) {
   if (!service.configured()) return { skipped: true };

@@ -4,7 +4,7 @@ import { loadTossPayments } from '@tosspayments/tosspayments-sdk';
 import { api } from '../utils/api.js';
 
 // https://docs.tosspayments.com/guides/v2/payment-widget/integration
-// HANDOFF(PG_ONLY): 위젯 전용 키 쌍과 계약된 즉시 결제 수단을 설정하세요.
+// 위젯 전용 키 쌍으로 즉시 결제 수단을 렌더링합니다.
 // 가상계좌는 별도 입금·만료 처리 구현 전 사용할 수 없습니다.
 export function TossPaymentPage() {
   const orderId = new URLSearchParams(window.location.search).get('order') || '';

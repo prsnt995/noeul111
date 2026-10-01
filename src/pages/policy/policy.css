@@ -1,0 +1,14 @@
+.policy-page { max-width: 980px; margin: 48px auto 80px; padding: 0 24px; color: var(--text-primary); line-height: 1.85; overflow-wrap: anywhere; }
+.policy-page header { margin: 28px 0; border-bottom: 1px solid var(--border-light, #ddd); padding-bottom: 24px; }
+.policy-page h1 { font-size: clamp(1.7rem, 5vw, 2.5rem); line-height: 1.4; }
+.policy-page h2 { font-size: 1.15rem; margin-bottom: 12px; }
+.policy-page section { margin: 32px 0; }
+.policy-page p { margin: 10px 0; }
+.policy-page ul, .policy-page ol { padding-left: 24px; }
+.policy-page nav { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.policy-page a { color: var(--accent-sunset, #b74930); text-decoration: underline; text-underline-offset: 3px; }
+.policy-page aside { padding: 20px; background: var(--bg-card, #f6f6f6); border: 1px solid var(--border-light, #ddd); border-radius: 8px; }
+.policy-table-scroll { overflow-x: auto; }
+.policy-page table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.92rem; }
+.policy-page th, .policy-page td { padding: 12px; vertical-align: top; border: 1px solid var(--border-light, #ddd); min-width: 120px; }
+.policy-page th { background: var(--bg-card, #f6f6f6); }

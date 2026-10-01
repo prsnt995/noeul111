@@ -1,187 +1,29 @@
 import React from 'react';
 import { Link } from 'wouter';
-import { useLanguage } from '../../context/LanguageContext.jsx';
-import { Shield, ArrowLeft, Mail, Phone, Lock } from 'lucide-react';
+import { business } from '../../config/business.js';
+import { PolicyLayout, Section, PolicyTable } from './PolicyLayout.jsx';
 
 export function PrivacyPage() {
-  const { lang } = useLanguage();
-
-  return (
-    <div style={{ minHeight: '100vh', padding: '60px 0 100px' }}>
-      <div className="container" style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px' }}>
-        
-        {/* Navigation Back Link */}
-        <div style={{ marginBottom: '32px' }}>
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--accent-sunset, #e05638)', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>
-            <ArrowLeft size={16} />
-            <span>홈으로 돌아가기</span>
-          </Link>
-        </div>
-
-        {/* Page Header */}
-        <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '32px', marginBottom: '40px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-            <Shield size={28} color="var(--accent-sunset, #e05638)" />
-            <span style={{ fontSize: '0.8125rem', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--accent-sunset, #e05638)' }}>
-              NOEUL LEGAL POLICY
-            </span>
-          </div>
-          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>
-            개인정보처리방침
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-            주식회사 페리어스엔지(이하 "회사")는 회원님의 개인정보를 소중하게 생각하며, 「개인정보 보호법」 및 「정보통신망 이용촉진 및 정보보호 등에 관한 법률」 등 관련 법령을 준수합니다.
-          </p>
-          <div style={{ display: 'flex', gap: '16px', marginTop: '16px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-            <span>시행일자: 2026년 9월 17일</span>
-            <span>|</span>
-            <span>최종 수정일: 2026년 9월 17일</span>
-          </div>
-        </div>
-
-        {/* Legal Policy Content */}
-        <div className="policy-body" style={{ fontSize: '0.9375rem', lineHeight: 1.85, color: 'var(--text-secondary)' }}>
-          
-          {/* Section 1 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              1. 개인정보의 수집 항목 및 수집 방법
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              회사는 회원가입, 주문 처리, 고객 상담 및 서비스 제공을 위해 아래와 같은 минимальный 범위의 개인정보를 수집하고 있습니다.
-            </p>
-            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '10px' }}>가. 수집 항목</h3>
-              <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <li><strong>회원 가입 시:</strong> 이름, 이메일 주소, 비밀번호, 휴대폰 번호</li>
-                <li><strong>상품 주문 및 배송 시:</strong> 수령인 이름, 수령인 연락처, 배송지 주소, 배송 요청사항</li>
-                <li><strong>결제 진행 시:</strong> 무통장 입금자명, 결제 승인 기록 (카드번호 등 금융 정보는 토스페이먼츠 등 전자지급결제대행사에 안전하게 전송되며 회사 서버에 저장되지 않습니다)</li>
-                <li><strong>자동 수집 항목:</strong> 서비스 이용 기록, 접속 로그, 쿠키, IP 주소</li>
-              </ul>
-            </div>
-          </section>
-
-          {/* Section 2 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              2. 개인정보의 수집 및 이용 목적
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              수집한 개인정보는 다음의 목적을 위해 활용됩니다. 명시된 목적 외의 용도로는 사용되지 않으며 이용 목적이 변경될 시 사전 동의를 구할 예정입니다.
-            </p>
-            <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <li><strong>서비스 제공 및 계약 이행:</strong> 상품 배송, 결제 처리, 주문 내역 확인 및 청구서 발송</li>
-              <li><strong>회원 관리:</strong> 회원제 서비스 이용에 따른 본인확인, 개인 식별, 불량회원의 부정이용 방지, 가입 의사 확인</li>
-              <li><strong>고객 상담 및 분쟁 처리:</strong> 문의사항 답변, 공지사항 전달, 반품 및 교환 서비스 제공</li>
-            </ul>
-          </section>
-
-          {/* Section 3 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              3. 개인정보의 보유 및 이용 기간
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              원칙적으로 개인정보 수집 및 이용 목적이 달성된 후에는 해당 정보를 지체 없이 파기합니다. 단, 관계법령의 규정에 의하여 보존할 필요가 있는 경우 회사는 아래와 같이 관계법령에서 정한 일정한 기간 동안 회원정보를 보관합니다.
-            </p>
-            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-              <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <li><strong>계약 또는 청약철회 등에 관한 기록:</strong> 5년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
-                <li><strong>대금결제 및 재화 등의 공급에 관한 기록:</strong> 5년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
-                <li><strong>소비자의 불만 또는 분쟁처리에 관한 기록:</strong> 3년 (전자상거래 등에서의 소비자보호에 관한 법률)</li>
-                <li><strong>웹사이트 방문기록 (로그):</strong> 3개월 (통신비밀보호법)</li>
-              </ul>
-            </div>
-          </section>
-
-          {/* Section 4 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              4. 개인정보의 제3자 제공
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              회사는 이용자의 개인정보를 원칙적으로 외부에 제공하지 않습니다. 다만, 이용자가 사전에 동의한 경우나 법령의 규정에 의거하거나, 수사 목적으로 법령에 정해진 절차와 방법에 따라 수사기관의 요구가 있는 경우는 예외로 합니다.
-            </p>
-          </section>
-
-          {/* Section 5 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              5. 개인정보 처리 위탁
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              회사는 원활한 서비스 이행을 위해 다음과 같이 개인정보 처리 업무를 외부 전문업체에 위탁하여 운영하고 있습니다.
-            </p>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
-                    <th style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>수탁업체</th>
-                    <th style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>위탁 업무 내용</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>CJ대한통운 / 로젠택배 등 지정 택배사</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>상품 배송 업무</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>토스페이먼츠 주식회사</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>전자 결제 수단 제공 및 결제 대행</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* Section 6 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              6. 이용자의 권리와 행사 방법
-            </h2>
-            <p>
-              이용자는 언제든지 등록되어 있는 자신의 개인정보를 조회하거나 수정할 수 있으며 가입해지를 요청할 수도 있습니다. 이용자의 개인정보 조회, 수정을 위해서는 ‘마이페이지’를, 가입해지(동의철회)를 위해서는 고객센터로 연락하시면 지체 없이 조치하겠습니다.
-            </p>
-          </section>
-
-          {/* Section 7 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              7. 개인정보 보호책임자
-            </h2>
-            <p style={{ marginBottom: '16px' }}>
-              회사는 개인정보 처리에 관한 업무를 총괄해서 책임지고, 개인정보 처리와 관련한 이용자의 불만처리 및 피해구제 등을 위하여 아래와 같이 개인정보 보호책임자를 지정하고 있습니다.
-            </p>
-            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div><strong>성명:</strong> 박기성 대표이사</div>
-                <div><strong>소속/직책:</strong> 주식회사 페리어스엔지 개인정보 보호책임자</div>
-                <div><strong>전화번호:</strong> 01083615305</div>
-                <div><strong>이메일:</strong> noeulenterprises@gmail.com</div>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 8 */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-              8. 개인정보 침해 신고 및 문의
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              개인정보 침해에 대한 신고나 상담이 필요하신 경우에는 아래 기관에 문의하시기 바랍니다.
-            </p>
-            <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.875rem' }}>
-              <li>개인정보분쟁조정위원회: (국번없이) 1833-6972 (www.kopico.go.kr)</li>
-              <li>개인정보침해신고센터: (국번없이) 118 (privacy.kisa.or.kr)</li>
-              <li>대검찰청 사이버수사과: (국번없이) 1301 (www.spo.go.kr)</li>
-              <li>경찰청 사이버수사국: (국번없이) 182 (ecrm.police.go.kr)</li>
-            </ul>
-          </section>
-
-        </div>
-      </div>
-    </div>
-  );
+  return <PolicyLayout title="개인정보처리방침">
+    <p>{business.companyName}는 NOEUL 이용자의 개인정보를 다음과 같이 처리합니다. 구매·회원 서비스에 필요한 정보는 계약 체결·이행을 위해 처리하며, 법정 거래기록은 법령상 의무에 따라 보관합니다(개인정보 보호법 제15조제1항제4호 및 제2호).</p>
+    <Section title="1. 처리 목적·항목·기간"><PolicyTable headers={['업무와 목적', '처리 항목', '보유기간']} rows={[
+      ['구글 로그인·회원 식별·계정 관리', '구글 연동 식별자, 이메일, 이름, 구글이 제공하는 프로필 이미지, 회원 식별자 및 로그인 세션 정보', '회원 탈퇴 또는 목적 달성 시까지. 거래기록은 법정 기간 보관'],
+      ['주문·결제·배송·취소·환불', '구매자 식별자, 주문 상품·수량·금액, 수령인 이름·전화번호·우편번호·주소·상세주소, 주문번호, 결제수단·승인/취소 정보, 구매 약관 확인 버전·일시', '계약·결제·공급 기록 5년'],
+      ['배송지 저장', '수령인 이름, 전화번호, 우편번호, 주소·상세주소', '이용자가 삭제하거나 회원 탈퇴 시까지. 주문에 포함된 정보는 법정 보관'],
+      ['문의·불만·분쟁 처리', '회원정보, 주문번호, 연락처, 이용자가 제출한 문의 내용 및 처리기록', '불만·분쟁 처리기록 3년'],
+      ['상품 후기', '회원 식별자, 상품, 별점, 후기 내용 및 작성일', '삭제 요청 또는 회원 탈퇴 시까지. 법정 보관이 필요한 자료는 별도 보관'],
+      ['로그인 보안·부정결제 방지', '세션 식별자, 인증 토큰, 요청 IP, 접속·오류 기록', '목적 달성 또는 세션 만료 시까지. 법령상 보관 대상은 해당 기간'],
+    ]} /><p>배송 필수 항목이 제공되지 않으면 주문·배송을 진행할 수 없습니다. 상세주소는 필요한 경우에만 입력합니다. 회사는 결제창에서 입력하는 카드번호 전체·카드 비밀번호·주민등록번호를 직접 수집하지 않습니다. 구글 로그인 시 제공되는 정보는 구글의 동의 화면에서도 확인할 수 있습니다. 만 14세 미만 아동의 회원 가입은 받지 않습니다.</p></Section>
+    <Section title="2. 법정 기록 보관과 파기"><p>전자상거래법 및 시행령에 따라 계약·청약철회 기록과 대금결제·공급 기록은 5년, 소비자 불만·분쟁 기록은 3년, 표시·광고 기록은 6개월 보관합니다. 회원 탈퇴 후 법정 보관 자료는 서비스 이용 자료와 구분하여 해당 목적에만 이용합니다.</p><p>보유기간이 끝나거나 처리 목적을 달성한 정보는 지체 없이 파기합니다. 전자파일은 복구하기 어렵게 삭제하고, 출력물은 분쇄 또는 소각합니다. 법령에 따른 보관이 필요한 경우 보관 근거·기간에 따라 별도로 관리합니다.</p></Section>
+    <Section title="3. 개인정보 처리 위탁과 결제서비스"><PolicyTable headers={['수탁자', '업무']} rows={[
+      ['토스페이먼츠 주식회사', '전자결제 처리, 승인·취소·환불 및 결제 관련 민원 처리'],
+      ['Supabase Pte. Ltd.', '회원 인증, 데이터베이스·파일 저장 등 클라우드 서비스 운영'],
+      ...(business.courier ? [[business.courier, '상품 배송·반품 수거']] : []),
+    ]} /><p>결제수단 제공자의 필수 동의와 개인정보 안내는 토스 결제창에서 별도로 제공됩니다. 회사는 위탁계약을 통해 목적 외 처리 금지, 보호조치, 재위탁 관리와 감독 등 관련 의무를 정하고 위탁 내용 변경을 공개합니다. 배송 업무에 개인정보를 맡기는 경우 해당 운송사와 위탁 내용을 공개합니다.</p></Section>
+    <Section title="4. 제3자 제공과 국외 서비스"><p>회사는 개인정보를 판매하거나 광고 목적으로 제공하지 않습니다. 별도 동의 또는 법률상 근거가 있는 경우에만 제3자에게 제공합니다.</p><p>회원·주문 데이터의 기본 저장 지역은 Supabase 대한민국 서울 리전입니다. Supabase는 싱가포르 법인이며, 국내 저장 위치와 서비스 운영 과정의 국외 처리는 다를 수 있습니다. 국외 이전이 필요한 경우 이전 국가·받는 자·항목·시기와 방법·목적·보유기간·거부 방법 및 법적 근거를 안내하고 관계 법령에서 요구하는 절차를 이행합니다. <a href="https://supabase.com/legal/customer-resources/data-processing-addendum" target="_blank" rel="noopener noreferrer">Supabase 데이터 처리 계약</a></p></Section>
+    <Section title="5. 이용자의 권리와 행사 방법"><p>이용자 또는 적법한 대리인은 개인정보 열람·정정·삭제·처리정지 및 동의 철회를 고객센터로 요청할 수 있습니다. 회사는 본인 또는 대리인 확인 후 법정 기한 내 처리 결과를 안내합니다. 법령상 보존 의무 등으로 요청을 제한하는 경우 사유를 알립니다. 구글 로그인 연결 해제와 쇼핑몰 회원 탈퇴는 별개의 처리이므로 탈퇴는 고객센터로 요청해주세요.</p></Section>
+    <Section title="6. 안전성 확보와 자동수집 장치"><p>회사는 접근권한 제한, 서버 인증정보 관리, 통신 암호화 및 접속 관리 등 개인정보 보호 조치를 적용합니다. 로그인 유지·보안용 쿠키와 장바구니·언어 설정을 저장하는 브라우저 저장소를 이용합니다. 브라우저 설정에서 삭제하거나 차단할 수 있으나 로그인·주문 기능이 제한될 수 있습니다. 자세한 내용은 <Link href="/cookies">쿠키 및 브라우저 저장소 안내</Link>를 참고해주세요.</p><p>NOEUL은 맞춤형 광고·방문자 분석을 위한 추적 기능을 사용하지 않습니다. 새로 도입하면 처리방침과 필요한 동의 절차를 먼저 제공합니다. 회사는 구매자를 대상으로 별도 자동화된 의사결정을 수행하지 않습니다.</p></Section>
+    <Section title="7. 개인정보 문의와 권리 구제"><p>{business.privacyOfficer && <>개인정보 보호책임자: {business.privacyOfficer}<br /></>}개인정보 문의 접수: {business.companyName} 고객센터<br />전화 {business.phoneFormatted} · 이메일 {business.email}</p><p>개인정보침해신고센터(118, privacy.kisa.or.kr), 개인정보분쟁조정위원회(1833-6972, kopico.go.kr)를 통해 상담·분쟁조정을 요청할 수 있습니다.</p></Section>
+    <Section title="8. 방침 변경"><p>이 방침이 변경되면 사이트에 변경 내용과 적용일을 알립니다. 동의가 필요한 처리 변경은 적용 전에 별도 동의를 받습니다.</p></Section>
+  </PolicyLayout>;
 }
-
-export default PrivacyPage;

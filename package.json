@@ -20,11 +20,7 @@
     "lint:fix": "npm run lint -- --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src/ api/ server/ --cache",
-    "ci": "npm run typecheck && npm run lint && npm run test && npm run build",
-    "pg:lab": "node scripts/pg-lab.mjs",
-    "pg:preflight": "node scripts/pg-preflight.mjs",
-    "test:pg": "vitest run test/toss-payments.test.js test/payment-recovery.test.js test/pg-lifecycle.test.js test/admin-payment-guards.test.js",
-    "pg:sandbox": "node scripts/pg-sandbox.mjs"
+    "ci": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

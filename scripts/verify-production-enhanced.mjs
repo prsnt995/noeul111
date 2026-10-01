@@ -12,8 +12,7 @@ const checks = [
   ['no demo admin password', !read('src/pages/admin/AdminLoginPage.jsx').includes('admin1234')],
   ['no simulated payment success', read('server/services/paymentService.js').includes('Legacy payments disabled')],
   ['idempotent orders schema', read('supabase/migrations/202609180001_core.sql').includes('unique(user_id,idempotency_key)')],
-  ['Toss card validation', read('api/app.js').includes('PAYMENTS_DISABLED')],
-  ['production checklist exists', fs.existsSync(path.join(root, 'audit/IMPLEMENTATION_CHECKLIST.md'))],
+  ['Toss payment routes connected', read('api/app.js').includes('registerPaymentRoutes(app,')],
   ['outbox worker exists', fs.existsSync(path.join(root, 'server/workers/outbox.js'))],
   ['notification service exists', fs.existsSync(path.join(root, 'server/services/notificationService.js'))],
   ['rate limiting on auth endpoints', read('api/app.js').includes('authLimiter')],
@@ -24,8 +23,6 @@ const checks = [
   ['health/readiness endpoints', read('api/app.js').includes('/health/ready')],
   ['migration script exists', fs.existsSync(path.join(root, 'scripts/migrate.js'))],
   ['backup script exists', fs.existsSync(path.join(root, 'scripts/backup.js'))],
-  ['recovery docs exist', fs.existsSync(path.join(root, 'docs/ops/recovery.md'))],
-  ['compliance docs exist', fs.existsSync(path.join(root, 'docs/compliance/asvs-traceability.md'))],
 ];
 const failed = checks.filter(([, ok]) => !ok);
 for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`);

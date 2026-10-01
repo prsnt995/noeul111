@@ -1,24 +1,11 @@
 import React from 'react';
 import { Link } from 'wouter';
+import { business } from '../../config/business.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useWishlist } from '../../context/WishlistContext.jsx';
 import { useCart } from '../../context/CartContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
-import { User, Heart, ShoppingBag, Search, ChevronUp, ChevronDown, MessageCircle } from 'lucide-react';
-
-function KakaoTalkLogo({ size = 22, color = '#381E1F' }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={color}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M12 3C6.477 3 2 6.477 2 10.765c0 2.766 1.84 5.195 4.62 6.643-.2.74-.73 2.68-.84 3.09-.13.5.18.49.38.36.16-.1 2.53-1.72 3.56-2.42.75.11 1.51.17 2.28.17 5.523 0 10-3.477 10-7.765C22 6.477 17.523 3 12 3z" />
-    </svg>
-  );
-}
+import { User, Heart, ShoppingBag, Search, ChevronUp, ChevronDown, Mail } from 'lucide-react';
 
 export function RightFloatingBar({ onOpenSearch }) {
   const { isLoggedIn } = useAuth();
@@ -241,9 +228,9 @@ export function RightFloatingBar({ onOpenSearch }) {
         </div>
       </aside>
 
-      {/* 2. KakaoTalk Floating Button (Bottom Right) */}
+      {/* Customer support email */}
       <a
-        href="https://open.kakao.com/o/prsnt.2415"
+        href={`mailto:${business.email}`}
         target="_blank"
         rel="noopener noreferrer"
         className="korean-floating-kakao"
@@ -254,7 +241,7 @@ export function RightFloatingBar({ onOpenSearch }) {
           width: '46px',
           height: '46px',
           borderRadius: '50%',
-          backgroundColor: '#FEE500',
+          backgroundColor: '#1a1a1e',
           color: '#381E1F',
           display: 'flex',
           alignItems: 'center',
@@ -265,9 +252,9 @@ export function RightFloatingBar({ onOpenSearch }) {
           transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
           textDecoration: 'none',
         }}
-        title="카카오톡 1:1 상담톡 (KakaoTalk Contact)"
+        title="고객센터 이메일 상담"
       >
-        <KakaoTalkLogo size={22} color="#381E1F" />
+        <Mail size={22} color="#ffffff" />
       </a>
 
       <style>{`

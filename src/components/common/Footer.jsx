@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
+import { business as verifiedBusiness } from '../../config/business.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ChevronDown, Phone, Mail, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
 
@@ -22,7 +23,7 @@ function InstagramIcon({ size = 15, color = '#ffffff' }) {
   );
 }
 
-function KakaoTalkIcon({ size = 14, color = 'currentColor' }) {
+function EmailIcon({ size = 14, color = 'currentColor' }) {
   return (
     <svg
       width={size}
@@ -54,22 +55,6 @@ export function Footer() {
     }));
   };
 
-  // 로제나 홈페이지의 사업자 정보. 주소는 사용자가 지정한 인천 주소를 사용합니다.
-  const verifiedBusiness = {
-    brandName: 'NOEUL',
-    website: 'https://noeul.me',
-    websiteShort: 'noeul.me',
-    companyName: '주식회사 로제나',
-    representative: '김종성',
-    businessNumber: '548-87-03441',
-    corporationNumber: '285011-0061832',
-    address: '인천 남동구 논고개로 123번길, 45, 609호',
-    phone: '0324227131',
-    phoneFormatted: '032-422-7131',
-    email: 'noeulenterprises@gmail.com',
-    businessHours: '월요일 ~ 금요일 09:00 - 17:00 (Mon to Fri 9 to 5)',
-    ecommerceNumber: '[수정 가능 / 확인 필요]',
-  };
 
   return (
     <footer
@@ -247,13 +232,13 @@ export function Footer() {
                 </li>
                 <li>
                   <a
-                    href="https://open.kakao.com/o/prsnt.2415"
+                    href="mailto:noeulenterprises@gmail.com"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                   >
-                    <KakaoTalkIcon size={14} color="#fee500" />
-                    <span>카카오톡 1:1 상담 (KakaoTalk)</span>
+                    <EmailIcon size={14} color="#fee500" />
+                    <span>이메일 상담 (Email)</span>
                   </a>
                 </li>
               </ul>
@@ -316,6 +301,7 @@ export function Footer() {
                 <div>
                   <span style={{ color: '#6e6e73' }}>통신판매업 신고번호: </span>
                   <span style={{ color: '#8e8e93', fontFamily: 'monospace' }}>{verifiedBusiness.ecommerceNumber}</span>
+                  {' '}<a href={verifiedBusiness.businessLookupUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#d1d1d6', textDecoration: 'underline' }}>사업자정보 확인</a>
                 </div>
               </div>
 
@@ -427,7 +413,7 @@ export function Footer() {
             <span style={{ color: '#2c2c30' }}>·</span>
 
             <Link href="/disclaimer" className="legal-nav-link">
-              면책조항
+              상품·서비스 안내
             </Link>
             <span style={{ color: '#2c2c30' }}>·</span>
 

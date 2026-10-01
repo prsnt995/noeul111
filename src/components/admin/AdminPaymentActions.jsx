@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { adminApi } from '../../utils/api.js';
 
-// HANDOFF(PG_ONLY): orderId는 관리자 주문 UUID입니다. PG 공개 주문번호 변환은 DB 어댑터 담당입니다.
+// 관리자 API는 주문 UUID를 받고, 저장소가 토스 공개 주문번호로 변환합니다.
 export default function AdminPaymentActions({ orderId }) {
   const [snapshot, setSnapshot] = useState(null);
   const [amount, setAmount] = useState('');

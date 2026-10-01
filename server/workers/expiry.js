@@ -12,7 +12,7 @@ async function sweepExpired(supabase, now) {
     .lt('expires_at', now)
     .limit(50);
   for (const row of (candidates || [])) {
-    // TODO(INTEGRATOR): release_hold는 활성 PG 시도/환불 잠금도 함께 확인해야 합니다.
+    // release_hold는 활성 PG 승인/환불 시도가 있는 주문의 만료를 차단합니다.
     try {
       const { data, error } = await supabase.rpc('release_hold', { p_order_id: row.id, p_from: ['pending_payment'], p_to: 'expired', p_effect_key: `order-expired:${row.id}`, p_kind: 'ORDER_EXPIRED' });
       if (error || !['released', 'already', 'invalid'].includes(data?.outcome)) throw new Error('RELEASE_FAILED');

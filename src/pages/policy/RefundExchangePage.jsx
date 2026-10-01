@@ -1,144 +1,19 @@
 import React from 'react';
-import { Link } from 'wouter';
-import { useLanguage } from '../../context/LanguageContext.jsx';
-import { RefreshCw, ArrowLeft, CheckCircle2, XCircle, Truck, Phone, Mail } from 'lucide-react';
+import { business } from '../../config/business.js';
+import { PolicyLayout, Section, PolicyTable } from './PolicyLayout.jsx';
 
+// Sources: Electronic Commerce Act articles 17–18 (law.go.kr).
 export function RefundExchangePage() {
-  const { lang } = useLanguage();
-
-  return (
-    <div style={{ minHeight: '100vh', padding: '60px 0 100px' }}>
-      <div className="container" style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px' }}>
-        
-        {/* Navigation Back Link */}
-        <div style={{ marginBottom: '32px' }}>
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--accent-sunset, #e05638)', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>
-            <ArrowLeft size={16} />
-            <span>홈으로 돌아가기</span>
-          </Link>
-        </div>
-
-        {/* Page Header */}
-        <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '32px', marginBottom: '40px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-            <RefreshCw size={28} color="var(--accent-sunset, #e05638)" />
-            <span style={{ fontSize: '0.8125rem', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--accent-sunset, #e05638)' }}>
-              NOEUL RETURN & EXCHANGE POLICY
-            </span>
-          </div>
-          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>
-            환불 및 교환 정책
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-            NOEUL은 고객님의 만족스러운 쇼핑 경험을 위해 전자상거래법을 준수하며 정직하고 신속한 교환 및 반품 절차를 제공합니다.
-          </p>
-        </div>
-
-        {/* Content Body */}
-        <div style={{ fontSize: '0.9375rem', lineHeight: 1.85, color: 'var(--text-secondary)' }}>
-          
-          {/* Section 1: Eligible Conditions */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <CheckCircle2 size={20} color="#22c55e" />
-              <span>1. 교환 및 반품 가능 기준</span>
-            </h2>
-            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-              <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <li><strong>신청 기간:</strong> 상품을 수령하신 날로부터 <strong>7일 이내</strong> 마이페이지 또는 고객센터를 통해 신청 가능합니다.</li>
-                <li><strong>상품 상태:</strong> 의류는 시착만 한 상태이어야 하며, <strong>상품 택(Tag), 브랜드 라벨, 포장 비닐, 사은품</strong>이 훼손되지 않은 원상태 그대로여야 합니다.</li>
-                <li><strong>하자 및 오배송:</strong> 수령하신 상품이 오배송 되었거나 상품 자체에 결함/하자가 있는 경우 배송비 포함 100% 무료로 교환 또는 환불해 드립니다.</li>
-              </ul>
-            </div>
-          </section>
-
-          {/* Section 2: Non-returnable Items */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <XCircle size={20} color="#ef4444" />
-              <span>2. 교환 및 반품이 불가능한 경우 (법령 기준)</span>
-            </h2>
-            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-              <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <li>고객님의 부주의 또는 사용으로 인해 상품이 훼손되거나 가치가 현저히 감소한 경우</li>
-                <li><strong>착용 흔적, 세탁, 수선, 향수/화장품 오염, 담배 냄새</strong> 등이 발생한 경우</li>
-                <li>상품 택(Tag)을 제거하거나 훼손하여 상품 가치가 상실된 경우</li>
-                <li>시간이 지나 재판매가 어려울 정도로 상품의 가치가 현저히 떨어진 경우</li>
-              </ul>
-            </div>
-          </section>
-
-          {/* Section 3: Shipping Fee Rules */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Truck size={20} color="var(--accent-sunset, #e05638)" />
-              <span>3. 반품 및 교환 배송비 안내</span>
-            </h2>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
-                    <th style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>구분</th>
-                    <th style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>부담 주체</th>
-                    <th style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>배송비 금액 [수정 가능 예시]</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>단순 변심 (사이즈/컬러 교환)</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>고객 부담</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>왕복 배송비 6,000원</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>단순 변심 (전체 반품)</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>고객 부담</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>초기 무료배송 시 6,000원 (편도 반품 3,000원)</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>상품 하자 및 오배송</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>NOEUL 전액 부담</td>
-                    <td style={{ padding: '12px 16px', border: '1px solid var(--border-light)' }}>0원 (전액 회사 부담)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* Section 4: Refund Processing */}
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              4. 환불 처리 절차 및 소요 시간
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              회수된 상품이 물류 센터에 입고되어 검품 완료된 후 환불이 진행됩니다.
-            </p>
-            <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <li><strong>신용카드 / 간편결제:</strong> 승인 취소 후 카드사 사정에 따라 3~5영업일 이내 취소 반영됩니다.</li>
-              <li><strong>무통장 입금:</strong> 고객님이 지정하신 예금주 본인 명의 계좌로 영업일 기준 1~2일 이내 환불 금액이 입금됩니다.</li>
-            </ul>
-          </section>
-
-          {/* Section 5: Customer Contact */}
-          <section>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              5. 교환 및 반품 신청 문의
-            </h2>
-            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Phone size={16} color="var(--accent-sunset, #e05638)" />
-                <span><strong>고객센터 전화:</strong> 01083615305 (평일 09:00 - 17:00)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Mail size={16} color="var(--accent-sunset, #e05638)" />
-                <span><strong>이메일 문의:</strong> noeulenterprises@gmail.com</span>
-              </div>
-            </div>
-          </section>
-
-        </div>
-      </div>
-    </div>
-  );
+  return <PolicyLayout title="취소·교환·반품 및 환불 조건">
+    <Section title="1. 접수 방법"><p>고객센터 전화 {business.phoneFormatted} 또는 이메일 {business.email}로 주문번호, 상품·옵션, 요청 내용과 사유를 알려주세요. 상품 하자는 사진을 함께 보내주시면 확인에 도움이 됩니다. 연락이 닿지 않는 시간에도 이메일로 요청할 수 있습니다. 접수 전에 반드시 별도 승인을 받아야만 청약철회가 가능한 것은 아닙니다.</p><p>{business.returnAddress ? `반품 주소: ${business.returnAddress}. 반품 접수 후 수거 방법을 안내합니다.` : '반품 접수 후 수거 방법과 반송 주소를 안내합니다.'} 사업장 주소와 반품 물류 주소는 다를 수 있으므로 반송 주소를 확인해주세요.</p></Section>
+    <Section title="2. 요청 기한"><PolicyTable headers={['상황', '요청 기한']} rows={[
+      ['단순 변심·사이즈 또는 색상 변경', '계약내용 서면을 받은 날부터 7일 이내. 상품이 나중에 도착하면 상품 수령일부터 7일 이내'],
+      ['하자·오배송·표시 또는 계약과 다른 상품', '상품 공급일부터 3개월 이내이면서, 그 사실을 안 날 또는 알 수 있었던 날부터 30일 이내'],
+    ]} /><p>계약서면 미교부나 청약철회 방해 등으로 기간이 달라지는 경우 법에서 정한 기간을 적용합니다. 서면 청약철회는 해당 의사표시를 발송한 날 효력이 발생합니다.</p></Section>
+    <Section title="3. 배송 전 취소와 교환"><p>배송 전에는 고객센터로 취소를 요청할 수 있습니다. 이미 운송사에 인계된 주문은 수령 후 반품 절차로 처리할 수 있습니다. 교환은 해당 옵션의 재고를 확인해 안내하며, 교환이 불가능한 경우 반품·환불로 처리합니다.</p></Section>
+    <Section title="4. 배송비 부담"><p>반품·교환 배송비는 상품, 배송 지역, 수거 방법 및 최초 무료배송 여부에 따라 달라질 수 있습니다. 별도 비용 조건은 구매 전에 상품 상세 또는 주문 화면에서 안내합니다. 단순 변심에 따른 반품·교환의 실제 운송비는 고객이 부담합니다. 무료배송 주문의 전체 반품 등 처음 배송비를 고객이 부담하게 되는 경우를 포함하여, 접수 시 실제 부담액과 산정 근거를 안내합니다. 하자·오배송 또는 계약과 다른 이행의 반환 비용은 회사가 부담합니다. 청약철회를 이유로 별도 위약금이나 손해배상을 청구하지 않습니다.</p></Section>
+    <Section title="5. 반품 제한이 가능한 경우"><p>고객의 책임으로 상품이 훼손되거나, 착용·세탁·사용으로 상품 가치가 현저하게 감소한 경우 등 법에서 정한 사유가 있을 때 제한될 수 있습니다. 내용 확인을 위한 포장 개봉이나 단순한 택 제거만으로 일률적으로 거절하지 않습니다. 상품 하자 등 법정 권리는 제한되지 않습니다.</p><p>개별 제작 상품은 청약철회 시 회사에 회복할 수 없는 중대한 피해가 예상되는 경우에 한하여, 주문 전 별도로 알리고 고객의 서면 또는 전자문서 동의를 받은 경우에만 법령에 따라 청약철회를 제한할 수 있습니다.</p></Section>
+    <Section title="6. 환급 시점과 방법"><p>반품은 반환 상품을 받은 날부터, 배송 전 취소는 청약철회한 날부터 3영업일 이내 대금을 환급합니다. 카드·간편결제는 지체 없이 원래 결제수단의 승인 취소를 요청하고 결과를 안내합니다. 카드사 등의 실제 환급 반영 시점은 결제수단별로 다를 수 있습니다. 일부 상품만 반환한 경우 해당 상품금액과 적법하게 정산된 배송비·할인 조건을 반영한 금액을 환급합니다. 법정 기한을 넘긴 환급 지연은 관계 법령에 따른 지연배상금을 지급합니다.</p></Section>
+    <Section title="7. 분쟁 접수"><p>처리 결과에 이의가 있으면 고객센터로 재검토를 요청할 수 있습니다. 1372 소비자상담센터 및 한국소비자원 피해구제 절차도 이용할 수 있습니다.</p></Section>
+  </PolicyLayout>;
 }
-
-export default RefundExchangePage;

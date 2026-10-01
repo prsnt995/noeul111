@@ -1,120 +1,12 @@
 import React from 'react';
-import { Link } from 'wouter';
-import { useLanguage } from '../../context/LanguageContext.jsx';
-import { Cookie, ArrowLeft, Check, Lock, Settings } from 'lucide-react';
-
+import { PolicyLayout, Section, PolicyTable } from './PolicyLayout.jsx';
 export function CookiePolicyPage() {
-  const { lang } = useLanguage();
-
-  return (
-    <div style={{ minHeight: '100vh', padding: '60px 0 100px' }}>
-      <div className="container" style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px' }}>
-        
-        {/* Navigation Back Link */}
-        <div style={{ marginBottom: '32px' }}>
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--accent-sunset, #e05638)', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>
-            <ArrowLeft size={16} />
-            <span>홈으로 돌아가기</span>
-          </Link>
-        </div>
-
-        {/* Page Header */}
-        <div style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '32px', marginBottom: '40px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-            <Cookie size={28} color="var(--accent-sunset, #e05638)" />
-            <span style={{ fontSize: '0.8125rem', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--accent-sunset, #e05638)' }}>
-              NOEUL COOKIE POLICY
-            </span>
-          </div>
-          <h1 className="font-serif" style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>
-            쿠키정책
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-            주식회사 페리어스엔지가 운영하는 NOEUL 웹사이트(https://noeul.me)에서 사용하는 쿠키 및 유사 추적 기술에 대한 설명과 관리 방법에 대한 안내입니다.
-          </p>
-        </div>
-
-        {/* Policy Body */}
-        <div style={{ fontSize: '0.9375rem', lineHeight: 1.85, color: 'var(--text-secondary)' }}>
-          
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              1. 쿠키(Cookie)란 무엇인가요?
-            </h2>
-            <p>
-              쿠키는 웹사이트를 방문할 때 이용자의 브라우저에 저장되는 소규모 텍스트 파일입니다. 쿠키는 웹사이트가 이용자의 설정 및 장바구니 정보 등을 기억하여 보다 빠르고 편리한 웹 경험을 제공하는 데 사용됩니다.
-            </p>
-          </section>
-
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              2. NOEUL에서 사용하는 쿠키의 종류
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Lock size={16} color="var(--accent-sunset, #e05638)" />
-                  <span>가. 필수 쿠키 (Essential Cookies)</span>
-                </h3>
-                <p style={{ margin: 0, fontSize: '0.875rem' }}>
-                  웹사이트의 기본 기능(로그인 세션 유지, 보안 결제, 장바구니 상품 정보 저장)을 위해 필수적으로 요구되는 쿠키입니다. 이 쿠키가 없으면 정상적인 쇼핑몰 이용이 불가능할 수 있습니다.
-                </p>
-              </div>
-
-              <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Settings size={16} color="var(--accent-sunset, #e05638)" />
-                  <span>나. 기능성 및 설정 쿠키 (Functional Cookies)</span>
-                </h3>
-                <p style={{ margin: 0, fontSize: '0.875rem' }}>
-                  이용자가 선택한 언어 설정(한글/영문)이나 화면 표시 기본값을 기억하여 다시 방문했을 때 최적의 맞춤 환경을 제공합니다.
-                </p>
-              </div>
-
-              <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Check size={16} color="var(--accent-sunset, #e05638)" />
-                  <span>다. 성능 및 분석 쿠키 (Analytics Cookies)</span>
-                </h3>
-                <p style={{ margin: 0, fontSize: '0.875rem' }}>
-                  웹사이트 방문자 수, 인기 상품 페이지, 접속 경로 등 익명화된 통계 데이터를 수집하여 웹사이트 성능과 사용자 경험을 개선하는 데 활용됩니다.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              3. 쿠키 설정 관리 및 거부 방법
-            </h2>
-            <p style={{ marginBottom: '12px' }}>
-              이용자는 웹 브라우저의 옵션을 변경하여 모든 쿠키를 허용하거나, 쿠키가 저장될 때마다 확인을 거치거나, 모든 쿠키의 저장을 거부할 수 있습니다.
-            </p>
-            <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', padding: '20px', border: '1px solid var(--border-light)' }}>
-              <ul style={{ paddingLeft: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.875rem' }}>
-                <li><strong>Chrome:</strong> 웹 브라우저 우측 상단 설정 &gt; 개인정보 보호 및 보안 &gt; 쿠키 및 기타 사이트 데이터</li>
-                <li><strong>Safari:</strong> 환경설정 &gt; 개인정보 보호 탭 &gt; 쿠키 및 웹사이트 데이터 관리</li>
-                <li><strong>Edge:</strong> 설정 &gt; 쿠키 및 사이트 권한 &gt; 쿠키 및 사이트 데이터 관리 및 삭제</li>
-              </ul>
-            </div>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '12px' }}>
-              ※ 단, 쿠키 저장을 거부하실 경우 장바구니 상품 유지나 로그인 상태 유지 등 일부 서비스 이용에 어려움이 발생할 수 있습니다.
-            </p>
-          </section>
-
-          <section>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              4. 문의처
-            </h2>
-            <p>
-              쿠키 정책 관련 궁금한 점은 <strong>noeulenterprises@gmail.com</strong> 또는 고객센터(<strong>01083615305</strong>)로 문의해주시기 바랍니다.
-            </p>
-          </section>
-
-        </div>
-      </div>
-    </div>
-  );
+  return <PolicyLayout title="쿠키 및 브라우저 저장소 안내">
+    <Section title="사용 목적"><p>로그인과 보안 기능에는 쿠키를, 장바구니·언어·안내 확인 상태 유지에는 브라우저 저장소를 사용합니다. 이 안내의 확인 버튼은 광고나 분석 목적의 개인정보 처리에 동의하는 버튼이 아닙니다.</p><PolicyTable headers={['구분', '용도', '유지기간']} rows={[
+      ['로그인·인증 쿠키', '로그인 상태 유지와 인증 요청 보호', '쿠키 만료 또는 로그아웃·브라우저 삭제 시까지. 서버 세션 유효기간은 별도 적용'],
+      ['브라우저 로컬 저장소', '장바구니·찜·언어 선택·안내 확인 상태', '이용자가 삭제하거나 해당 항목을 초기화할 때까지'],
+    ]} /></Section>
+    <Section title="삭제·차단 방법"><p>브라우저의 설정에서 개인정보 및 보안 → 사이트 데이터 또는 쿠키 메뉴를 열어 NOEUL의 저장 정보를 삭제하거나 차단할 수 있습니다. 삭제하면 장바구니와 설정이 초기화되고, 필수 쿠키를 차단하면 로그인·결제가 제한될 수 있습니다.</p></Section>
+    <Section title="결제창과 외부 로그인"><p>토스페이먼츠 결제창과 구글 로그인 화면의 저장소 및 개인정보 처리는 각 서비스의 안내를 함께 참고해주세요.</p></Section>
+  </PolicyLayout>;
 }
-
-export default CookiePolicyPage;
