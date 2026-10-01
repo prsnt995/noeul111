@@ -21,16 +21,21 @@ function fixture(overrides = {}) {
     reconcile: vi.fn(async () => {}), ...overrides,
   };
   const client = { retrieveOrder: vi.fn(async () => payment), confirm: vi.fn(async () => payment), cancel: vi.fn(async () => ({ ...payment, status: 'PARTIAL_CANCELED', balanceAmount: 7000, lastTransactionKey:'cancel-001', cancels:[{transactionKey:'cancel-001',cancelStatus:'DONE',cancelAmount:3000,refundableAmount:7000}] })), retrieve: vi.fn(async () => payment) };
-  const env = { PAYMENTS_ENABLED: 'true', TOSS_CLIENT_KEY: 'test_ck_fake', TOSS_SECRET_KEY: 'test_sk_fake' };
+  const env = { TOSS_CLIENT_KEY: 'test_gck_fake', TOSS_SECRET_KEY: 'test_gsk_fake' };
   return { store, client, env, service: createPaymentService({ store, client, env }) };
 }
 describe('Toss module (mock provider; no actual payments)', () => {
   it('does not enable payments with keys alone or without keys', async () => {
     const { env, store } = fixture();
     expect(createPaymentService({ env, store: null }).configured()).toBe(false);
-    const service = createPaymentService({ env: { PAYMENTS_ENABLED: 'true' }, store });
+    const service = createPaymentService({ env: {}, store });
     expect(service.configured()).toBe(false);
     await expect(service.prepare(input.orderId,'owner')).rejects.toThrow('PAYMENTS_NOT_CONFIGURED');
+  });
+  it('does not enable a mixed test/live widget key pair or individual API keys', () => {
+    const { store } = fixture();
+    expect(createPaymentService({ env: { TOSS_CLIENT_KEY: 'test_gck_a', TOSS_SECRET_KEY: 'live_gsk_b' }, store }).configured()).toBe(false);
+    expect(createPaymentService({ env: { TOSS_CLIENT_KEY: 'test_ck_a', TOSS_SECRET_KEY: 'test_sk_b' }, store }).configured()).toBe(false);
   });
   it('prepares authoritative amount and exposes no server secret', async () => {
     const { service } = fixture();

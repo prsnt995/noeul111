@@ -14,7 +14,7 @@ if (!/^test_gck_/.test(env.TOSS_CLIENT_KEY || '') || !/^test_gsk_/.test(env.TOSS
 }
 const lab = createLab();
 lab.order.orderId = `noeul_test_${randomUUID()}`;
-const service = createPaymentService({ env: { ...env, PAYMENTS_ENABLED: 'true' }, store: lab.store });
+const service = createPaymentService({ env, store: lab.store });
 const app = express();
 app.use(express.json());
 app.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });

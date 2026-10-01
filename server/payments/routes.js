@@ -6,8 +6,10 @@ export function registerPaymentRoutes(app, { service, authenticate, staff, stepU
     try { res.json({ success: true, data: await action(req) }); }
     catch (err) { res.status(err instanceof PaymentError ? err.status : 503).json({ success: false, code: err instanceof PaymentError ? err.code : 'PAYMENTS_UNAVAILABLE' }); }
   };
-  app.get('/api/v1/payments/toss/config', (_req, res) => {
-    res.set('Cache-Control', 'no-store').json({ success: true, data: { enabled: service.configured() } });
+  app.get('/api/v1/payments/toss/config', async (_req, res) => {
+    let enabled = false;
+    try { enabled = await service.available(); } catch { /* DB schema/network not ready */ }
+    res.set('Cache-Control', 'no-store').json({ success: true, data: { enabled } });
   });
   app.post('/api/v1/payments/toss/prepare', authenticate, limiter, run(req => service.prepare(req.body?.orderId, req.locals.session.user_id)));
   app.post('/api/v1/payments/toss/recover', authenticate, limiter, run(req => service.recover(req.body?.orderId, req.locals.session.user_id)));

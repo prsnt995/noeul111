@@ -11,7 +11,7 @@ Please integrate the supplied direct Toss Payments module into the existing serv
 - Basic-authenticated order retrieval returned HTTP 200, status `READY`, amount 10,000 KRW and test MID `trozenazay6`. This verifies test key authentication and order visibility, not payment approval.
 - Real merchant test acceptance passed: customer Toss Pay authentication → server approval (`DONE`, 10,000 KRW) → partial cancellation (3,000 KRW, balance 7,000) → remaining cancellation (7,000 KRW, balance 0). Provider order lookup and test history were checked. Storage is still ephemeral memory; persistent DB, webhook delivery and deployment remain unverified.
 - The provider retained `PARTIAL_CANCELED` at balance 0 after two cancellations, both cancellation transactions `DONE`. Preserve the raw PG status and map completed zero-balance cancellation to domain `refunded` in the DB adapter. The test fixture now reproduces this observed behavior.
-- `server/payments/store.js` is intentionally `null`. Implement the documented persistence contract in the company's Supabase environment; do not import the memory fixture into the application.
+- `server/payments/store.js` now calls transactional Supabase functions supplied in `supabase/migrations/202610010001_toss_payment_store.sql`. Applying and verifying that migration in the company project is still required; do not import the memory fixture into the application.
 
 ## Keys and authentication
 
@@ -23,8 +23,8 @@ The local-only `npm run pg:sandbox` reads `.env.pg-test`, uses the real Toss SDK
 
 ## Required implementation and report
 
-1. Prepare the company Supabase project, existing schema, customer/admin sessions and a server-priced KRW test order. Implement every storage method and shared payment/cancel/expiry locks described in README.
-2. Inject test keys into the staging server environment. Keep `PAYMENTS_ENABLED=false` until the adapter and security gates are ready. Do not copy the local sandbox server into staging.
+1. Prepare the company Supabase project, existing schema, customer/admin sessions and a server-priced KRW test order. Apply the supplied payment migration after confirming the existing schema; inspect any migration conflict before proceeding.
+2. Inject matching widget test keys into the staging server environment only after the migration succeeds. Payment readiness is automatic from the keys and DB health; there is no `PAYMENTS_ENABLED` switch. Do not copy the local sandbox server into staging.
 3. Run `npm run ci` and `npm run pg:preflight`; deploy the normal API and frontend. Configure HTTPS callbacks, session cookies, CSRF, payment recovery/outbox workers and frontend CSP/popup headers.
 4. Register the HTTPS `/api/v1/payments/toss/webhook` endpoint for the appropriate test service. Confirm delivery and retries in the Toss developer center.
 5. Verify test checkout → provider authentication → server confirmation → DB payment ledger/order paid → Toss test history. Refresh and duplicate callbacks must not approve twice.
@@ -36,6 +36,6 @@ Production activation, merchant approval and real-money settlement are separate 
 
 ## Copy-ready prompt for your coding agent
 
-> Read the repository README, server/payments/INTEGRATOR_HANDOFF.md, server/payments/README.md and server/payments/TESTING.md before making changes. Integrate the direct Toss Payments module with the existing company Supabase database and authenticated order/admin flows. Implement server/payments/store.js using real persistent transactions and the documented concurrency/recovery contracts. Keep test SDK fixtures and pg:sandbox local only. Use separately supplied test keys; never put secrets in Git, frontend code or output. Run npm run ci and npm run pg:preflight, deploy the normal application to HTTPS staging, and verify test payment approval, DB ledger/order persistence, duplicate callbacks, partial/full cancellation, webhook retries and process-restart recovery. Report commit, staging URL, scenario results and sanitized provider/DB evidence. Keep live payments disabled until merchant/payment-method approval and production acceptance. Do not replace missing DB integration with a memory store or fake success.
+> Start with server/payments/START_HERE.md. The real Supabase adapter and SQL migration are already in this repository. Apply the new migration to the company project after checking the existing schema, then set the separately supplied matching widget test keys on the server. Run npm run ci and npm run pg:preflight, deploy the normal application to HTTPS staging, and verify test payment approval, DB ledger/order persistence, duplicate callbacks, partial/full cancellation, webhook retries and process-restart recovery. Report commit, staging URL, scenario results and sanitized provider/DB evidence. Never put secrets in Git, frontend code or output. Keep live keys out until merchant/payment-method approval and production acceptance.
 
 For the normal server, inject `TOSS_CLIENT_KEY` and `TOSS_SECRET_KEY` into the process environment or an ignored `.env`. `.env.pg-test` is loaded automatically only by the local sandbox; copying that file beside the normal server alone will not load it. Start with `.env.example` for the other Supabase/session settings.

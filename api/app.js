@@ -12,7 +12,7 @@ import { startExpiryWorker } from '../server/workers/expiry.js';
 import { registerAdminRoutes } from './admin.js';
 import { createPaymentService } from '../server/payments/toss.js';
 import { startPaymentRecoveryWorker } from '../server/payments/recovery.js';
-import { paymentStore } from '../server/payments/store.js';
+import { createPaymentStore } from '../server/payments/store.js';
 import { registerPaymentRoutes } from '../server/payments/routes.js';
 
 const env = process.env;
@@ -235,8 +235,9 @@ app.post('/api/v1/orders/:publicId/cancel', authenticate, async (req, res) => {
   } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); }
 });
 
-// HANDOFF(PG_ONLY): DB 담당자가 server/payments/README.md의 계약을 구현해야 합니다.
-// 키 입력만으로 결제는 활성화되지 않습니다.
+// Key pair and installed transactional DB functions are both required.
+// The public config endpoint remains disabled while either is missing.
+const paymentStore = createPaymentStore({ database });
 const paymentService = createPaymentService({ env, store: paymentStore });
 registerPaymentRoutes(app, {
   service: paymentService,

@@ -39,20 +39,23 @@ export function createTossClient({ secretKey, fetchImpl = fetch, timeoutMs = 650
   };
 }
 
-// HANDOFF(PG_ONLY): DB 담당자는 ./README.md의 영속 저장소 계약을 반드시 구현해야 합니다.
-// 승인/환불 시도는 외부 호출 전에 저장하고, 응답 불명 시 잠금을 풀지 않습니다.
+// Every external call follows a durable claim; ambiguous responses keep the DB lock.
 export function createPaymentService({ env, store, client = createTossClient({ secretKey: env.TOSS_SECRET_KEY }) }) {
   const required = ['readOrder','claimConfirmation','completeConfirmation','claimRefund','completeRefund','readPayment','reconcile','prepareAttempt','readAdminPayment','claimRecoveryBatch','deferRecovery'];
-  const configured = () => env.PAYMENTS_ENABLED === 'true' && Boolean(env.TOSS_CLIENT_KEY && env.TOSS_SECRET_KEY)
+  const clientMode = /^(test|live)_gck_/.exec(env.TOSS_CLIENT_KEY || '')?.[1];
+  const secretMode = /^(test|live)_gsk_/.exec(env.TOSS_SECRET_KEY || '')?.[1];
+  const configured = () => Boolean(clientMode && clientMode === secretMode)
     && required.every(name => typeof store?.[name] === 'function');
-  const ready = () => { if (!configured()) fail('PAYMENTS_NOT_CONFIGURED'); };
+  const available = async () => configured() && (!store.checkReady || await store.checkReady());
+  const ready = async () => { if (!await available()) fail('PAYMENTS_NOT_CONFIGURED'); };
   const verify = (p, expected) => {
     if (!p || p.orderId !== expected.orderId || p.paymentKey !== expected.paymentKey || p.totalAmount !== expected.amount || p.currency !== 'KRW') fail('PAYMENT_RECONCILIATION_REQUIRED');
   };
   return {
     configured,
+    available,
     async prepare(orderId, userId) {
-      ready(); if (!id(orderId)) fail('INVALID_ORDER_ID', 400);
+      await ready(); if (!id(orderId)) fail('INVALID_ORDER_ID', 400);
       const order = await store.readOrder(orderId, userId);
       if (!order) fail('ORDER_NOT_FOUND', 404);
       if (order.status !== 'pending_payment' || order.recoveryRequired || order.canResume !== true) fail('ORDER_STATE_INVALID', 409);
@@ -64,7 +67,7 @@ export function createPaymentService({ env, store, client = createTossClient({ s
     },
     // 조회 실패는 미결제 증거가 아닙니다. 신규 승인/환불 호출 없이 조회만 수행합니다.
     async recover(orderId, userId, admin = false) {
-      ready();
+      await ready();
       const known = admin ? await store.readAdminPayment(orderId) : await store.readOrder(orderId, userId);
       if (!known) fail('ORDER_NOT_FOUND', 404);
       if (known.recoveryRequired) {
@@ -79,7 +82,7 @@ export function createPaymentService({ env, store, client = createTossClient({ s
         recoveryRequired: Boolean(current.recoveryRequired), canResume: current.status === 'pending_payment' && current.canResume === true && !current.recoveryRequired };
     },
     async confirm(input, userId) {
-      ready(); const { orderId, amount, paymentKey } = input;
+      await ready(); const { orderId, amount, paymentKey } = input;
       if (!id(orderId) || !money(amount) || !key(paymentKey)) fail('INVALID_PAYMENT', 400);
       const order = await store.readOrder(orderId, userId);
       if (!order) fail('ORDER_NOT_FOUND', 404);
@@ -97,7 +100,7 @@ export function createPaymentService({ env, store, client = createTossClient({ s
       } catch { fail('PAYMENT_RECONCILIATION_REQUIRED'); }
     },
     async refund(input) {
-      ready();
+      await ready();
       if (!key(input.orderId) || !money(input.amount) || !/^[A-Za-z0-9._:-]{8,200}$/.test(input.operationId || '') || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 200) fail('INVALID_REFUND',400);
       const claim = await store.claimRefund(input);
       if (claim?.state === 'completed') return claim.result;
@@ -115,7 +118,7 @@ export function createPaymentService({ env, store, client = createTossClient({ s
       } catch { fail('PAYMENT_RECONCILIATION_REQUIRED'); }
     },
     async webhook(body) {
-      ready();
+      await ready();
       if (body.eventType !== 'PAYMENT_STATUS_CHANGED') return;
       const paymentKey = body.data?.paymentKey;
       if (!key(paymentKey)) fail('INVALID_WEBHOOK',400);

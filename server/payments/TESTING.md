@@ -41,8 +41,8 @@ npm run pg:lab
 
 토스 공식 문서의 공용 테스트키로도 연동을 시작할 수 있으나 상점 결제내역 검증은 제한됩니다. 최종 인수는 로제나 상점의 짝이 맞는 테스트키로 진행합니다. 키를 코드/문서에 복사하지 않습니다.
 
-1. DB 담당자가 README 저장소 계약과 공통 취소/만료 잠금 구현. 인증된 테스트 고객·관리자·1만원 주문 준비.
-2. 서버 환경에 TOSS_CLIENT_KEY/TOSS_SECRET_KEY(둘 다 test 계열), PAYMENTS_ENABLED=true, 위젯/약관 variant, 복구 워커 설정. 실제 운영키는 이 단계에서 금지.
+1. 회사 DB에 `202610010001_toss_payment_store.sql`을 적용하고 `pg_payment_health()`가 true인지 확인. 인증된 테스트 고객·관리자·1만원 주문 준비.
+2. 서버 환경에 TOSS_CLIENT_KEY/TOSS_SECRET_KEY(둘 다 같은 상점의 test 계열), 위젯/약관 variant, 복구 워커 설정. 별도 활성화 플래그는 없습니다. 실제 운영키는 이 단계에서 금지.
 3. `npm run pg:preflight` 실행. 현재는 키/DB 미연결로 BLOCKED가 정상. PASS는 형식/존재 검사일 뿐 키 쌍 및 DB 원자성 증거가 아님.
 4. 실제 서버 `npm run start`와 프런트 `npm run client` 또는 테스트 배포 실행. pg:lab을 사용하지 않음.
 5. 테스트 고객으로 주문 생성 → `/checkout/toss?order=공개주문번호` 진입. 실제 토스 위젯/필수 약관/계약된 카드·간편결제 표시 확인.
@@ -103,7 +103,7 @@ npm run pg:lab
 ## 2026-09-29 로제나 상점 테스트 연결
 
 - 콘솔 MID `rozenazay6`: 심사중, 계약일 `-`. 운영 결제 준비 완료 아님.
-- 주문서형·결제창형 테스트 키 쌍을 Git 제외 `.env.pg-test`에 저장(파일 권한 600). 일반 앱의 `PAYMENTS_ENABLED=false` 유지.
+- 주문서형·결제창형 테스트 키 쌍을 Git 제외 `.env.pg-test`에 저장(파일 권한 600). 일반 앱의 DB 함수/서버 키 적용 전까지 결제 비활성화 유지.
 - `npm run pg:sandbox`: 실제 토스 SDK/API + 테스트 전용 메모리 저장소. 127.0.0.1:5192만 리스닝. 운영/스테이징 서버에 배포하지 않음.
 - 실제 위젯 `DEFAULT` 및 약관 `AGREEMENT` 렌더링, 국민카드 테스트 인증창 연결 확인.
 - 테스트 주문의 Basic 인증 조회: HTTP 200, `READY`, 10,000원, 테스트 MID `trozenazay6`. 승인 성공 증거 아님.
@@ -112,4 +112,4 @@ npm run pg:lab
 - 마지막 응답은 PARTIAL_CANCELED + 잔액 0원. 실행 중이던 테스트 저장소는 partially_refunded로 표시했으므로 잔액을 함께 보는 refunded 매핑으로 수정하고 회귀 검증함. DB 담당자도 원본 PG 상태와 내부 주문 상태를 구분해야 함.
 - 실제 DB 저장/재시작 복구/외부 웹훅/배포는 미검증.
 - 전체 `npm run ci` 통과: 타입검사, lint 오류 0(경고 118), 100개 테스트, 빌드. 첫 sandbox 실행에서 HTTP 테스트의 listen EPERM이 발생하여 정상 실행 권한으로 재검증함.
-- 준비 검사: `DOTENV_CONFIG_PATH=.env.pg-test npm run pg:preflight`. 키 형식은 PASS, 비활성화와 미구현 DB 메서드는 BLOCKED가 정상.
+- 준비 검사: `DOTENV_CONFIG_PATH=.env.pg-test npm run pg:preflight`. 로컬 파일에는 DB 서버 정보가 없으므로 DB 접근은 BLOCKED가 정상입니다. 회사 스테이징 환경에서는 DB 함수까지 PASS가 필요합니다.

@@ -32,7 +32,7 @@ const checks = [
   ['expiry sweeper exists', fs.existsSync(path.join(root, 'server/workers/expiry.js'))],
   ['dual-write sync removed', !fs.existsSync(path.join(root, 'server/lib/supabaseSync.js'))],
   ['honest email delivery states', read('server/services/emailService.js').includes("transport: 'stream'")],
-  ['payments fail closed by default', read('api/app.js').includes("PAYMENTS_ENABLED !== 'true'")],
+  ['payments require a real DB store and keys', read('api/app.js').includes('createPaymentStore({ database })') && read('server/payments/toss.js').includes('store.checkReady')],
   ['admin bundle is route-split', read('src/App.jsx').includes('React.lazy') || read('src/App.jsx').includes('lazy(')],
   ['admin API surface registered', read('api/app.js').includes('registerAdminRoutes')],
   ['admin products/orders/coupons endpoints', read('api/admin.js').includes('/api/v1/admin/products') && read('api/admin.js').includes('/api/v1/admin/orders') && read('api/admin.js').includes('/api/v1/admin/coupons')],

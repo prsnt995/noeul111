@@ -62,6 +62,6 @@ export function createLab(scenario = 'normal') {
       return {...provider};
     },
   };
-  const service = createPaymentService({env:{PAYMENTS_ENABLED:scenario === 'disabled' ? 'false' : 'true',TOSS_CLIENT_KEY:'test_ck_lab',TOSS_SECRET_KEY:'test_sk_lab'},store,client});
+  const service = createPaymentService({env:{TOSS_CLIENT_KEY:scenario === 'disabled' ? '' : 'test_gck_lab',TOSS_SECRET_KEY:scenario === 'disabled' ? '' : 'test_gsk_lab'},store,client});
   return { service,store,client,counters,order };
 }
