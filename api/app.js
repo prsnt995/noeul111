@@ -24,13 +24,15 @@ const MFA_ENFORCEMENT = env.MFA_ENFORCEMENT === 'true';
 const stepUp = async (req, res, next) => { const s = req.locals?.session; if (!s) return next(); if (MFA_ENFORCEMENT && (!s.aal || s.aal !== 'aal2')) return error(res, 403, 'MFA_REQUIRED'); next(); };
 const privacyLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
 const origin = env.APP_ORIGIN || 'http://localhost:5173';
+const allowedOrigins = new Set([origin, 'http://localhost:5173', 'http://localhost:5174']);
+const isOriginAllowed = (o, cb) => cb(null, !o || allowedOrigins.has(o) || (!production && /^http:\/\/localhost:\d+$/.test(o)));
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' }, contentSecurityPolicy: false }));
-app.use(cors({ origin, credentials: true, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Idempotency-Key'] }));
+app.use(cors({ origin: isOriginAllowed, credentials: true, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Idempotency-Key'] }));
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') }));
-const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
+const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 50, standardHeaders: true, legacyHeaders: false });
 const paymentLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const checkoutLimiter = rateLimit({ windowMs: 15*60*1000, limit: 3, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') });
 app.use(express.json({ limit: '256kb', strict: true }));
@@ -54,7 +56,10 @@ const parseCookies = value => {
 };
 const setCookie = (res, name, value, maxAge = 604800) => res.set('Set-Cookie', `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${production ? '; Secure' : ''}`);
 const clearCookie = res => res.set('Set-Cookie', `${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${production ? '; Secure' : ''}`);
-const error = (res, status, code) => res.status(status).json({ success: false, code, message: code });
+const error = (res, status, code) => {
+  if (res.headersSent) return;
+  return res.status(status).json({ success: false, code, message: code });
+};
 const auditLog = async (req, action, details) => { try { const s = req.locals?.session; await database().from('audit_logs').insert({ actor: s?.user_id || null, action, target: details.table ? `${details.table}:${details.id || ''}` : '', metadata: { before: details.before ?? null, after: details.after ?? null, ip: req.ip, user_agent: req.get('user-agent') } }).maybeSingle(); } catch { /* audit trail is best-effort; never fail the request */ } };
 const requestId = req => req.headers['x-request-id'] || random().slice(2);
 app.use((req, res, next) => { req.requestId = requestId(req); res.set('X-Request-ID', req.requestId); next(); });
@@ -116,14 +121,29 @@ async function session(req, res, required = true) {
     ]);
     if (!profile || profile.disabled) { if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-      if (req.headers.origin !== origin || req.headers['x-csrf-token'] !== sessionRow.csrf) { error(res, 403, 'CSRF_REJECTED'); return null; }
+      const reqOrigin = req.headers.origin;
+      const originMatch = !reqOrigin || reqOrigin === origin || (!production && (reqOrigin.startsWith('http://localhost:') || reqOrigin.startsWith('http://127.0.0.1:')));
+      const csrfMatch = req.headers['x-csrf-token'] === sessionRow.csrf;
+      if (!originMatch || !csrfMatch) {
+        if (required && !res.headersSent) error(res, 403, 'CSRF_REJECTED');
+        return null;
+      }
     }
-        return { ...sessionRow, profiles: profile, user_id: sessionRow.user_id, role: staff?.active ? staff.role : 'customer' };
-  } catch (e) { console.error('[session] error', e); if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
+
+    return { ...sessionRow, profiles: profile, user_id: sessionRow.user_id, role: staff?.active ? staff.role : 'customer' };
+  } catch (e) { console.error('[session] error', e); if (required && !res.headersSent) error(res, 401, 'SESSION_EXPIRED'); return null; }
 }
 
-const authenticate = async (req, res, next) => { const s = await session(req, res, false); if (!s) return error(res, 401, 'SIGN_IN_REQUIRED'); req.locals = { session: s }; next(); };
-// Staff roles are checked on the server; MFA_ENFORCEMENT additionally requires aal2.
+const authenticate = async (req, res, next) => {
+  const s = await session(req, res, false);
+  if (!s) {
+    if (!res.headersSent) error(res, 401, 'SIGN_IN_REQUIRED');
+    return;
+  }
+  req.locals = { session: s };
+  next();
+};
+
 const staff = (roles) => async (req, res, next) => { const s = req.locals?.session; if (!s || !roles.includes(s.role)) return error(res, 403, 'PERMISSION_DENIED'); if (MFA_ENFORCEMENT && s.aal !== 'aal2') return error(res, 403, 'MFA_REQUIRED'); next(); };
 
 // Register admin routes
@@ -143,12 +163,77 @@ function enrichOrders(orders) {
   });
 }
 
-app.get('/health/ready', async (req, res) => { try { await database().from('content').select('key').limit(1); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); } });
+app.get('/health/ready', async (req, res) => { try { const { error } = await database().from('content').select('key').limit(1); if (error) throw error; res.json({ ok: true }); } catch (err) { res.status(503).json({ ok: false, error: err.message }); } });
 
 // AUTH
-app.get('/api/v1/auth/google/start', authLimiter, async (req, res) => { try { const state = random(); const verifier = random(); const redirectTo = `${origin}/api/v1/auth/google/callback`; const authorize = new URL(`${env.SUPABASE_URL}/auth/v1/authorize`); authorize.searchParams.set('provider', 'google'); authorize.searchParams.set('redirect_to', redirectTo); authorize.searchParams.set('code_challenge', pkceChallenge(verifier)); authorize.searchParams.set('code_challenge_method', 'S256'); authorize.searchParams.set('access_type', 'offline'); authorize.searchParams.set('prompt', 'consent'); await database().from('oauth_states').insert({ id_hash: sha(state), verifier, expires_at: new Date(Date.now() + 600000).toISOString() }); res.set('Set-Cookie', `noeul_oauth=${encodeURIComponent(state)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${production ? '; Secure' : ''}`); res.redirect(authorize.toString()); } catch (e) { console.error('google start failed', e); error(res, 503, 'AUTH_NOT_CONFIGURED'); } });
+// The state token is passed as a query parameter in the redirect URL so it
+// survives the cross-domain redirect chain (localhost → supabase.co → localhost).
+// Relying only on a cookie fails because SameSite=Lax cookies are often not
+// sent when the browser arrives from a cross-origin redirect.
+app.get('/api/v1/auth/google/start', authLimiter, async (req, res) => { try { const state = random(); const verifier = random(); const redirectTo = `${origin}/api/v1/auth/google/callback?oauth_state=${encodeURIComponent(state)}`; const authorize = new URL(`${env.SUPABASE_URL}/auth/v1/authorize`); authorize.searchParams.set('provider', 'google'); authorize.searchParams.set('redirect_to', redirectTo); authorize.searchParams.set('code_challenge', pkceChallenge(verifier)); authorize.searchParams.set('code_challenge_method', 'S256'); authorize.searchParams.set('access_type', 'offline'); authorize.searchParams.set('prompt', 'consent'); const { error: insErr } = await database().from('oauth_states').insert({ id_hash: sha(state), verifier, expires_at: new Date(Date.now() + 600000).toISOString() }); if (insErr) { console.error('[start] oauth_states insert failed:', insErr); return error(res, 500, insErr.code === 'PGRST106' ? 'SUPABASE_SCHEMA_NOT_EXPOSED' : 'AUTH_DB_ERROR'); } res.set('Set-Cookie', `noeul_oauth=${encodeURIComponent(state)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${production ? '; Secure' : ''}`); res.redirect(authorize.toString()); } catch (e) { console.error('google start failed', e); error(res, 503, 'AUTH_NOT_CONFIGURED'); } });
 
-app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => { try { const cookies = parseCookies(req.headers.cookie); const state = cookies.noeul_oauth; if (!state || !req.query.code) { return error(res, 400, 'INVALID_CALLBACK'); } const stateHash = sha(state); const { data: row, error: stateErr } = await database().from('oauth_states').delete().eq('id_hash', stateHash).gt('expires_at', new Date().toISOString()).select('verifier').maybeSingle(); if (!row) { return error(res, 400, 'OAUTH_STATE_EXPIRED'); } const tokenRes = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=pkce`, { method: 'POST', headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ auth_code: req.query.code, code_verifier: row.verifier }) }); const token = await tokenRes.json(); if (!tokenRes.ok || !token.access_token || !token.user) { return error(res, 401, 'GOOGLE_IDENTITY_REQUIRED'); } const id = random(); const csrf = random(); await database().from('profiles').upsert({ id: token.user.id, email: token.user.email, name: token.user.user_metadata?.full_name || '' }); await database().from('sessions').insert({ id_hash: sha(id), user_id: token.user.id, encrypted_tokens: encryptSessionTokens(token), csrf, aal: token.user?.aal === 'aal2' ? 'aal2' : 'aal1', refreshed_at: new Date().toISOString(), expires_at: new Date(Date.now() + 24*60*60*1000).toISOString() }); setCookie(res, cookieName, id); res.append('Set-Cookie', 'noeul_oauth=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure'); res.redirect('/account'); } catch (e) { console.error('[callback] error', e); error(res, 503, 'AUTH_CALLBACK_FAILED'); } });
+app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
+  try {
+    const cookies = parseCookies(req.headers.cookie);
+    const state = req.query.oauth_state || cookies.noeul_oauth;
+    if (!state || !req.query.code) {
+      return error(res, 400, 'INVALID_CALLBACK');
+    }
+    const stateHash = sha(state);
+    const { data: row, error: stateErr } = await database().from('oauth_states').delete().eq('id_hash', stateHash).gt('expires_at', new Date().toISOString()).select('verifier').maybeSingle();
+    if (stateErr) {
+      console.error('[callback] oauth_states db error', stateErr);
+      return error(res, 500, stateErr.code === 'PGRST106' ? 'SUPABASE_SCHEMA_NOT_EXPOSED' : 'DATABASE_ERROR');
+    }
+    if (!row) {
+      return error(res, 400, 'OAUTH_STATE_EXPIRED');
+    }
+    const tokenRes = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=pkce`, {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth_code: req.query.code, code_verifier: row.verifier })
+    });
+    const token = await tokenRes.json();
+    if (!tokenRes.ok || !token.access_token || !token.user) {
+      return error(res, 401, 'GOOGLE_IDENTITY_REQUIRED');
+    }
+    const id = random();
+    const csrf = random();
+    await database().from('profiles').upsert({
+      id: token.user.id,
+      email: token.user.email,
+      name: token.user.user_metadata?.full_name || ''
+    });
+
+    const sessionPayload = {
+      id_hash: sha(id),
+      user_id: token.user.id,
+      encrypted_tokens: encryptSessionTokens(token),
+      csrf,
+      aal: token.user?.aal === 'aal2' ? 'aal2' : 'aal1',
+      refreshed_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 24*60*60*1000).toISOString()
+    };
+    let { error: sessErr } = await database().from('sessions').insert(sessionPayload);
+    if (sessErr && (sessErr.code === 'PGRST204' || sessErr.message?.includes('aal'))) {
+      delete sessionPayload.aal;
+      const retry = await database().from('sessions').insert(sessionPayload);
+      sessErr = retry.error;
+    }
+    if (sessErr) {
+      console.error('[callback] session insert failed:', sessErr);
+      return error(res, 500, 'SESSION_INSERT_FAILED');
+    }
+
+    setCookie(res, cookieName, id);
+    res.append('Set-Cookie', 'noeul_oauth=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure');
+    res.redirect('/account');
+  } catch (e) {
+    console.error('[callback] error', e);
+    error(res, 503, 'AUTH_CALLBACK_FAILED');
+  }
+});
+
 
 app.get('/api/v1/me', authenticate, async (req, res) => { const s = req.locals.session; console.log('[/me] success', { userId: s.user_id, role: s.role }); res.set('Cache-Control', 'no-store'); res.json({ success: true, user: { id: s.user_id, uid: s.user_id, name: s.profiles.name, email: s.profiles.email, role: s.role }, csrf: s.csrf, debug: { cookieReceived: req.headers.cookie } }); });
 app.get('/api/v1/debug/cookies', async (req, res) => { res.json({ success: true, cookies: req.headers.cookie, parsed: parseCookies(req.headers.cookie) }); });
