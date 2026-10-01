@@ -23,9 +23,28 @@ if (production && required.some(k => !env[k])) throw new Error(`Missing producti
 const MFA_ENFORCEMENT = env.MFA_ENFORCEMENT === 'true';
 const stepUp = async (req, res, next) => { const s = req.locals?.session; if (!s) return next(); if (MFA_ENFORCEMENT && (!s.aal || s.aal !== 'aal2')) return error(res, 403, 'MFA_REQUIRED'); next(); };
 const privacyLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
-const origin = env.APP_ORIGIN || 'http://localhost:5173';
+const normalizeOrigin = val => (val || '').trim().replace(/\/+$/, '');
+const origin = normalizeOrigin(env.APP_ORIGIN || 'http://localhost:5173');
 const allowedOrigins = new Set([origin, 'http://localhost:5173', 'http://localhost:5174']);
-const isOriginAllowed = (o, cb) => cb(null, !o || allowedOrigins.has(o) || (!production && /^http:\/\/localhost:\d+$/.test(o)));
+try {
+  const parsed = new URL(origin);
+  if (parsed.hostname.startsWith('www.')) {
+    allowedOrigins.add(`${parsed.protocol}//${parsed.hostname.slice(4)}${parsed.port ? ':' + parsed.port : ''}`);
+  } else if (!parsed.hostname.includes('localhost') && !parsed.hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+    allowedOrigins.add(`${parsed.protocol}//www.${parsed.hostname}${parsed.port ? ':' + parsed.port : ''}`);
+  }
+} catch { /* ignore malformed */ }
+allowedOrigins.add('https://noeul111.vercel.app');
+
+const isAllowedOrigin = (o) => {
+  if (!o) return true;
+  const clean = normalizeOrigin(o);
+  if (allowedOrigins.has(clean)) return true;
+  if (!production && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(clean)) return true;
+  if (/^https:\/\/noeul111(-[a-z0-9-]+)?\.vercel\.app$/.test(clean)) return true;
+  return false;
+};
+const isOriginAllowed = (o, cb) => cb(null, isAllowedOrigin(o));
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -121,8 +140,13 @@ async function session(req, res, required = true) {
     ]);
     if (!profile || profile.disabled) { if (required) error(res, 401, 'SESSION_EXPIRED'); return null; }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-      const reqOrigin = req.headers.origin;
-      const originMatch = !reqOrigin || reqOrigin === origin || (!production && (reqOrigin.startsWith('http://localhost:') || reqOrigin.startsWith('http://127.0.0.1:')));
+      const reqOrigin = normalizeOrigin(req.headers.origin);
+      const host = req.get('x-forwarded-host') || req.get('host');
+      let isSameHost = false;
+      if (reqOrigin && host) {
+        try { isSameHost = new URL(reqOrigin).host === host; } catch { isSameHost = false; }
+      }
+      const originMatch = !reqOrigin || isSameHost || isAllowedOrigin(reqOrigin);
       const csrfMatch = req.headers['x-csrf-token'] === sessionRow.csrf;
       if (!originMatch || !csrfMatch) {
         if (required && !res.headersSent) error(res, 403, 'CSRF_REJECTED');

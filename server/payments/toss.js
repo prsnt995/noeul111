@@ -12,14 +12,15 @@ const money = value => Number.isSafeInteger(value) && value > 0;
 const digest = value => createHash('sha256').update(value).digest('hex');
 
 export function createTossClient({ secretKey, fetchImpl = fetch, timeoutMs = 65000 }) {
+  const cleanSecret = typeof secretKey === 'string' ? secretKey.trim().replace(/^['"]|['"]$/g, '') : '';
   async function call(path, body, idempotencyKey) {
-    if (!secretKey) fail('PAYMENTS_NOT_CONFIGURED');
+    if (!cleanSecret) fail('PAYMENTS_NOT_CONFIGURED');
     const controller = new globalThis.AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetchImpl(`https://api.tosspayments.com/v1/payments${path}`, {
         method: body ? 'POST' : 'GET', signal: controller.signal,
-        headers: { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
+        headers: { Authorization: `Basic ${Buffer.from(`${cleanSecret}:`).toString('base64')}`,
           'Content-Type': 'application/json', ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
@@ -42,8 +43,11 @@ export function createTossClient({ secretKey, fetchImpl = fetch, timeoutMs = 650
 // Every external call follows a durable claim; ambiguous responses keep the DB lock.
 export function createPaymentService({ env, store, client = createTossClient({ secretKey: env.TOSS_SECRET_KEY }) }) {
   const required = ['readOrder','claimConfirmation','completeConfirmation','claimRefund','completeRefund','readPayment','reconcile','prepareAttempt','readAdminPayment','claimRecoveryBatch','deferRecovery'];
-  const clientMode = /^(test|live)_gck_/.exec(env.TOSS_CLIENT_KEY || '')?.[1];
-  const secretMode = /^(test|live)_gsk_/.exec(env.TOSS_SECRET_KEY || '')?.[1];
+  const cleanKey = val => typeof val === 'string' ? val.trim().replace(/^['"]|['"]$/g, '') : '';
+  const clientKey = cleanKey(env.TOSS_CLIENT_KEY);
+  const secretKey = cleanKey(env.TOSS_SECRET_KEY);
+  const clientMode = /^(test|live)_gck_/.exec(clientKey)?.[1];
+  const secretMode = /^(test|live)_gsk_/.exec(secretKey)?.[1];
   const configured = () => Boolean(clientMode && clientMode === secretMode)
     && required.every(name => typeof store?.[name] === 'function');
   const available = async () => configured() && (!store.checkReady || await store.checkReady());
@@ -62,7 +66,7 @@ export function createPaymentService({ env, store, client = createTossClient({ s
       if (!money(order.amount) || order.currency !== 'KRW' || order.orderId !== orderId || !key(order.customerKey)) fail('ORDER_NOT_READY', 409);
       await store.prepareAttempt(order);
       return { orderId, amount: order.amount, currency: 'KRW', orderName: String(order.orderName || 'NOEUL 주문').slice(0,100),
-        customerKey: order.customerKey, clientKey: env.TOSS_CLIENT_KEY,
+        customerKey: order.customerKey, clientKey: clientKey || env.TOSS_CLIENT_KEY,
         variantKey: env.TOSS_WIDGET_VARIANT_KEY || 'DEFAULT', agreementVariantKey: env.TOSS_AGREEMENT_VARIANT_KEY || 'AGREEMENT' };
     },
     // 조회 실패는 미결제 증거가 아닙니다. 신규 승인/환불 호출 없이 조회만 수행합니다.
