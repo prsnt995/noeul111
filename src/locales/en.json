@@ -2,6 +2,7 @@
   "nav": {
     "home": "Home",
     "all": "ALL",
+    "men": "MEN",
     "women": "WOMEN",
     "shop": "Shop All",
     "new_arrivals": "NEW ARRIVALS",
@@ -45,7 +46,10 @@
     "no_products": "NO PRODUCTS FOUND",
     "no_products_desc": "Try selecting another category or view all products.",
     "view_all_products": "VIEW ALL PRODUCTS",
-    "items": "ITEMS"
+    "items": "ITEMS",
+    "best_title": "BEST ITEMS",
+    "best_sub": "Most loved right now",
+    "shop_by_category": "Shop by category"
   },
   "shop": {
     "title": "All Products",

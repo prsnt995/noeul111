@@ -527,3 +527,130 @@ img {
 .checkout-panel a, .commerce-policy-notice a { text-decoration: underline; text-underline-offset: 3px; color: #a43b24; }
 .checkout-panel dl { display: grid; grid-template-columns: 1fr auto; gap: 8px 20px; }
 .checkout-panel dd { margin: 0; text-align: right; }
+
+/* ============================================================
+   Homepage: BEST carousel + category pills + skeleton
+   Frontend-only, no backend changes
+   ============================================================ */
+.best-carousel-section {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 18px 12px 6px;
+  background: #ffffff;
+}
+.best-carousel-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.best-carousel-kicker {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  color: #b84d34;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.best-carousel-title {
+  font-family: var(--font-serif);
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #141415;
+  line-height: 1.1;
+}
+.best-carousel-arrows { display: flex; gap: 8px; }
+.best-carousel-arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+  color: #18181b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+.best-carousel-arrow:hover { background: #18181b; color: #ffffff; border-color: #18181b; }
+.best-carousel-viewport { overflow: hidden; width: 100%; }
+.best-carousel-track {
+  display: flex;
+  gap: 12px;
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+.best-carousel-slide { flex: 0 0 auto; min-width: 0; }
+.best-carousel-dots { display: flex; gap: 6px; justify-content: center; padding: 12px 0 4px; }
+.best-carousel-dots button {
+  width: 16px;
+  height: 4px;
+  border-radius: 9999px;
+  background: #e4e4e7;
+  transition: all var(--transition-fast);
+}
+.best-carousel-dots button.active { width: 26px; background: #18181b; }
+
+.home-filter-bar { gap: 8px; }
+.home-category-pills {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+  padding-bottom: 2px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.home-category-pills::-webkit-scrollbar { display: none; }
+.home-pill {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  border-radius: 9999px;
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+  color: #52525b;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.home-pill:hover { border-color: #18181b; color: #18181b; }
+.home-pill.active { background: #18181b; border-color: #18181b; color: #ffffff; font-weight: 600; }
+
+.best-skeleton-card { display: grid; gap: 8px; }
+.best-skeleton-media {
+  aspect-ratio: 3/4;
+  border-radius: 3px;
+  background: linear-gradient(100deg, #f1f1f2 40%, #e4e4e7 50%, #f1f1f2 60%);
+  background-size: 200% 100%;
+  animation: bestShimmer 1.2s infinite linear;
+}
+.best-skeleton-line {
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(100deg, #f1f1f2 40%, #e4e4e7 50%, #f1f1f2 60%);
+  background-size: 200% 100%;
+  animation: bestShimmer 1.2s infinite linear;
+}
+.best-skeleton-line.short { width: 55%; }
+@keyframes bestShimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.home-grid-animated { animation: slideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@media (max-width: 768px) {
+  .best-carousel-section { padding: 14px 8px 4px; }
+  .best-carousel-title { font-size: 1.25rem; }
+  .best-carousel-track { gap: 8px; }
+  .best-carousel-arrow { width: 28px; height: 28px; }
+}

@@ -34,6 +34,18 @@ const R = {
 const random = () => randomBytes(6).toString('base64url');
 const uid = () => randomUUID();
 
+// Coupon discount shared by the pre-check endpoint and manual-create.
+// Percentage coupons apply amount% capped by max_discount; flat otherwise.
+function couponDiscount(subtotal, coupon) {
+  if (!coupon) return 0;
+  if (coupon.discount_type === 'percentage') {
+    const pct = Math.round((subtotal * (coupon.amount || 0)) / 100);
+    const capped = coupon.max_discount ? Math.min(pct, coupon.max_discount) : pct;
+    return Math.min(subtotal, capped);
+  }
+  return Math.min(subtotal, coupon.amount || 0);
+}
+
 function slugify(text, fallback = 'item') {
   const base = String(text || '')
     .toLowerCase()
@@ -808,7 +820,7 @@ export function registerAdminRoutes(app, ctx) {
       if (coupon.starts_at > today || coupon.ends_at < today) return error(res, 400, 'COUPON_EXPIRED');
       if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) return error(res, 400, 'COUPON_LIMIT_REACHED');
       if (subtotal < (coupon.minimum || 0)) return error(res, 400, 'COUPON_MINIMUM_NOT_MET');
-      res.json({ success: true, data: { code: coupon.code, discount: Math.min(subtotal, coupon.amount || 0) } });
+      res.json({ success: true, data: { code: coupon.code, discount: couponDiscount(subtotal, coupon) } });
     } catch { error(res, 503, 'COUPONS_UNAVAILABLE'); }
   });
 
@@ -1006,7 +1018,7 @@ export function registerAdminRoutes(app, ctx) {
             subtotal < (coupon.minimum || 0)) {
           return error(res, 400, 'COUPON_INVALID');
         }
-        discount = Math.min(subtotal, coupon.amount || 0);
+        discount = couponDiscount(subtotal, coupon);
         couponCode = coupon.code;
       }
       let threshold = 70000;
@@ -1042,6 +1054,12 @@ export function registerAdminRoutes(app, ctx) {
         idempotency_key: idempotencyKey, request_hash: requestHash,
         order_source: orderSource, source_detail: sourceDetail || null,
       };
+      // External (SNS) orders are paid by bank transfer hours/days later —
+      // the 45-minute default expiry would auto-cancel them via the expiry
+      // sweeper. Website manual orders keep the storefront default.
+      if (orderSource !== 'website') {
+        baseRow.expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      }
       let order = null;
       {
         const { data, error: oErr } = await database().from('orders').insert(baseRow).select().maybeSingle();
@@ -1061,6 +1079,7 @@ export function registerAdminRoutes(app, ctx) {
         }
       }
       if (!order) throw new Error('ORDER_CREATE_FAILED');
+      let couponReserved = false;
       try {
         for (const [vid, qty] of demand) {
           const { data: cur } = await database().from('product_variants').select('stock,reserved').eq('id', vid).maybeSingle();
@@ -1070,6 +1089,7 @@ export function registerAdminRoutes(app, ctx) {
         if (couponCode) {
           const { data: cRow } = await database().from('coupons').select('reserved').eq('code', couponCode).maybeSingle();
           await database().from('coupons').update({ reserved: (cRow?.reserved || 0) + 1 }).eq('code', couponCode);
+          couponReserved = true;
         }
         const grouped = new Map();
         for (const l of lines) {
@@ -1093,6 +1113,12 @@ export function registerAdminRoutes(app, ctx) {
             const { data: cur } = await database().from('product_variants').select('reserved').eq('id', vid).maybeSingle();
             if (cur && (cur.reserved || 0) >= qty) {
               await database().from('product_variants').update({ reserved: cur.reserved - qty }).eq('id', vid);
+            }
+          }
+          if (couponReserved && couponCode) {
+            const { data: cCur } = await database().from('coupons').select('reserved').eq('code', couponCode).maybeSingle();
+            if (cCur && (cCur.reserved || 0) > 0) {
+              await database().from('coupons').update({ reserved: cCur.reserved - 1 }).eq('code', couponCode);
             }
           }
           await database().from('orders').delete().eq('id', order.id);

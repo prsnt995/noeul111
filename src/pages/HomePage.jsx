@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
+import { BestSellersCarousel } from '../components/home/BestSellersCarousel.jsx';
+import { CATEGORIES_BY_GENDER } from '../data/products.js';
 import { api } from '../utils/api.js';
 
 export function HomePage() {
@@ -10,6 +12,9 @@ export function HomePage() {
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [bestProducts, setBestProducts] = useState([]);
+  const [bestLoading, setBestLoading] = useState(true);
+  const [liveCategories, setLiveCategories] = useState([]);
 
   // Active filter state from URL
   const [selectedGender, setSelectedGender] = useState('all');
@@ -31,7 +36,74 @@ export function HomePage() {
     setSearchQuery(s);
   }, [location]);
 
-  // 2. Fetch products dynamically
+  // 2. Live categories (frontend-only, falls back to hardcoded list)
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/catalog/categories').then((res) => {
+      if (!cancelled && res.success && Array.isArray(res.data) && res.data.length) {
+        setLiveCategories(
+          res.data.map((c) => ({
+            key: (c.slug || '').toLowerCase(),
+            label: c.name_en || c.slug,
+            label_ko: c.name_ko || c.slug,
+          }))
+        );
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const availableCategories = useMemo(() => {
+    if (liveCategories.length) {
+      if (selectedGender === 'men') {
+        return liveCategories.filter((c) =>
+          ['tshirts', 'shirts', 'jeans', 'pants', 'underwear', 'socks', 'jackets', 'hoodies', 'accessories', 'bags'].includes(c.key)
+        );
+      }
+      if (selectedGender === 'women') {
+        return liveCategories.filter((c) =>
+          ['tshirts', 'shirts', 'jeans', 'pants', 'underwear', 'socks', 'dresses', 'skirts', 'jackets', 'hoodies', 'accessories', 'bags'].includes(c.key)
+        );
+      }
+      return liveCategories;
+    }
+    if (selectedGender === 'men') return CATEGORIES_BY_GENDER.men;
+    if (selectedGender === 'women') return CATEGORIES_BY_GENDER.women;
+    const seen = new Map();
+    [...CATEGORIES_BY_GENDER.women, ...CATEGORIES_BY_GENDER.men].forEach((c) => {
+      if (!seen.has(c.key)) seen.set(c.key, c);
+    });
+    return [...seen.values()];
+  }, [selectedGender, liveCategories]);
+
+  // 3. Fetch BEST items (top 6, follows gender filter)
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBest() {
+      setBestLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (selectedGender !== 'all') params.append('gender', selectedGender);
+        params.append('isBest', 'true');
+        const json = await api.get(`/catalog/products?${params.toString()}`);
+        if (!cancelled) {
+          if (json.success && Array.isArray(json.data)) {
+            setBestProducts(json.data.slice(0, 6));
+          } else {
+            setBestProducts([]);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setBestProducts([]);
+      } finally {
+        if (!cancelled) setBestLoading(false);
+      }
+    }
+    loadBest();
+    return () => { cancelled = true; };
+  }, [selectedGender]);
+
+  // 4. Fetch grid products dynamically
   useEffect(() => {
     async function loadProducts() {
       setLoading(true);
@@ -74,6 +146,24 @@ export function HomePage() {
     setLocation(target);
   };
 
+  const handleCategorySelect = (slug) => {
+    const params = new URLSearchParams(window.location.search);
+    if (!slug || slug === 'all') {
+      params.delete('category');
+    } else {
+      params.set('category', slug);
+    }
+    const qs = params.toString();
+    const target = qs ? `/?${qs}` : '/';
+    setLocation(target);
+  };
+
+  const handleReset = () => {
+    setLocation('/');
+  };
+
+  const categoryLabel = (c) => (lang === 'ko' ? (c.label_ko || c.label) : (c.label || c.label_ko));
+
   return (
     <div
       style={{
@@ -86,78 +176,119 @@ export function HomePage() {
       }}
     >
       {/* =========================================================
-          3. MINIMAL CATEGORY SUB-BAR (전체 / 여성)
-          Full width, responsive, item count aligned on the right
+          BEST ITEMS CAROUSEL (top, 6 items, 3 visible, shift-by-1)
           ========================================================= */}
-       <div
-         className="noeul-category-bar"
-         style={{
-           borderBottom: '1px solid #f0f0f0',
-           padding: '8px 12px',
-           display: 'flex',
-           justifyContent: 'space-between',
-           alignItems: 'center',
-           backgroundColor: '#ffffff',
-           position: 'sticky',
-           top: 0,
-           zIndex: 95,
-           width: '100%',
-           maxWidth: '100%',
-           boxSizing: 'border-box',
-         }}
-       >
-        {/* Left: Interactive Category Navigation Bar (전체 / 여성) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          {[
-            { key: 'all', label: t('nav.all') },
-            { key: 'women', label: t('nav.women') },
-          ].map((item) => {
-            const isSelected = selectedGender === item.key;
+      <BestSellersCarousel
+        items={bestProducts}
+        loading={bestLoading}
+        title={t('home.best_title')}
+        subtitle={t('home.best_sub')}
+      />
+
+      {/* =========================================================
+          STICKY SELECTION BAR:
+          Row 1 = gender (ALL / MEN / WOMEN) + item count
+          Row 2 = category pills (shirts / jeans ...)
+          ========================================================= */}
+      <div
+        className="noeul-category-bar home-filter-bar"
+        style={{
+          borderBottom: '1px solid #f0f0f0',
+          padding: '8px 12px 10px',
+          backgroundColor: '#ffffff',
+          position: 'sticky',
+          top: 0,
+          zIndex: 95,
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+        }}
+      >
+        {/* Row 1: gender segmented + count */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+            {[
+              { key: 'all', label: t('nav.all') },
+              { key: 'men', label: t('nav.men') },
+              { key: 'women', label: t('nav.women') },
+            ].map((item) => {
+              const isSelected = selectedGender === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => handleGenderSwitch(item.key)}
+                  aria-pressed={isSelected}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '0.75rem',
+                    fontWeight: isSelected ? 700 : 500,
+                    letterSpacing: '0.08em',
+                    color: isSelected ? '#000000' : '#888888',
+                    borderBottom: isSelected ? '1.5px solid #000000' : '1.5px solid transparent',
+                    paddingBottom: '2px',
+                    paddingLeft: '2px',
+                    paddingRight: '2px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              fontSize: '0.6875rem',
+              color: '#888888',
+              letterSpacing: '0.04em',
+              fontWeight: 500,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              marginLeft: 'auto',
+            }}
+          >
+            {loading ? '...' : `${products.length} ${t('home.items')}`}
+          </div>
+        </div>
+
+        {/* Row 2: category pills */}
+        <div className="home-category-pills" role="tablist" aria-label={t('home.shop_by_category')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selectedCategory === 'all'}
+            onClick={() => handleCategorySelect('all')}
+            className={`home-pill${selectedCategory === 'all' ? ' active' : ''}`}
+          >
+            {t('shop.all_categories')}
+          </button>
+          {availableCategories.map((c) => {
+            const isSelected = selectedCategory === c.key;
             return (
               <button
-                key={item.key}
+                key={c.key}
                 type="button"
-                onClick={() => handleGenderSwitch(item.key)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '0.75rem',
-                  fontWeight: isSelected ? 700 : 500,
-                  letterSpacing: '0.08em',
-                  color: isSelected ? '#000000' : '#888888',
-                  borderBottom: isSelected ? '1.5px solid #000000' : '1.5px solid transparent',
-                  paddingBottom: '2px',
-                  paddingLeft: '2px',
-                  paddingRight: '2px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => handleCategorySelect(c.key)}
+                className={`home-pill${isSelected ? ' active' : ''}`}
               >
-                {item.label}
+                {categoryLabel(c)}
               </button>
             );
           })}
         </div>
-
-        {/* Right: Item Count */}
-        <div
-          style={{
-            fontSize: '0.6875rem',
-            color: '#888888',
-            letterSpacing: '0.04em',
-            fontWeight: 500,
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-            marginLeft: 'auto',
-          }}
-        >
-          {loading ? '...' : `${products.length} ${t('home.items')}`}
-        </div>
       </div>
 
       {/* =========================================================
-          4. DIRECT PRODUCT GRID (Zero whitespace gap)
-          Starts immediately below category navigation bar
+          PRODUCT GRID
           ========================================================= */}
       <main
         style={{
@@ -170,8 +301,14 @@ export function HomePage() {
         }}
       >
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: '#888888' }}>
-            <p style={{ fontSize: '0.875rem', letterSpacing: '0.04em' }}>{t('home.loading')}</p>
+          <div className="product-grid noeul-product-grid" aria-label={t('home.loading')}>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
+              <div key={k} className="best-skeleton-card" aria-hidden="true">
+                <div className="best-skeleton-media" />
+                <div className="best-skeleton-line" />
+                <div className="best-skeleton-line short" />
+              </div>
+            ))}
           </div>
         ) : products.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '80px 20px', color: '#666666' }}>
@@ -181,7 +318,7 @@ export function HomePage() {
             </p>
             <button
               type="button"
-              onClick={() => handleGenderSwitch('all')}
+              onClick={handleReset}
               style={{
                 padding: '8px 20px',
                 fontSize: '0.75rem',
@@ -197,7 +334,7 @@ export function HomePage() {
             </button>
           </div>
         ) : (
-          <div className="product-grid noeul-product-grid">
+          <div key={`${selectedGender}-${selectedCategory}`} className="product-grid noeul-product-grid home-grid-animated">
             {products.map((prod) => (
               <ProductCard
                 key={prod.id}

@@ -87,6 +87,30 @@ describe('Manual / external orders — backend wiring', () => {
     expect(block.includes(".eq('size'")).toBe(true);
   });
 
+  it('non-website manual orders get a long expiry (no 45-min auto-cancel)', () => {
+    const admin = read('api/admin.js');
+    const idx = admin.indexOf("orders/manual");
+    const block = admin.slice(idx, idx + 12000);
+    expect(block.includes('expires_at')).toBe(true);
+    expect(block.includes("orderSource !== 'website'")).toBe(true);
+  });
+
+  it('failed manual save releases the coupon hold too', () => {
+    const admin = read('api/admin.js');
+    const idx = admin.indexOf("orders/manual");
+    const block = admin.slice(idx, idx + 14000);
+    expect(block.includes('couponReserved')).toBe(true);
+  });
+
+  it('percentage coupons use percent math with max cap', () => {
+    const admin = read('api/admin.js');
+    expect(admin.includes('function couponDiscount(subtotal, coupon)')).toBe(true);
+    expect(admin.includes("coupon.discount_type === 'percentage'")).toBe(true);
+    expect(admin.includes('coupon.max_discount')).toBe(true);
+    const validateIdx = admin.indexOf('coupons/validate');
+    expect(admin.slice(validateIdx, validateIdx + 1500).includes('couponDiscount(subtotal, coupon)')).toBe(true);
+  });
+
   it('Supabase migration adds order_source with check constraint', () => {
     const sql = read('supabase/migrations/202610020001_order_source.sql');
     expect(sql.includes('order_source')).toBe(true);
