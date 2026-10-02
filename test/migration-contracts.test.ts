@@ -54,8 +54,12 @@ describe('Phase 5-7 — Code↔migration contract alignment', () => {
   });
 
   it('uses the transactional outbox table with jsonb payloads', () => {
-    expect(app.includes("from('outbox')")).toBe(true);
-    expect(app.includes('effect_key')).toBe(true);
+    // P0 atomic placement: the outbox write lives inside app.place_order
+    // (single transaction), not as a separate JS insert in api/app.js.
+    const sql = read('supabase/migrations/202609180009_atomic_orders.sql');
+    expect(sql.includes('outbox')).toBe(true);
+    expect(sql.includes('effect_key')).toBe(true);
+    const app = read('api/app.js');
     expect(app.includes('idempotency_key')).toBe(true);
   });
 

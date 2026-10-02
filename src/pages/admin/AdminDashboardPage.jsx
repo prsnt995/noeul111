@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api, adminApi } from '../../utils/api.js';
+import { PageHeader } from '../../components/admin/ui/PageHeader.jsx';
+import { ErrorBanner, Empty } from '../../components/admin/ui/Empty.jsx';
+import { StatusPill } from '../../components/admin/ui/StatusPill.jsx';
+import { adminApi } from '../../utils/api.js';
 import { formatKRW, ORDER_STATUS_MAP } from '../../utils/formatters.js';
 import { sourceLabel } from '../../utils/orderSources.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -10,12 +13,10 @@ import { DashboardSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import {
   DollarSign,
   ShoppingBag,
-  Users,
-  AlertTriangle,
   TrendingUp,
+  AlertTriangle,
   ArrowRight,
   Plus,
-  Truck,
   CheckCircle,
   Clock,
 } from 'lucide-react';
@@ -57,22 +58,17 @@ export function AdminDashboardPage() {
   }, []);
 
   const handleQuickStock = async (productId, delta) => {
+    const prev = data;
+    setData((d) => d ? {
+      ...d,
+      lowStockItems: (d.lowStockItems || []).map((p) => (p.id === productId ? { ...p, stock: Math.max(0, (p.stock || 0) + delta) } : p)),
+    } : d);
     try {
       await adminApi.patch(`/admin/products/${productId}/stock`, { delta });
       showToast('재고가 추가되었습니다.', 'success');
-      fetchStats();
     } catch (err) {
-      showToast('재고 변경 실패', 'error');
-    }
-  };
-
-  const handleStatusChange = async (orderId, newStatus) => {
-    try {
-      await adminApi.patch(`/admin/orders/${orderId}/status`, { order_status: newStatus });
-      showToast('주문 상태가 변경되었습니다.', 'success');
-      fetchStats();
-    } catch (err) {
-      showToast('상태 변경 실패', 'error');
+      setData(prev);
+      showToast(err?.message || '재고 변경 실패', 'error');
     }
   };
 
@@ -98,28 +94,19 @@ export function AdminDashboardPage() {
 
   return (
     <AdminLayout activePage="dashboard">
-      <div>
-        {/* Page Title */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>대시보드 개요</h1>
-            <p style={{ fontSize: '0.875rem', color: '#71717a', marginTop: '2px' }}>
-              노을(NOEUL) 브랜드 실시간 매출 및 주문 배송 현황
-            </p>
-          </div>
-          <Link href="/admin/products" className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)', padding: '10px 18px', fontSize: '0.875rem' }}>
-            <Plus size={16} />
-            <span>새 상품 등록</span>
+      <PageHeader
+        ko="대시보드 개요"
+        en="Dashboard"
+        desc="노을(NOEUL) 브랜드 실시간 매출 및 주문 배송 현황"
+        actions={(
+          <Link href="/admin/products" className="adm-btn adm-btn-primary">
+            <Plus size={16} aria-hidden />
+            <span>새 상품 등록 New product</span>
           </Link>
-        </div>
-
-        {hasError && (
-          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '14px 18px', borderRadius: '8px', marginBottom: '20px', fontSize: '0.875rem', lineHeight: 1.5 }}>
-            <strong>대시보드 로드 실패:</strong> {errorMsg}
-            <button onClick={fetchStats} style={{ marginLeft: 12, padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem' }}>다시 시도</button>
-            <Link href="/admin/login" style={{ marginLeft: 8, color: '#dc2626', textDecoration: 'underline', fontSize: '0.8125rem' }}>로그인 페이지로 이동 →</Link>
-          </div>
         )}
+      />
+
+      <ErrorBanner message={hasError ? `대시보드 로드 실패: ${errorMsg}` : ''} onRetry={fetchStats} />
 
         {/* 1. All 8 Specified KPI Metric Cards */}
         <div
@@ -131,7 +118,7 @@ export function AdminDashboardPage() {
           }}
         >
           {/* Total Sales */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Total Sales (총 매출액)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fef2f2', color: 'var(--accent-sunset)' }}>
@@ -147,7 +134,7 @@ export function AdminDashboardPage() {
           </div>
 
           {/* Total Products */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Total Products (전체 상품)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#f0fdf4', color: '#16a34a' }}>
@@ -163,7 +150,7 @@ export function AdminDashboardPage() {
           </div>
 
           {/* Women's Products */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Women's Products (여성)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fce7f3', color: '#db2777' }}>
@@ -179,7 +166,7 @@ export function AdminDashboardPage() {
           </div>
 
           {/* New Arrivals */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>New Arrivals (신상품)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#eff6ff', color: '#2563eb' }}>
@@ -195,7 +182,7 @@ export function AdminDashboardPage() {
           </div>
 
           {/* Orders */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Orders (전체 주문)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#faf5ff', color: '#9333ea' }}>
@@ -211,7 +198,7 @@ export function AdminDashboardPage() {
           </div>
 
           {/* Pending Orders */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Pending Orders (처리 대기)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fef3c7', color: '#b45309' }}>
@@ -227,7 +214,7 @@ export function AdminDashboardPage() {
           </div>
 
           {/* Completed Orders */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Completed Orders (완료)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#f0fdf4', color: '#15803d' }}>
@@ -243,7 +230,7 @@ export function AdminDashboardPage() {
           </div>
 
           {/* Low Stock Products */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>Low Stock (품절 임박)</span>
               <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fee2e2', color: '#dc2626' }}>
@@ -260,19 +247,10 @@ export function AdminDashboardPage() {
         </div>
 
         {/* 2. Order Status Pipeline Funnel */}
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '10px',
-            padding: '24px',
-            border: '1px solid #e4e4e7',
-            marginBottom: '32px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
+        <div className="adm-card" style={{ padding: '24px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>주문 처리 단계별 현황</h3>
-            <Link href="/admin/orders" style={{ fontSize: '0.8125rem', color: 'var(--accent-sunset)', fontWeight: 600 }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>주문 처리 단계별 현황 Order Pipeline</h3>
+            <Link href="/admin/orders" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
               전체 주문 관리 →
             </Link>
           </div>
@@ -313,21 +291,12 @@ export function AdminDashboardPage() {
         </div>
 
         {/* 2b. Sales by Channel (채널별 매출) */}
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '10px',
-            padding: '24px',
-            border: '1px solid #e4e4e7',
-            marginBottom: '32px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
+        <div className="adm-card" style={{ padding: '24px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>
               {lang === 'en' ? 'Sales by Channel' : '채널별 매출 (Sales by Channel)'}
             </h3>
-            <Link href="/admin/reports" style={{ fontSize: '0.8125rem', color: 'var(--accent-sunset)', fontWeight: 600 }}>
+            <Link href="/admin/reports" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
               {lang === 'en' ? 'Full reports →' : '전체 리포트 →'}
             </Link>
           </div>
@@ -355,19 +324,19 @@ export function AdminDashboardPage() {
         </div>
 
         {/* 3. Grid: Recent Orders & Low Stock Alerts */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '16px' }}>
           {/* Recent Orders Table */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>최근 접수된 주문</h3>
-              <Link href="/admin/orders" style={{ fontSize: '0.8125rem', color: 'var(--accent-sunset)', fontWeight: 600 }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>최근 접수된 주문 Recent orders</h3>
+              <Link href="/admin/orders" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
                 전체보기 →
               </Link>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {recentOrders.map((ord) => {
-                const statusInfo = ORDER_STATUS_MAP[ord.order_status] || ORDER_STATUS_MAP['pending'];
+                const info = ORDER_STATUS_MAP[ord.order_status] || ORDER_STATUS_MAP.pending;
                 return (
                   <div
                     key={ord.id}
@@ -379,6 +348,7 @@ export function AdminDashboardPage() {
                       borderRadius: '6px',
                       backgroundColor: '#fbfbfb',
                       border: '1px solid #f0f0f2',
+                      gap: 8,
                     }}
                   >
                     <div>
@@ -390,46 +360,31 @@ export function AdminDashboardPage() {
                           {ord.customer_name}
                         </span>
                       </div>
-                      <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '2px' }}>
+                      <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '2px', marginBottom: 0 }}>
                         {formatKRW(ord.total_amount)} • {ord.item_count}개 품목
                       </p>
                     </div>
 
-                    <select
-                      value={ord.order_status}
-                      onChange={(e) => handleStatusChange(ord.id, e.target.value)}
-                      style={{
-                        backgroundColor: statusInfo.bg,
-                        color: statusInfo.text,
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '4px 8px',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="pending">결제대기</option>
-                      <option value="confirmed">주문접수</option>
-                      <option value="processing">상품준비중</option>
-                      <option value="shipped">배송중</option>
-                      <option value="delivered">배송완료</option>
-                      <option value="cancelled">주문취소</option>
-                    </select>
+                    <Link href="/admin/orders" title="주문 관리에서 상태 변경 Manage in Orders">
+                      <StatusPill status={ord.order_status} label={`${info.ko} · ${info.en}`} />
+                    </Link>
                   </div>
                 );
               })}
+              {recentOrders.length === 0 && (
+                <Empty title="최근 주문이 없습니다 No recent orders" desc="새 주문이 접수되면 여기에 표시됩니다." />
+              )}
             </div>
           </div>
 
           {/* Low Stock Products Warning */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="adm-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertTriangle size={18} color="#b45309" />
-                <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>재고 부족 알림 ({lowStockItems.length})</h3>
+                <AlertTriangle size={18} color="#b45309" aria-hidden />
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>재고 부족 알림 Low stock ({lowStockItems.length})</h3>
               </div>
-              <Link href="/admin/products" style={{ fontSize: '0.8125rem', color: 'var(--accent-sunset)', fontWeight: 600 }}>
+              <Link href="/admin/products" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
                 재고 관리 →
               </Link>
             </div>
@@ -488,7 +443,6 @@ export function AdminDashboardPage() {
             )}
           </div>
         </div>
-      </div>
     </AdminLayout>
   );
 }

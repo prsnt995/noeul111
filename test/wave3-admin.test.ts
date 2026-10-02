@@ -109,7 +109,8 @@ describe('Wave 3 — Admin backend covers the admin UI', () => {
 
   it('Wave 3b — storefront review write path and summary exist', () => {
     const app = read('api/app.js');
-    expect(app.includes("products/:id/reviews', checkoutLimiter")).toBe(true);
+    // Reviews have their own limiter so order attempts cannot starve them.
+    expect(app.includes("products/:id/reviews', reviewLimiter")).toBe(true);
     expect(app.includes('is_approved: false')).toBe(true);
     expect(app.includes('totalReviews')).toBe(true);
   });

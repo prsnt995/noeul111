@@ -56,6 +56,8 @@ const AdminCustomersPage = lazy(() => import('./pages/admin/AdminCustomersPage.j
 const AdminMediaPage = lazy(() => import('./pages/admin/AdminMediaPage.jsx').then(m => ({ default: m.AdminMediaPage })));
 const AdminStaffPage = lazy(() => import('./pages/admin/AdminStaffPage.jsx').then(m => ({ default: m.AdminStaffPage })));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage.jsx').then(m => ({ default: m.AdminSettingsPage })));
+const AdminAuditPage = lazy(() => import('./pages/admin/AdminAuditPage.jsx').then(m => ({ default: m.AdminAuditPage })));
+const AdminPrivacyPage = lazy(() => import('./pages/admin/AdminPrivacyPage.jsx').then(m => ({ default: m.AdminPrivacyPage })));
 
 function AppContent() {
   const [location] = useLocation();
@@ -73,7 +75,18 @@ function AppContent() {
 
       {/* Main Page Routing */}
       <div style={{ flex: 1 }}>
-        <Suspense fallback={<div className="container" style={{ textAlign: 'center', padding: '120px 0' }}><p>페이지를 불러오는 중...</p></div>}>
+        <Suspense fallback={isAdminRoute ? (
+          <div className="adm-main" style={{ maxWidth: 1280, margin: '0 auto' }} aria-label="Loading admin page">
+            <div className="adm-skel" style={{ height: 28, width: 240, marginBottom: 12 }} />
+            <div className="adm-skel" style={{ height: 14, width: 320, marginBottom: 20 }} />
+            <div style={{ display: 'grid', gap: 10 }}>
+              {[0, 1, 2, 3, 4].map((i) => (<div key={i} className="adm-skel" style={{ height: 44 }} />))}
+            </div>
+            <p style={{ textAlign: 'center', color: '#71717a', fontSize: '0.85rem', marginTop: 16 }}>관리자 페이지 불러오는 중… Loading admin…</p>
+          </div>
+        ) : (
+          <div className="container" style={{ textAlign: 'center', padding: '120px 0' }}><p>페이지를 불러오는 중...</p></div>
+        )}>
         <Switch>
           {/* Customer Storefront Routes */}
           <Route path="/" component={HomePage} />
@@ -113,6 +126,8 @@ function AppContent() {
           <Route path="/admin/media" component={AdminMediaPage} />
           <Route path="/admin/staff" component={AdminStaffPage} />
           <Route path="/admin/settings" component={AdminSettingsPage} />
+          <Route path="/admin/audit" component={AdminAuditPage} />
+          <Route path="/admin/privacy" component={AdminPrivacyPage} />
 
           {/* 404 Fallback */}
           <Route>

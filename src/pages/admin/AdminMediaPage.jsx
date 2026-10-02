@@ -1,13 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api, adminApi } from '../../utils/api.js';
+import {
+  PageHeader,
+  Filters,
+  Pagination,
+  ErrorBanner,
+  Empty,
+  ConfirmModal,
+  normalizeListResponse,
+  buildListParams,
+} from '../../components/admin/ui/index.js';
+import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Film, Plus, Search, Copy, Trash2, X, Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
+import { Plus, Copy, Trash2, X, Upload, Loader2 } from 'lucide-react';
+
+const PAGE_SIZE = 24;
 
 export function AdminMediaPage() {
   const [mediaList, setMediaList] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [deleteId, setDeleteId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const { showToast } = useToast();
   const fileInputRef = useRef(null);
@@ -22,10 +38,15 @@ export function AdminMediaPage() {
   const fetchMedia = async () => {
     setLoading(true);
     try {
-      const res = await adminApi.get(`/admin/media?search=${encodeURIComponent(search)}`);
-      if (res.success) setMediaList(res.data);
+      setErrorMsg('');
+      const qs = buildListParams({ page, pageSize: PAGE_SIZE, search: search.trim() });
+      const res = await adminApi.get(`/admin/media${qs}`);
+      const { data, total: t } = normalizeListResponse(res, page, PAGE_SIZE);
+      setMediaList(data);
+      setTotal(t);
     } catch (err) {
       console.error('Fetch media error:', err);
+      setErrorMsg(err?.message || '미디어 목록을 불러오지 못했습니다.');
       showToast('미디어 목록을 불러오지 못했습니다.', 'error');
     } finally {
       setLoading(false);
@@ -34,7 +55,7 @@ export function AdminMediaPage() {
 
   useEffect(() => {
     fetchMedia();
-  }, [search]);
+  }, [page]);
 
   const handleDirectFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -83,165 +104,163 @@ export function AdminMediaPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('이 미디어를 삭제하시겠습니까?')) return;
     try {
       await adminApi.delete(`/admin/media/${id}`);
       showToast('미디어가 삭제되었습니다.', 'info');
+      setDeleteId(null);
       fetchMedia();
     } catch (err) {
-      showToast('삭제 실패', 'error');
+      showToast(err?.message || '삭제 실패', 'error');
     }
   };
 
   return (
     <AdminLayout activePage="media">
-      <div>
-        {/* Hidden Global File Input for 1-Click Upload */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleDirectFileUpload}
-          multiple
-          accept="image/*"
-          style={{ display: 'none' }}
-        />
+      {/* Hidden Global File Input for 1-Click Upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleDirectFileUpload}
+        multiple
+        accept="image/*"
+        style={{ display: 'none' }}
+        aria-hidden
+        tabIndex={-1}
+      />
 
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>미디어 라이브러리 (Media Library)</h1>
-            <p style={{ fontSize: '0.875rem', color: '#71717a' }}>
-              컴퓨터에서 사진을 직접 업로드하거나 URL을 등록하여 쇼핑몰 전역에서 재사용합니다.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
+      <PageHeader
+        ko="미디어 라이브러리"
+        en="Media Library"
+        desc="컴퓨터에서 사진을 직접 업로드하거나 URL을 등록하여 쇼핑몰 전역에서 재사용합니다."
+        actions={(
+          <>
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="btn-primary"
-              style={{ backgroundColor: 'var(--accent-sunset)', padding: '10px 20px', fontSize: '0.875rem' }}
+              className="adm-btn adm-btn-primary"
             >
               {uploading ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>업로드 중...</span>
+                  <Loader2 size={16} className="animate-spin" aria-hidden />
+                  <span>업로드 중…</span>
                 </>
               ) : (
                 <>
-                  <Upload size={16} />
-                  <span>사진 파일 직접 업로드</span>
+                  <Upload size={16} aria-hidden />
+                  <span>사진 파일 직접 업로드 Upload</span>
                 </>
               )}
             </button>
-
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="btn-secondary"
-              style={{ padding: '10px 16px', fontSize: '0.875rem' }}
-            >
-              <Plus size={16} />
+            <button type="button" onClick={() => setIsModalOpen(true)} className="adm-btn">
+              <Plus size={16} aria-hidden />
               <span>URL로 등록</span>
             </button>
-          </div>
-        </div>
-
-        {/* Search */}
-        <div style={{ backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '10px', border: '1px solid #e4e4e7', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ position: 'relative', width: '320px' }}>
-            <Search size={16} color="#999" style={{ position: 'absolute', top: '10px', left: '10px' }} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="미디어 이름, 태그 검색..."
-              className="form-input"
-              style={{ padding: '8px 12px 8px 34px', fontSize: '0.875rem' }}
-            />
-          </div>
-          <span style={{ fontSize: '0.8125rem', color: '#71717a' }}>
-            총 <strong>{mediaList.length}</strong>개 미디어 파일
-          </span>
-        </div>
-
-        {/* Media Grid */}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '80px', color: '#888' }}>미디어 로딩 중...</div>
-        ) : mediaList.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e4e4e7', color: '#888' }}>
-            등록된 미디어 파일이 없습니다. 상단의 '사진 파일 직접 업로드' 버튼을 눌러 사진을 추가해보세요.
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px' }}>
-            {mediaList.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  backgroundColor: '#ffffff',
-                  borderRadius: '10px',
-                  border: '1px solid #e4e4e7',
-                  overflow: 'hidden',
-                  boxShadow: 'var(--shadow-sm)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                <div style={{ height: '160px', backgroundColor: '#eee', overflow: 'hidden', position: 'relative' }}>
-                  <img src={m.url} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-
-                <div style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <h4 style={{ fontSize: '0.875rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {m.name}
-                    </h4>
-                    <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '2px' }}>
-                      {m.tags || '태그 없음'}
-                    </p>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f0f0f2' }}>
-                    <button
-                      onClick={() => handleCopyUrl(m.url)}
-                      style={{ fontSize: '0.75rem', color: 'var(--accent-sunset)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer' }}
-                    >
-                      <Copy size={13} />
-                      <span>URL 복사</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(m.id)}
-                      style={{ padding: '4px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          </>
         )}
+      />
 
-        {/* Add Media Modal */}
-        {isModalOpen && (
-          <div className="backdrop" onClick={() => setIsModalOpen(false)} style={{ zIndex: 100 }}>
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: '520px',
-                margin: '60px auto',
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                padding: '24px',
-                boxShadow: 'var(--shadow-xl)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 700 }}>새 미디어 자산 등록</h3>
-                <button onClick={() => setIsModalOpen(false)}>
-                  <X size={20} />
-                </button>
+      <ErrorBanner message={errorMsg ? `미디어 로드 실패: ${errorMsg}` : ''} onRetry={fetchMedia} />
+
+      <Filters
+        searchValue={search}
+        onSearch={(v) => { setSearch(v); setPage(1); }}
+        searchPlaceholder="미디어 이름, 태그 검색 Search…"
+      >
+        <span style={{ fontSize: '0.8125rem', color: '#71717a', marginLeft: 'auto' }}>
+          총 <strong>{total}</strong>개 미디어 파일
+        </span>
+      </Filters>
+
+      {/* Media Grid */}
+      {loading ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px' }}>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="adm-card" style={{ padding: 12, display: 'grid', gap: 8 }}>
+              <div className="adm-skel" style={{ height: 140 }} />
+              <div className="adm-skel" style={{ height: 12 }} />
+            </div>
+          ))}
+        </div>
+      ) : mediaList.length === 0 ? (
+        <div className="adm-card">
+          <Empty
+            title="등록된 미디어 파일이 없습니다 No media yet"
+            desc="상단의 '사진 파일 직접 업로드' 버튼을 눌러 사진을 추가해 보세요."
+            action={(
+              <button type="button" className="adm-btn adm-btn-primary" onClick={() => fileInputRef.current?.click()}>
+                <Upload size={14} aria-hidden /> 사진 업로드하기
+              </button>
+            )}
+          />
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px' }}>
+          {mediaList.map((m) => (
+            <div key={m.id} className="adm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ height: '160px', backgroundColor: '#eee', overflow: 'hidden', position: 'relative' }}>
+                <img src={m.url} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
               </div>
+
+              <div style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.name}
+                  </h4>
+                  <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '2px', marginBottom: 0 }}>
+                    {m.tags || '태그 없음'}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f0f0f2' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyUrl(m.url)}
+                    style={{ fontSize: '0.75rem', color: 'var(--adm-accent)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    <Copy size={13} aria-hidden />
+                    <span>URL 복사 Copy</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteId(m.id)}
+                    aria-label={`${m.name} 삭제 Delete`}
+                    className="adm-icon-btn"
+                    style={{ color: '#dc2626' }}
+                  >
+                    <Trash2 size={14} aria-hidden />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 16 }}>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+      </div>
+
+      <ConfirmModal
+        open={!!deleteId}
+        title="미디어 삭제 Delete media"
+        desc="이 미디어를 삭제하시겠습니까? 사용 중인 배너·상품 이미지가 깨질 수 있습니다."
+        confirmLabel="삭제하기 Delete"
+        onConfirm={() => handleDelete(deleteId)}
+        onClose={() => setDeleteId(null)}
+      />
+
+      {/* Add Media Modal */}
+      {isModalOpen && (
+        <>
+          <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
+          <div className="adm-modal" role="dialog" aria-modal="true" aria-label="새 미디어 자산 등록 New media" style={{ maxWidth: 520 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <h2>새 미디어 자산 등록 New media</h2>
+              <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog">
+                <X size={16} />
+              </button>
+            </div>
 
               <form onSubmit={handleAddMedia} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -279,19 +298,18 @@ export function AdminMediaPage() {
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary" style={{ flex: 1 }}>
-                    취소
+                <div className="adm-modal-actions">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="adm-btn" style={{ flex: 1 }}>
+                    취소 Cancel
                   </button>
-                  <button type="submit" className="btn-primary" style={{ flex: 1, backgroundColor: 'var(--accent-sunset)' }}>
-                    등록하기
+                  <button type="submit" className="adm-btn adm-btn-primary" style={{ flex: 1 }}>
+                    등록하기 Save
                   </button>
                 </div>
               </form>
             </div>
-          </div>
+          </>
         )}
-      </div>
     </AdminLayout>
   );
 }

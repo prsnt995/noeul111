@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
+import {
+  PageHeader,
+  Filters,
+  ErrorBanner,
+  ConfirmModal,
+} from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { CardGridSkeleton } from '../../components/admin/AdminSkeleton.jsx';
-import { Plus, Edit2, Trash2, FolderTree, X, AlertCircle, Search, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, Filter, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Plus, Edit2, Trash2, FolderTree, X, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 
 export function AdminCategoriesPage() {
   const [categories, setCategories] = useState([]);
@@ -189,26 +195,19 @@ export function AdminCategoriesPage() {
 
   return (
     <AdminLayout activePage="categories">
-      <div>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>카테고리 관리 (Category Management)</h1>
-            <p style={{ fontSize: '0.875rem', color: '#71717a' }}>
-              상품 분류 카테고리 추가, 배너 이미지, 노출 순서 및 성별/활성 관리 — Supabase `app.categories` (free-tier 15개)
-            </p>
-          </div>
-          <button onClick={openAddModal} className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)', padding: '10px 18px', fontSize: '0.875rem' }}>
-            <Plus size={16} />
-            <span>새 카테고리 추가</span>
+      <PageHeader
+        ko="카테고리 관리"
+        en="Category Management"
+        desc="상품 분류 카테고리 추가, 배너 이미지, 노출 순서 및 성별/활성 관리"
+        actions={(
+          <button type="button" className="adm-btn adm-btn-primary" onClick={openAddModal}>
+            <Plus size={16} aria-hidden />
+            <span>새 카테고리 추가 New category</span>
           </button>
-        </div>
-
-        {errorMsg && (
-          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '12px 16px', borderRadius: '8px', marginBottom: 16, fontSize: '0.875rem' }}>
-            <strong>로드 실패:</strong> {errorMsg} <button onClick={fetchCategories} style={{ marginLeft: 8, padding: '4px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>다시 시도</button>
-          </div>
         )}
+      />
+
+      <ErrorBanner message={errorMsg ? `로드 실패: ${errorMsg}` : ''} onRetry={fetchCategories} />
 
         {/* Stats Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
@@ -231,26 +230,32 @@ export function AdminCategoriesPage() {
         </div>
 
         {/* Filters */}
-        <div style={{ backgroundColor: '#fff', borderRadius: 10, padding: '14px 16px', border: '1px solid #e4e4e7', marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} color="#999" style={{ position: 'absolute', top: 9, left: 9 }} />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="슬러그, 한글/영문명 검색" className="form-input" style={{ padding: '6px 10px 6px 28px', fontSize: '0.8125rem', width: 200 }} />
-            </div>
-            <select value={genderFilter} onChange={e => setGenderFilter(e.target.value)} className="form-select" style={{ padding: '6px 10px', fontSize: '0.8125rem' }}>
-              <option value="all">전체 성별</option>
-              <option value="unisex">Unisex</option>
-              <option value="men">Men</option>
-              <option value="women">Women</option>
-            </select>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="form-select" style={{ padding: '6px 10px', fontSize: '0.8125rem' }}>
-              <option value="all">전체 상태</option>
-              <option value="active">활성만</option>
-              <option value="hidden">숨김만</option>
-            </select>
-          </div>
-          <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{filtered.length} / {stats.total} 표시</span>
-        </div>
+        <Filters
+          searchValue={search}
+          onSearch={setSearch}
+          searchPlaceholder="슬러그, 한글/영문명 검색 Search…"
+          selects={[
+            {
+              name: 'gender', value: genderFilter, onChange: setGenderFilter, ariaLabel: '성별 Gender',
+              options: [
+                { value: 'all', label: '전체 성별 All' },
+                { value: 'unisex', label: 'Unisex' },
+                { value: 'men', label: 'Men' },
+                { value: 'women', label: 'Women' },
+              ],
+            },
+            {
+              name: 'status', value: statusFilter, onChange: setStatusFilter, ariaLabel: '상태 Status',
+              options: [
+                { value: 'all', label: '전체 상태 All' },
+                { value: 'active', label: '활성만 Active' },
+                { value: 'hidden', label: '숨김만 Hidden' },
+              ],
+            },
+          ]}
+        >
+          <span style={{ fontSize: '0.75rem', color: '#71717a', marginLeft: 'auto' }}>{filtered.length} / {stats.total} 표시</span>
+        </Filters>
 
         {/* Categories Grid */}
         {loading ? (
@@ -352,29 +357,23 @@ export function AdminCategoriesPage() {
         )}
 
         {/* Delete Confirmation */}
-        {deleteConfirmId && (
-          <div className="backdrop" onClick={() => setDeleteConfirmId(null)} style={{ zIndex: 110 }}>
-            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', margin: '120px auto', backgroundColor: '#ffffff', borderRadius: '12px', padding: '28px', textAlign: 'center', boxShadow: 'var(--shadow-xl)' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#fee2e2', color: '#dc2626', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                <AlertCircle size={24} />
-              </div>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '8px' }}>카테고리를 삭제하시겠습니까?</h3>
-              <p style={{ fontSize: '0.875rem', color: '#71717a', marginBottom: '24px' }}>카테고리에 속한 상품이 있을 경우 삭제할 수 없습니다. 먼저 상품의 카테고리를 변경하세요.</p>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={() => setDeleteConfirmId(null)} className="btn-secondary" style={{ flex: 1 }}>취소</button>
-                <button onClick={() => handleDelete(deleteConfirmId)} className="btn-primary" style={{ flex: 1, backgroundColor: '#dc2626' }}>확인 및 삭제</button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ConfirmModal
+          open={!!deleteConfirmId}
+          title="카테고리 삭제 Delete category"
+          desc="카테고리를 삭제하시겠습니까? 카테고리에 속한 상품이 있을 경우 삭제할 수 없습니다. 먼저 상품의 카테고리를 변경하세요."
+          confirmLabel="확인 및 삭제 Delete"
+          onConfirm={() => handleDelete(deleteConfirmId)}
+          onClose={() => setDeleteConfirmId(null)}
+        />
 
         {/* Add/Edit Modal */}
         {isModalOpen && (
-          <div className="backdrop" onClick={() => setIsModalOpen(false)} style={{ zIndex: 100 }}>
-            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '560px', margin: '40px auto', backgroundColor: '#ffffff', borderRadius: '12px', overflow: 'hidden', boxShadow: 'var(--shadow-xl)', maxHeight: '90vh', overflowY: 'auto' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e4e4e7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 1 }}>
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 700 }}>{isEditMode ? '카테고리 수정' : '새 카테고리 추가'}</h3>
-                <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+          <>
+            <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
+            <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '카테고리 수정 Edit category' : '새 카테고리 추가 New category'} style={{ maxWidth: 560 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h2>{isEditMode ? '카테고리 수정 Edit category' : '새 카테고리 추가 New category'}</h2>
+                <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog"><X size={16} /></button>
               </div>
 
               <form onSubmit={handleSave} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -426,15 +425,14 @@ export function AdminCategoriesPage() {
                   </label>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '16px', borderTop: '1px solid #e4e4e7' }}>
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">취소</button>
-                  <button type="submit" className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)' }}>저장하기</button>
+                <div className="adm-modal-actions">
+                  <button type="button" className="adm-btn" onClick={() => setIsModalOpen(false)}>취소 Cancel</button>
+                  <button type="submit" className="adm-btn adm-btn-primary">저장하기 Save</button>
                 </div>
               </form>
             </div>
-          </div>
+          </>
         )}
-      </div>
     </AdminLayout>
   );
 }

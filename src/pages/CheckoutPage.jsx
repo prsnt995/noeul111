@@ -37,7 +37,16 @@ export function CheckoutPage() {
   const [quoteError, setQuoteError] = useState('');
   const [quoteRetry, setQuoteRetry] = useState(0);
   const submission = useRef(false);
-  const orderKey = useRef(crypto.randomUUID());
+  // Idempotency keys must match /^[A-Za-z0-9._:-]{8,200}$/ (backend).
+  // crypto.randomUUID throws on non-secure contexts / old browsers — fall back.
+  const newIdempotencyKey = () => {
+    try {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    } catch { /* fall through to Math.random fallback */ }
+    const rand = Math.random().toString(36).slice(2, 14) + Math.random().toString(36).slice(2, 14);
+    return `${Date.now().toString(36)}-${rand}`.slice(0, 64);
+  };
+  const orderKey = useRef(newIdempotencyKey());
   const update = e => { setForm({ ...form, [e.target.name]: e.target.value }); setFormTouched(true); };
 
   const pickAddress = id => {
@@ -136,7 +145,16 @@ export function CheckoutPage() {
       // Keep cart contents until an authoritative paid result; a redirect or
       // order creation is not proof of payment. Do not lose later cart changes.
       setLocation(`/checkout/toss?order=${encodeURIComponent(orderRes.data.order_number)}`);
-    } catch (err) { showToast(err.message, 'error'); }
+    } catch (err) {
+      // Cart changed since the last attempt reuses the key with a different
+      // body (backend: IDEMPOTENCY_KEY_REUSE) — rotate so retry can proceed.
+      if (err?.message === 'IDEMPOTENCY_KEY_REUSE') {
+        orderKey.current = newIdempotencyKey();
+        showToast('장바구니가 변경되어 주문번호를 새로 발급했습니다. 다시 진행해주세요.', 'error');
+      } else {
+        showToast(err.message, 'error');
+      }
+    }
     finally { submission.current = false; setSubmitting(false); }
   };
 

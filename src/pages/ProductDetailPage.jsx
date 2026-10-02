@@ -226,14 +226,14 @@ export function ProductDetailPage() {
           <Link href="/" style={{ textDecoration: 'none', color: '#8c8984' }}>HOME</Link>
           <ChevronRight size={12} />
           <Link
-            href={`/shop?gender=${product.gender || 'all'}`}
+            href={`/?gender=${product.gender || 'all'}`}
             style={{ textDecoration: 'none', color: '#8c8984', textTransform: 'uppercase' }}
           >
             {product.gender || 'ALL'}
           </Link>
           <ChevronRight size={12} />
           <Link
-            href={`/shop?category=${product.category || product.subcategory || 'all'}`}
+            href={`/?gender=${product.gender || 'all'}&category=${product.category || product.subcategory || 'all'}`}
             style={{ textDecoration: 'none', color: '#8c8984', textTransform: 'capitalize' }}
           >
             {product.category || product.subcategory || 'Collection'}

@@ -1,24 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { ImageUploader } from '../../components/admin/ImageUploader.jsx';
-import { api, adminApi } from '../../utils/api.js';
+import {
+  PageHeader,
+  Filters,
+  DataTable,
+  Pagination,
+  ErrorBanner,
+  ConfirmModal,
+  normalizeListResponse,
+  buildListParams,
+} from '../../components/admin/ui/index.js';
+import { adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { TableSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import {
   Plus,
   Edit2,
   Trash2,
-  Search,
   Eye,
   EyeOff,
-  AlertCircle,
   X,
-  Tag,
-  Sparkles,
-  Check,
-  ChevronUp,
-  ChevronDown,
 } from 'lucide-react';
 
 const COMMON_SIZES = ['S', 'M', 'L', 'XL', 'FREE'];
@@ -69,10 +71,13 @@ export function AdminProductsPage() {
   const [stockFilter, setStockFilter] = useState('all');
   const [specialFilter, setSpecialFilter] = useState('all');
   const [errorMsg, setErrorMsg] = useState('');
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const LIMIT = 20;
+  const [sort, setSort] = useState({ key: 'id', dir: 'desc' });
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkAction, setBulkAction] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const PAGE_SIZE = 20;
   const { showToast } = useToast();
 
   // Modal State
@@ -80,6 +85,7 @@ export function AdminProductsPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deleteBlocked, setDeleteBlocked] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -93,9 +99,11 @@ export function AdminProductsPage() {
     material_en: '',
     price: '',
     discount_price: '',
+    gender: 'women',
     is_new: true,
     is_sale: false,
     is_best: false,
+    best_rank: '',
     status: 'active',
     images: [],
     sizes: ['S', 'M', 'L'],
@@ -107,35 +115,30 @@ export function AdminProductsPage() {
   // Custom color draft (name + hex picker) appended to presets
   const [newColor, setNewColor] = useState({ name_ko: '', name_en: '', hex: '#18181b' });
 
-  const fetchProducts = async (reset = true) => {
-    const targetPage = reset ? 0 : page;
-    if (reset) setPage(0);
+  const fetchProducts = async () => {
     setLoading(true);
     try {
       setErrorMsg('');
-      const params = new URLSearchParams();
-      if (search.trim()) params.append('search', search.trim());
-      if (selectedCategory !== 'all') params.append('category', selectedCategory);
-      if (stockFilter !== 'all') params.append('stockStatus', stockFilter);
-      if (specialFilter !== 'all') params.append('filterType', specialFilter);
-      params.append('limit', String(LIMIT));
-      params.append('offset', String(targetPage * LIMIT));
+      const qs = buildListParams({
+        page,
+        pageSize: PAGE_SIZE,
+        search: search.trim(),
+        sort: sort.key,
+        dir: sort.dir,
+        category: selectedCategory,
+        stockStatus: stockFilter,
+        filterType: specialFilter,
+      });
 
       const [prodRes, catRes] = await Promise.all([
-        adminApi.get(`/admin/products?${params.toString()}`),
-        reset ? adminApi.get('/admin/categories') : Promise.resolve({ success: false }),
+        adminApi.get(`/admin/products${qs}`),
+        categories.length ? Promise.resolve({ success: false }) : adminApi.get('/admin/categories'),
       ]);
 
       if (prodRes.success) {
-        let list = prodRes.data || [];
-        // Backend has no filterType=best — filter client-side so admin can
-        // review exactly what the homepage BEST strip will show.
-        if (specialFilter === 'best') list = list.filter((p) => p.is_best);
-        setProducts(prev => reset ? list : [...prev, ...list]);
-        setTotal(prodRes.total ?? list.length);
-        setHasMore(list.length === LIMIT && (prodRes.total ?? 0) > (targetPage + 1) * LIMIT);
-        if (reset) setPage(1);
-        else setPage(p => p + 1);
+        const { data, total: t } = normalizeListResponse(prodRes, page, PAGE_SIZE);
+        setProducts(data || []);
+        setTotal(t);
       }
       if (catRes.success) setCategories(catRes.data);
     } catch (err) {
@@ -155,12 +158,14 @@ export function AdminProductsPage() {
   };
 
   useEffect(() => {
-    fetchProducts(true);
-  }, [selectedCategory, stockFilter, specialFilter]);
+    fetchProducts();
+  }, [selectedCategory, stockFilter, specialFilter, page, sort]);
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchProducts(true);
+  const resetPage = (fn) => (v) => { fn(v); setPage(1); };
+
+  const handleSort = (key) => {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
+    setPage(1);
   };
 
   const openAddModal = () => {
@@ -178,9 +183,11 @@ export function AdminProductsPage() {
       material_en: '100% Cotton',
       price: '',
       discount_price: '',
+      gender: 'women',
       is_new: true,
       is_sale: false,
       is_best: false,
+      best_rank: '',
       status: 'active',
       images: [],
       sizes: ['S', 'M', 'L', 'XL'],
@@ -214,9 +221,11 @@ export function AdminProductsPage() {
       material_en: p.material_en || '',
       price: p.price || '',
       discount_price: p.discount_price || '',
+      gender: ['men', 'women', 'unisex'].includes(p.gender) ? p.gender : 'women',
       is_new: Boolean(p.is_new),
       is_sale: Boolean(p.is_sale || (p.discount_price && p.discount_price < p.price)),
       is_best: Boolean(p.is_best),
+      best_rank: p.best_rank ?? '',
       status: p.status || 'active',
       images: mediaWithColor,
       sizes: p.sizes?.length > 0 ? p.sizes : ['FREE'],
@@ -271,47 +280,71 @@ export function AdminProductsPage() {
   };
 
   const handleToggleStatus = async (id, currentStatus) => {
+    const nextStatus = currentStatus === 'active' ? 'hidden' : 'active';
+    const prev = products;
+    setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, status: nextStatus } : p)));
     try {
-      const nextStatus = currentStatus === 'active' ? 'hidden' : 'active';
       await adminApi.patch(`/admin/products/${id}/status`, { status: nextStatus });
       showToast(`상품 상태가 ${nextStatus === 'active' ? '공개' : '비공개'}로 변경되었습니다.`, 'info');
-      fetchProducts();
     } catch (err) {
-      showToast('상태 변경 실패', 'error');
+      setProducts(prev);
+      showToast(err?.message || '상태 변경 실패', 'error');
     }
+  };
+
+  // Open the delete dialog for a single product (resets the ordered-block state).
+  const askDelete = (id) => {
+    setDeleteBlocked(false);
+    setDeleteConfirmId(id);
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteConfirmId(null);
+    setDeleteBlocked(false);
   };
 
   const handleDeleteProduct = async (id) => {
     try {
       const res = await adminApi.delete(`/admin/products/${id}`);
       showToast(res.message || '상품이 성공적으로 삭제되었습니다.', 'info');
-      setDeleteConfirmId(null);
+      closeDeleteDialog();
       fetchProducts();
     } catch (err) {
       console.error('Delete product error:', err);
       const code = err.message || '';
-      const friendly = code === 'PRODUCT_ORDERED'
-        ? '주문 내역이 있는 상품은 삭제할 수 없습니다. 먼저 상품을 숨김 처리하세요.'
-        : code === 'PRODUCT_DELETE_FAILED'
-          ? '상품 삭제에 실패했습니다. 연결된 데이터(주문·리뷰·장바구니)를 확인한 후 다시 시도해 주세요.'
-          : null;
+      if (code === 'PRODUCT_ORDERED') {
+        // Order history pins the row — keep the dialog open and offer the
+        // recommended next step (hide) instead of a toast dead end.
+        setDeleteBlocked(true);
+        return;
+      }
+      const friendly = code === 'PRODUCT_DELETE_FAILED'
+        ? '상품 삭제에 실패했습니다. 연결된 데이터(주문·리뷰·장바구니)를 확인한 후 다시 시도해 주세요.'
+        : null;
       showToast(friendly || code || '상품 삭제 실패', 'error');
+      closeDeleteDialog();
     }
   };
 
   const handleQuickStock = async (id, delta) => {
+    const prev = products;
+    setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, stock: Math.max(0, (p.stock || 0) + delta) } : p)));
     try {
-      await adminApi.patch(`/admin/products/${id}/stock`, { delta });
-      showToast('재고가 업데이트되었습니다.', 'success');
-      fetchProducts();
+      const res = await adminApi.patch(`/admin/products/${id}/stock`, { delta });
+      if (res && Number.isFinite(Number(res.stock))) {
+        setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, stock: Number(res.stock) } : p)));
+      }
     } catch (err) {
-      showToast('재고 변경 실패', 'error');
+      setProducts(prev);
+      showToast(err?.message || '재고 변경 실패', 'error');
     }
   };
 
   // One-click BEST toggle — controls homepage top strip (no backend change:
   // PUT already accepts partial { is_best }).
   const handleToggleBest = async (p) => {
+    const prev = products;
+    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, is_best: !p.is_best } : x)));
     try {
       await adminApi.put(`/admin/products/${p.id}`, { is_best: !p.is_best });
       showToast(
@@ -320,10 +353,53 @@ export function AdminProductsPage() {
           : `BEST 해제됨: ${p.name_ko || p.name_en}`,
         'success'
       );
-      fetchProducts();
     } catch (err) {
+      setProducts(prev);
       showToast(err.message || 'BEST 변경 실패', 'error');
     }
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => (prev.size === products.length && products.length > 0 ? new Set() : new Set(products.map((p) => p.id))));
+  };
+
+  const runBulk = async () => {
+    if (!bulkAction) return;
+    const ids = [...selectedIds];
+    if (!ids.length) { setBulkAction(null); return; }
+    setBulkBusy(true);
+    let ok = 0;
+    let fail = 0;
+    let orderedBlocked = 0;
+    for (const id of ids) {
+      try {
+        if (bulkAction === 'publish') await adminApi.patch(`/admin/products/${id}/status`, { status: 'active' });
+        else if (bulkAction === 'hide') await adminApi.patch(`/admin/products/${id}/status`, { status: 'hidden' });
+        else await adminApi.delete(`/admin/products/${id}`);
+        ok += 1;
+      } catch (err) {
+        fail += 1;
+        if (err?.message === 'PRODUCT_ORDERED') orderedBlocked += 1;
+      }
+    }
+    setBulkBusy(false);
+    setBulkAction(null);
+    setSelectedIds(new Set());
+    if (bulkAction === 'delete' && orderedBlocked) {
+      showToast(`${ok}개 삭제, ${orderedBlocked}개는 주문 내역이 있어 건너뜀${fail - orderedBlocked ? ` (기타 실패 ${fail - orderedBlocked}건)` : ''}`, fail ? 'error' : 'info');
+    } else {
+      showToast(fail ? `${ok}건 처리, ${fail}건 실패` : `${ok}건 처리되었습니다.`, fail ? 'error' : 'success');
+    }
+    fetchProducts();
   };
 
   const toggleSizeSelection = (size) => {
@@ -386,363 +462,288 @@ export function AdminProductsPage() {
     setFormData({ ...formData, variant_stock: next });
   };
 
+  const columns = [
+    {
+      key: 'product',
+      label: '상품 정보 Product Info',
+      render: (p) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', opacity: p.status === 'hidden' ? 0.6 : 1 }}>
+          <img
+            src={p.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
+            alt=""
+            style={{ width: '48px', height: '62px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #e4e4e7' }}
+          />
+          <div>
+            <p style={{ fontWeight: 700, color: '#18181b', fontSize: '0.9375rem', margin: 0 }}>#{p.id} {p.name_ko}</p>
+            <p style={{ fontSize: '0.75rem', color: '#71717a', margin: 0 }}>{p.name_en}</p>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.6875rem', fontFamily: 'monospace', color: '#999' }}>SKU: {p.sku}</span>
+              {p.material_ko && (
+                <span style={{ fontSize: '0.6875rem', color: '#52525b', backgroundColor: '#f4f4f5', padding: '1px 5px', borderRadius: '3px' }}>
+                  {p.material_ko}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'category',
+      label: '카테고리 Category',
+      render: (p) => (
+        <div style={{ color: '#52525b', fontWeight: 500 }}>
+          {p.category_name_ko}
+          <span style={{ fontSize: '0.6875rem', color: '#a1a1aa', display: 'block' }}>{p.category_name_en}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'price',
+      label: '판매가 Price',
+      sortable: true,
+      render: (p) => (
+        <div>
+          <span style={{ fontWeight: 700, color: '#18181b' }}>{formatKRW(p.discount_price || p.price)}</span>
+          {p.discount_price && (
+            <span style={{ fontSize: '0.75rem', color: '#999', textDecoration: 'line-through', display: 'block' }}>
+              {formatKRW(p.price)} (-{p.discount_rate}%)
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'stock',
+      label: '재고 Stock',
+      render: (p) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              fontWeight: 800,
+              fontSize: '0.875rem',
+              color: p.stock <= 0 ? '#dc2626' : p.stock <= 15 ? 'var(--adm-accent)' : '#16a34a',
+            }}
+          >
+            {p.stock <= 0 ? '품절 (0개)' : `${p.stock}개`}
+          </span>
+          <div style={{ display: 'flex', gap: '2px' }}>
+            <button
+              type="button"
+              onClick={() => handleQuickStock(p.id, -1)}
+              title="재고 -1"
+              aria-label={`${p.name_ko} 재고 -1`}
+              className="adm-btn"
+              style={{ padding: '2px 5px', fontSize: '0.75rem' }}
+            >
+              -1
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickStock(p.id, 5)}
+              title="재고 +5"
+              aria-label={`${p.name_ko} 재고 +5`}
+              className="adm-btn"
+              style={{ padding: '2px 5px', fontSize: '0.75rem' }}
+            >
+              +5
+            </button>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'badges',
+      label: '뱃지 Badges',
+      render: (p) => (
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          {p.is_new ? <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: '#18181b', color: '#fff', borderRadius: '2px', fontWeight: 700 }}>NEW</span> : null}
+          {p.is_sale ? <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: '#dc2626', color: '#fff', borderRadius: '2px', fontWeight: 700 }}>SALE</span> : null}
+          <button
+            type="button"
+            onClick={() => handleToggleBest(p)}
+            title={p.is_best ? 'BEST 해제 (홈페이지 상단에서 제거)' : 'BEST 지정 (홈페이지 상단에 노출)'}
+            style={{
+              fontSize: '0.625rem', padding: '2px 6px',
+              backgroundColor: p.is_best ? 'var(--adm-accent)' : '#f4f4f5',
+              color: p.is_best ? '#fff' : '#a1a1aa',
+              border: p.is_best ? 'none' : '1px dashed #d4d4d8',
+              borderRadius: '2px', fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+                            {p.is_best ? 'BEST ✓' : 'BEST +'}
+                          </button>
+                          {p.is_best && p.best_rank !== null && p.best_rank !== undefined && p.best_rank !== '' && (
+                            <span style={{ fontSize: '0.625rem', fontWeight: 800, color: '#71717a' }}>#{p.best_rank}</span>
+                          )}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      label: '공개 상태 Visibility',
+      render: (p) => (
+        <button
+          type="button"
+          onClick={() => handleToggleStatus(p.id, p.status)}
+          aria-label={`${p.name_ko} ${p.status === 'active' ? '숨기기' : '공개하기'}`}
+          style={{
+            fontSize: '0.75rem', padding: '4px 10px', borderRadius: '999px',
+            backgroundColor: p.status === 'active' ? '#dcfce7' : '#fee2e2',
+            color: p.status === 'active' ? '#166534' : '#991b1b',
+            fontWeight: 700, border: 'none', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: '4px',
+          }}
+        >
+          {p.status === 'active' ? <Eye size={12} aria-hidden /> : <EyeOff size={12} aria-hidden />}
+          <span>{p.status === 'active' ? '공개중' : '숨김(비공개)'}</span>
+        </button>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '관리 Actions',
+      align: 'right',
+      render: (p) => (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={() => openEditModal(p)}
+            className="adm-btn"
+            style={{ padding: '6px 10px', fontSize: '0.8125rem' }}
+          >
+            <Edit2 size={13} aria-hidden />
+            <span>수정</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => askDelete(p.id)}
+            className="adm-btn"
+            style={{ padding: '6px 10px', fontSize: '0.8125rem', color: '#dc2626', borderColor: '#fca5a5' }}
+          >
+            <Trash2 size={13} aria-hidden />
+            <span>삭제</span>
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <AdminLayout activePage="products">
       <div>
-        {errorMsg && (
-          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '14px 18px', borderRadius: '8px', marginBottom: '18px', fontSize: '0.875rem', lineHeight: 1.5 }}>
-            <strong>상품 로드 실패:</strong> {errorMsg}
-            <button onClick={fetchProducts} style={{ marginLeft: 12, padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem' }}>다시 시도</button>
-            <a href="/admin/login" style={{ marginLeft: 8, color: '#dc2626', textDecoration: 'underline', fontSize: '0.8125rem' }}>로그인 페이지로 이동 →</a>
-          </div>
-        )}
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>상품 관리 (Product Management)</h1>
-            <p style={{ fontSize: '0.875rem', color: '#71717a' }}>
-              전체 상품 등록, 실시간 한/영 다국어 데이터 수정, 사진 관리, 재고 및 공개 상태 변경
-            </p>
-          </div>
-
-          <button
-            onClick={openAddModal}
-            className="btn-primary"
-            style={{ backgroundColor: 'var(--accent-sunset)', padding: '12px 20px', fontSize: '0.875rem' }}
-          >
-            <Plus size={16} />
-            <span>새 상품 등록 (Add Product)</span>
-          </button>
-        </div>
-
-        {/* Filter & Search Bar */}
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            padding: '18px 24px',
-            borderRadius: '10px',
-            border: '1px solid #e4e4e7',
-            marginBottom: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '16px',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {/* Category Filter */}
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="form-select"
-              style={{ width: 'auto', padding: '8px 12px', fontSize: '0.875rem' }}
-            >
-              <option value="all">전체 카테고리 (All Categories)</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name_ko} ({c.name_en})
-                </option>
-              ))}
-            </select>
-
-            {/* Special Filter (New / Sale / Out of Stock) */}
-            <select
-              value={specialFilter}
-              onChange={(e) => setSpecialFilter(e.target.value)}
-              className="form-select"
-              style={{ width: 'auto', padding: '8px 12px', fontSize: '0.875rem' }}
-            >
-              <option value="all">전체 필터 (All Items)</option>
-              <option value="new">⭐ New Arrivals (신상품)</option>
-              <option value="best">🔥 Best (베스트 — 홈페이지 상단 노출)</option>
-              <option value="sale">🏷️ Sale (세일/할인 상품)</option>
-              <option value="in_stock">✅ In Stock (재고 있음)</option>
-              <option value="out_of_stock">❌ Out of Stock (품절 상품)</option>
-            </select>
-
-            {/* Stock Level Filter */}
-            <select
-              value={stockFilter}
-              onChange={(e) => setStockFilter(e.target.value)}
-              className="form-select"
-              style={{ width: 'auto', padding: '8px 12px', fontSize: '0.875rem' }}
-            >
-              <option value="all">전체 수량 필터</option>
-              <option value="in">재고 원활 (&gt; 15개)</option>
-              <option value="low">품절 임박 (1 ~ 15개)</option>
-              <option value="out">품절 (0개)</option>
-            </select>
-          </div>
-
-          {/* Search Form */}
-          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={16} color="#999" style={{ position: 'absolute', top: '10px', left: '10px' }} />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="상품명, SKU, ID 검색"
-                className="form-input"
-                style={{ padding: '8px 12px 8px 34px', fontSize: '0.875rem', width: '240px' }}
-              />
-            </div>
-            <button type="submit" className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.875rem' }}>
-              검색
+        <PageHeader
+          ko="상품 관리"
+          en="Product Management"
+          desc="전체 상품 등록, 실시간 한/영 다국어 데이터 수정, 사진 관리, 재고 및 공개 상태 변경"
+          actions={(
+            <button type="button" className="adm-btn adm-btn-primary" onClick={openAddModal}>
+              <Plus size={16} aria-hidden />
+              <span>새 상품 등록 (Add Product)</span>
             </button>
-          </form>
-        </div>
+          )}
+        />
+        <ErrorBanner message={errorMsg ? `상품 로드 실패: ${errorMsg}` : ''} onRetry={fetchProducts} />
 
-        {/* Product Table */}
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '10px',
-            border: '1px solid #e4e4e7',
-            overflow: 'hidden',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#fafafa', borderBottom: '1px solid #e4e4e7', color: '#71717a', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                  <th style={{ padding: '14px 16px', width: '60px' }}>ID / 순서</th>
-                  <th style={{ padding: '14px 20px' }}>상품 정보 (Product Info)</th>
-                  <th style={{ padding: '14px 16px' }}>카테고리</th>
-                  <th style={{ padding: '14px 16px' }}>판매가 (Price)</th>
-                  <th style={{ padding: '14px 16px' }}>재고 (Stock)</th>
-                  <th style={{ padding: '14px 16px' }}>뱃지 (Badges)</th>
-                  <th style={{ padding: '14px 16px' }}>공개 상태</th>
-                  <th style={{ padding: '14px 20px', textAlign: 'right' }}>관리 (Actions)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && products.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ padding: 0 }}>
-                      <TableSkeleton rows={5} cols={8} />
-                    </td>
-                  </tr>
-                ) : products.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '60px', color: '#888' }}>
-                      조건에 일치하는 상품이 없습니다.
-                    </td>
-                  </tr>
-                ) : (
-                  products.map((p) => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid #f0f0f2', opacity: p.status === 'hidden' ? 0.6 : 1 }}>
-                      <td style={{ padding: '14px 16px', color: '#71717a', fontWeight: 600 }}>
-                        #{p.id}
-                      </td>
+        <Filters
+          searchValue={search}
+          onSearch={(v) => { setSearch(v); setPage(1); }}
+          searchPlaceholder="상품명, SKU, ID 검색 Search…"
+          selects={[
+            {
+              name: 'category', value: selectedCategory, onChange: resetPage(setSelectedCategory), ariaLabel: '카테고리 Category',
+              options: [
+                { value: 'all', label: '전체 카테고리 (All Categories)' },
+                ...categories.map((c) => ({ value: String(c.id), label: `${c.name_ko} (${c.name_en})` })),
+              ],
+            },
+            {
+              name: 'special', value: specialFilter, onChange: resetPage(setSpecialFilter), ariaLabel: '특별 필터 Special filter',
+              options: [
+                { value: 'all', label: '전체 필터 (All Items)' },
+                { value: 'new', label: '⭐ New Arrivals (신상품)' },
+                { value: 'best', label: '🔥 Best (베스트 — 홈페이지 상단 노출)' },
+                { value: 'sale', label: '🏷️ Sale (세일/할인 상품)' },
+                { value: 'in_stock', label: '✅ In Stock (재고 있음)' },
+                { value: 'out_of_stock', label: '❌ Out of Stock (품절 상품)' },
+              ],
+            },
+            {
+              name: 'stock', value: stockFilter, onChange: resetPage(setStockFilter), ariaLabel: '재고 수량 Stock level',
+              options: [
+                { value: 'all', label: '전체 수량 필터 All' },
+                { value: 'in', label: '재고 원활 (> 15개)' },
+                { value: 'low', label: '품절 임박 (1 ~ 15개)' },
+                { value: 'out', label: '품절 (0개)' },
+              ],
+            },
+          ]}
+        />
 
-                      {/* Product Main Image & Bilingual Names */}
-                      <td style={{ padding: '14px 20px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <img
-                            src={p.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
-                            alt=""
-                            style={{ width: '48px', height: '62px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #e4e4e7' }}
-                          />
-                          <div>
-                            <p style={{ fontWeight: 700, color: '#18181b', fontSize: '0.9375rem' }}>{p.name_ko}</p>
-                            <p style={{ fontSize: '0.75rem', color: '#71717a' }}>{p.name_en}</p>
-                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
-                              <span style={{ fontSize: '0.6875rem', fontFamily: 'monospace', color: '#999' }}>SKU: {p.sku}</span>
-                              {p.material_ko && (
-                                <span style={{ fontSize: '0.6875rem', color: '#52525b', backgroundColor: '#f4f4f5', padding: '1px 5px', borderRadius: '3px' }}>
-                                  {p.material_ko}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Category */}
-                      <td style={{ padding: '14px 16px', color: '#52525b', fontWeight: 500 }}>
-                        {p.category_name_ko}
-                        <span style={{ fontSize: '0.6875rem', color: '#a1a1aa', display: 'block' }}>{p.category_name_en}</span>
-                      </td>
-
-                      {/* Price */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{ fontWeight: 700, color: '#18181b' }}>{formatKRW(p.discount_price || p.price)}</span>
-                        {p.discount_price && (
-                          <span style={{ fontSize: '0.75rem', color: '#999', textDecoration: 'line-through', display: 'block' }}>
-                            {formatKRW(p.price)} (-{p.discount_rate}%)
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Stock */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span
-                            style={{
-                              fontWeight: 800,
-                              fontSize: '0.875rem',
-                              color: p.stock <= 0 ? '#dc2626' : p.stock <= 15 ? 'var(--accent-sunset)' : '#16a34a',
-                            }}
-                          >
-                            {p.stock <= 0 ? '품절 (0개)' : `${p.stock}개`}
-                          </span>
-                          <div style={{ display: 'flex', gap: '2px' }}>
-                            <button
-                              onClick={() => handleQuickStock(p.id, -1)}
-                              title="재고 -1"
-                              style={{ padding: '2px 5px', backgroundColor: '#f4f4f5', borderRadius: '3px', color: '#555' }}
-                            >
-                              -1
-                            </button>
-                            <button
-                              onClick={() => handleQuickStock(p.id, 5)}
-                              title="재고 +5"
-                              style={{ padding: '2px 5px', backgroundColor: '#f4f4f5', borderRadius: '3px', color: '#555' }}
-                            >
-                              +5
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Badges — BEST is clickable for one-click toggle */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {p.is_new ? <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: '#18181b', color: '#fff', borderRadius: '2px', fontWeight: 700 }}>NEW</span> : null}
-                          {p.is_sale ? <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: '#dc2626', color: '#fff', borderRadius: '2px', fontWeight: 700 }}>SALE</span> : null}
-                          <button
-                            type="button"
-                            onClick={() => handleToggleBest(p)}
-                            title={p.is_best ? 'BEST 해제 (홈페이지 상단에서 제거)' : 'BEST 지정 (홈페이지 상단에 노출)'}
-                            style={{
-                              fontSize: '0.625rem',
-                              padding: '2px 6px',
-                              backgroundColor: p.is_best ? 'var(--accent-sunset)' : '#f4f4f5',
-                              color: p.is_best ? '#fff' : '#a1a1aa',
-                              border: p.is_best ? 'none' : '1px dashed #d4d4d8',
-                              borderRadius: '2px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {p.is_best ? 'BEST ✓' : 'BEST +'}
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Status Toggle */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <button
-                          onClick={() => handleToggleStatus(p.id, p.status)}
-                          style={{
-                            fontSize: '0.75rem',
-                            padding: '4px 10px',
-                            borderRadius: '999px',
-                            backgroundColor: p.status === 'active' ? '#dcfce7' : '#fee2e2',
-                            color: p.status === 'active' ? '#166534' : '#991b1b',
-                            fontWeight: 700,
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          {p.status === 'active' ? <Eye size={12} /> : <EyeOff size={12} />}
-                          <span>{p.status === 'active' ? '공개중' : '숨김(비공개)'}</span>
-                        </button>
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                          <button
-                            onClick={() => openEditModal(p)}
-                            style={{ padding: '6px 10px', backgroundColor: '#f4f4f5', borderRadius: '4px', color: '#27272a', display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #e4e4e7', cursor: 'pointer' }}
-                          >
-                            <Edit2 size={13} />
-                            <span>수정</span>
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirmId(p.id)}
-                            style={{ padding: '6px 10px', backgroundColor: '#fee2e2', borderRadius: '4px', color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #fca5a5', cursor: 'pointer' }}
-                          >
-                            <Trash2 size={13} />
-                            <span>삭제</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        {selectedIds.size > 0 && (
+          <div className="adm-card adm-filter-bar" role="toolbar" aria-label="Bulk actions 일괄 작업">
+            <strong style={{ fontSize: '0.85rem' }}>{selectedIds.size}개 선택됨 Selected</strong>
+            <button type="button" className="adm-btn" onClick={() => setBulkAction('publish')}>공개하기 Publish</button>
+            <button type="button" className="adm-btn" onClick={() => setBulkAction('hide')}>숨기기 Hide</button>
+            <button type="button" className="adm-btn" onClick={() => setBulkAction('delete')}>삭제하기 Delete</button>
+            <button type="button" className="adm-btn" onClick={() => setSelectedIds(new Set())}>선택 해제</button>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid #f0f0f2', backgroundColor: '#fafafa', fontSize: '0.75rem', color: '#71717a' }}>
-            <span>총 {total}개 중 {products.length}개 표시</span>
-            <span style={{ fontSize: '0.6875rem', color: '#a1a1aa' }}>Supabase free-tier: 20개씩 lazy load</span>
-          </div>
-        </div>
+        )}
 
-        {hasMore && (
-          <div style={{ textAlign: 'center', padding: '20px' }}>
-            <button
-              onClick={() => fetchProducts(false)}
-              disabled={loading}
-              className="btn-secondary"
-              style={{ padding: '10px 24px', fontSize: '0.875rem', opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
-            >
-              {loading ? '로딩 중...' : `더 보기 (${products.length}/${total})`}
+        <DataTable
+          columns={columns}
+          rows={products}
+          loading={loading}
+          emptyTitle="조건에 일치하는 상품이 없습니다 No products found"
+          emptyDesc="필터를 조정하거나 새 상품을 등록하세요."
+          emptyAction={(
+            <button type="button" className="adm-btn adm-btn-primary" onClick={openAddModal}>
+              <Plus size={14} aria-hidden /> 새 상품 등록
             </button>
-          </div>
-        )}
-        {!hasMore && products.length > 0 && (
-          <div style={{ textAlign: 'center', padding: '16px', color: '#71717a', fontSize: '0.8125rem' }}>
-            모든 상품을 불러왔습니다. ({total}개)
-          </div>
-        )}
+          )}
+          sort={sort}
+          onSort={handleSort}
+          rowKey={(r) => r.id}
+          selectable
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onToggleAll={toggleSelectAll}
+        />
 
-        {/* Delete Confirmation Modal */}
-        {deleteConfirmId && (
-          <div className="backdrop" onClick={() => setDeleteConfirmId(null)} style={{ zIndex: 110 }}>
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: '420px',
-                margin: '120px auto',
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                padding: '28px',
-                boxShadow: 'var(--shadow-xl)',
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#fee2e2', color: '#dc2626', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                <AlertCircle size={24} />
-              </div>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '8px' }}>상품을 완전히 삭제하시겠습니까?</h3>
-              <p style={{ fontSize: '0.875rem', color: '#71717a', marginBottom: '24px' }}>
-                삭제된 상품은 고객 웹사이트에서 즉시 제거되며 복구할 수 없습니다.
-              </p>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={() => setDeleteConfirmId(null)} className="btn-secondary" style={{ flex: 1 }}>
-                  취소
-                </button>
-                <button
-                  onClick={() => handleDeleteProduct(deleteConfirmId)}
-                  className="btn-primary"
-                  style={{ flex: 1, backgroundColor: '#dc2626' }}
-                >
-                  확인 및 삭제
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <div style={{ marginTop: 12 }}>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+        </div>
+
+        <ConfirmModal
+          open={!!deleteConfirmId || bulkAction === 'delete'}
+          title={deleteBlocked && deleteConfirmId
+            ? '주문 내역이 있어 삭제할 수 없습니다 Cannot delete — has orders'
+            : bulkAction === 'delete' ? `선택한 ${selectedIds.size}개 상품을 삭제할까요? Bulk delete` : '상품을 완전히 삭제하시겠습니까? Delete product'}
+          desc={deleteBlocked && deleteConfirmId
+            ? '이 상품은 과거 주문에 포함되어 있어 기록 보존을 위해 삭제가 차단됩니다. 대신 숨김 처리하면 고객 웹사이트에서 즉시 사라지고 주문 내역은 그대로 유지됩니다.'
+            : '삭제된 상품은 고객 웹사이트에서 즉시 제거되며 복구할 수 없습니다. 주문 내역이 있는 상품은 건너뜁니다.'}
+          confirmLabel={bulkBusy ? '처리 중…' : deleteBlocked && deleteConfirmId ? '숨김 처리하기 Hide instead' : '확인 및 삭제 Delete'}
+          danger={!(deleteBlocked && deleteConfirmId)}
+          onConfirm={() => {
+            if (bulkAction === 'delete') runBulk();
+            else if (deleteBlocked && deleteConfirmId) {
+              handleToggleStatus(deleteConfirmId, 'active');
+              closeDeleteDialog();
+            }
+            else if (deleteConfirmId) handleDeleteProduct(deleteConfirmId);
+          }}
+          onClose={() => { if (!bulkBusy) { closeDeleteDialog(); setBulkAction(null); } }}
+        />
+
+        <ConfirmModal
+          open={bulkAction === 'publish' || bulkAction === 'hide'}
+          title={bulkAction === 'publish' ? `선택한 ${selectedIds.size}개 상품을 공개할까요? Bulk publish` : `선택한 ${selectedIds.size}개 상품을 숨길까요? Bulk hide`}
+          desc={bulkAction === 'publish' ? '고객 웹사이트에 즉시 노출됩니다.' : '고객 웹사이트에서 즉시 숨겨집니다.'}
+          confirmLabel={bulkBusy ? '처리 중…' : '확인 Confirm'}
+          danger={false}
+          onConfirm={runBulk}
+          onClose={() => { if (!bulkBusy) setBulkAction(null); }}
+        />
 
         {/* Add / Edit Product Modal */}
         {isModalOpen && (
@@ -806,8 +807,8 @@ export function AdminProductsPage() {
                   </div>
                 </div>
 
-                {/* 2. Category & SKU */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                {/* 2. Category, Gender & SKU */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">카테고리 *</label>
                     <select
@@ -818,6 +819,19 @@ export function AdminProductsPage() {
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>{c.name_ko} ({c.name_en})</option>
                       ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">성별 (Gender) *</label>
+                    <select
+                      value={formData.gender}
+                      onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                      className="form-select"
+                    >
+                      <option value="women">여성 (Women)</option>
+                      <option value="men">남성 (Men)</option>
+                      <option value="unisex">공용 (Unisex)</option>
                     </select>
                   </div>
 
@@ -1195,14 +1209,18 @@ export function AdminProductsPage() {
                     <span>⭐ New Arrival (신상품 뱃지)</span>
                   </label>
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.is_sale}
-                      onChange={(e) => setFormData({ ...formData, is_sale: e.target.checked })}
+                  <span
+                    title="SALE 뱃지는 할인가 입력 시 자동으로 표시됩니다"
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem', fontWeight: 600, color: Number(formData.discount_price) > 0 ? '#18181b' : '#a1a1aa' }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block', width: '14px', height: '14px', borderRadius: '3px',
+                        backgroundColor: Number(formData.discount_price) > 0 ? '#dc2626' : '#e4e4e7',
+                      }}
                     />
-                    <span>🏷️ Sale (세일/할인 뱃지)</span>
-                  </label>
+                    <span>🏷️ Sale (할인가 입력 시 자동 표시)</span>
+                  </span>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
                     <input
@@ -1211,6 +1229,20 @@ export function AdminProductsPage() {
                       onChange={(e) => setFormData({ ...formData, is_best: e.target.checked })}
                     />
                     <span>🔥 Best (홈페이지 상단 노출)</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem', fontWeight: 600 }} title="숫자가 낮을수록 홈페이지 상단 먼저 노출 (비워두면 뒤로)">
+                    <span>BEST 순서</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="999"
+                      placeholder="예: 1"
+                      value={formData.best_rank}
+                      onChange={(e) => setFormData({ ...formData, best_rank: e.target.value })}
+                      className="form-input"
+                      style={{ width: '90px', padding: '6px 8px', fontSize: '0.8125rem' }}
+                    />
                   </label>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>

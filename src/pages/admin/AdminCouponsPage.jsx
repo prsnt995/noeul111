@@ -1,13 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api, adminApi } from '../../utils/api.js';
+import {
+  PageHeader,
+  Filters,
+  DataTable,
+  Pagination,
+  ErrorBanner,
+  ConfirmModal,
+  StatusPill,
+  normalizeListResponse,
+  buildListParams,
+} from '../../components/admin/ui/index.js';
+import { adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Tag, Plus, Edit2, Trash2, X, Check, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, X } from 'lucide-react';
+
+const PAGE_SIZE = 20;
 
 export function AdminCouponsPage() {
   const [coupons, setCoupons] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState({ key: 'code', dir: 'asc' });
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [deleteId, setDeleteId] = useState(null);
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,10 +50,15 @@ export function AdminCouponsPage() {
   const fetchCoupons = async () => {
     setLoading(true);
     try {
-      const res = await adminApi.get('/admin/coupons');
-      if (res.success) setCoupons(res.data);
+      setErrorMsg('');
+      const qs = buildListParams({ page, pageSize: PAGE_SIZE, search: search.trim(), sort: sort.key, dir: sort.dir });
+      const res = await adminApi.get(`/admin/coupons${qs}`);
+      const { data, total: t } = normalizeListResponse(res, page, PAGE_SIZE);
+      setCoupons(data);
+      setTotal(t);
     } catch (err) {
       console.error('Fetch coupons error:', err);
+      setErrorMsg(err?.message || '쿠폰 목록을 불러오지 못했습니다.');
       showToast('쿠폰 목록을 불러오지 못했습니다.', 'error');
     } finally {
       setLoading(false);
@@ -43,7 +67,12 @@ export function AdminCouponsPage() {
 
   useEffect(() => {
     fetchCoupons();
-  }, []);
+  }, [page, sort]);
+
+  const handleSort = (key) => {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+    setPage(1);
+  };
 
   const openAddModal = () => {
     setIsEditMode(false);
@@ -115,157 +144,158 @@ export function AdminCouponsPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('이 쿠폰을 삭제하시겠습니까?')) return;
     try {
       await adminApi.delete(`/admin/coupons/${id}`);
       showToast('쿠폰이 삭제되었습니다.', 'info');
+      setDeleteId(null);
       fetchCoupons();
     } catch (err) {
-      showToast('삭제 실패', 'error');
+      showToast(err?.message || '삭제 실패', 'error');
     }
   };
 
-  return (
-    <AdminLayout activePage="coupons">
-      <div>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>쿠폰 & 할인 프로모션 관리</h1>
-            <p style={{ fontSize: '0.875rem', color: '#71717a' }}>
-              비율(%) 또는 고정 금액(₩) 할인 쿠폰을 생성하고 사용 조건을 설정합니다.
-            </p>
-          </div>
+  const copyCode = async (code) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      showToast(`쿠폰 코드 ${code} 복사됨`, 'info');
+    } catch {
+      showToast('복사에 실패했습니다.', 'error');
+    }
+  };
 
+  const columns = [
+    {
+      key: 'code',
+      label: '쿠폰 코드 / 설명 Code',
+      sortable: true,
+      render: (c) => (
+        <div>
           <button
-            onClick={openAddModal}
-            className="btn-primary"
-            style={{ backgroundColor: 'var(--accent-sunset)', padding: '10px 20px', fontSize: '0.875rem' }}
+            type="button"
+            onClick={() => copyCode(c.code)}
+            title="클릭하여 코드 복사 Click to copy"
+            style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1rem', color: 'var(--adm-accent)', backgroundColor: '#fff1f2', padding: '3px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
           >
-            <Plus size={16} />
-            <span>새 쿠폰 발행</span>
+            {c.code}
+          </button>
+          <p style={{ fontSize: '0.8125rem', color: '#18181b', marginTop: '6px', fontWeight: 600, marginBottom: 0 }}>{c.description_ko}</p>
+          <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{c.description_en}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'benefit',
+      label: '할인 혜택 Benefit',
+      render: (c) => (
+        <div>
+          <span style={{ fontWeight: 700, fontSize: '1.0625rem', color: '#18181b' }}>
+            {c.discount_type === 'percentage' ? `${c.discount_value}% OFF` : `${formatKRW(c.discount_value)} 할인`}
+          </span>
+          {c.max_discount_amount && (
+            <span style={{ fontSize: '0.6875rem', color: '#888', display: 'block' }}>
+              최대 {formatKRW(c.max_discount_amount)}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'min',
+      label: '최소 주문 금액 Minimum',
+      render: (c) => (
+        <span style={{ color: '#52525b' }}>
+          {c.min_order_amount > 0 ? `${formatKRW(c.min_order_amount)} 이상` : '제한 없음 None'}
+        </span>
+      ),
+    },
+    {
+      key: 'usage',
+      label: '사용 현황 Usage',
+      render: (c) => <span><strong>{c.times_used || 0}</strong> / {c.usage_limit}회</span>,
+    },
+    {
+      key: 'status',
+      label: '상태 Status',
+      render: (c) => (
+        <StatusPill status={c.is_active ? 'delivered' : 'neutral'} label={c.is_active ? '사용가능 Active' : '비활성 Inactive'} />
+      ),
+    },
+    {
+      key: 'actions',
+      label: '관리 Actions',
+      align: 'right',
+      render: (c) => (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button type="button" onClick={() => openEditModal(c)} className="adm-btn" style={{ padding: '6px 10px', fontSize: '0.8125rem' }}>
+            <Edit2 size={13} aria-hidden />
+            <span>수정</span>
+          </button>
+          <button type="button" onClick={() => setDeleteId(c.id)} className="adm-btn" style={{ padding: '6px 10px', fontSize: '0.8125rem', color: '#dc2626', borderColor: '#fca5a5' }}>
+            <Trash2 size={13} aria-hidden />
+            <span>삭제</span>
           </button>
         </div>
+      ),
+    },
+  ];
 
-        {/* Coupons Table */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e4e4e7', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#fafafa', borderBottom: '1px solid #e4e4e7', color: '#71717a', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                  <th style={{ padding: '14px 20px' }}>쿠폰 코드 / 설명</th>
-                  <th style={{ padding: '14px 16px' }}>할인 혜택</th>
-                  <th style={{ padding: '14px 16px' }}>최소 주문 금액</th>
-                  <th style={{ padding: '14px 16px' }}>사용 현황</th>
-                  <th style={{ padding: '14px 16px' }}>상태</th>
-                  <th style={{ padding: '14px 20px', textAlign: 'right' }}>관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '50px', color: '#888' }}>
-                      쿠폰 데이터를 불러오는 중...
-                    </td>
-                  </tr>
-                ) : coupons.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '50px', color: '#888' }}>
-                      등록된 쿠폰이 없습니다.
-                    </td>
-                  </tr>
-                ) : (
-                  coupons.map((c) => (
-                    <tr key={c.id} style={{ borderBottom: '1px solid #f0f0f2' }}>
-                      <td style={{ padding: '14px 20px' }}>
-                        <span style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1rem', color: 'var(--accent-sunset)', backgroundColor: '#fff1f2', padding: '3px 8px', borderRadius: '4px' }}>
-                          {c.code}
-                        </span>
-                        <p style={{ fontSize: '0.8125rem', color: '#18181b', marginTop: '6px', fontWeight: 600 }}>{c.description_ko}</p>
-                        <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{c.description_en}</span>
-                      </td>
+  return (
+    <AdminLayout activePage="coupons">
+      <PageHeader
+        ko="쿠폰 & 할인 프로모션 관리"
+        en="Coupons & Promotions"
+        desc="비율(%) 또는 고정 금액(₩) 할인 쿠폰을 생성하고 사용 조건을 설정합니다. 코드를 클릭하면 복사됩니다."
+        actions={(
+          <button type="button" className="adm-btn adm-btn-primary" onClick={openAddModal}>
+            <Plus size={16} aria-hidden />
+            <span>새 쿠폰 발행 New coupon</span>
+          </button>
+        )}
+      />
 
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{ fontWeight: 700, fontSize: '1.0625rem', color: '#18181b' }}>
-                          {c.discount_type === 'percentage' ? `${c.discount_value}% OFF` : `${formatKRW(c.discount_value)} 할인`}
-                        </span>
-                        {c.max_discount_amount && (
-                          <span style={{ fontSize: '0.6875rem', color: '#888', display: 'block' }}>
-                            최대 {formatKRW(c.max_discount_amount)}
-                          </span>
-                        )}
-                      </td>
+      <ErrorBanner message={errorMsg ? `쿠폰 로드 실패: ${errorMsg}` : ''} onRetry={fetchCoupons} />
 
-                      <td style={{ padding: '14px 16px', color: '#52525b' }}>
-                        {c.min_order_amount > 0 ? `${formatKRW(c.min_order_amount)} 이상` : '제한 없음'}
-                      </td>
+      <Filters
+        searchValue={search}
+        onSearch={(v) => { setSearch(v); setPage(1); }}
+        searchPlaceholder="쿠폰 코드 검색 Search code…"
+      />
 
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{ fontWeight: 600 }}>{c.times_used || 0}</span> / {c.usage_limit}회
-                      </td>
+      <DataTable
+        columns={columns}
+        rows={coupons}
+        loading={loading}
+        emptyTitle="등록된 쿠폰이 없습니다 No coupons found"
+        emptyDesc="새 쿠폰을 발행해 보세요."
+        sort={sort}
+        onSort={handleSort}
+        rowKey={(r) => r.id}
+      />
 
-                      <td style={{ padding: '14px 16px' }}>
-                        <span
-                          style={{
-                            fontSize: '0.75rem',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            backgroundColor: c.is_active ? '#dcfce7' : '#f4f4f5',
-                            color: c.is_active ? '#166534' : '#71717a',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {c.is_active ? '사용가능' : '비활성'}
-                        </span>
-                      </td>
+      <div style={{ marginTop: 12 }}>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+      </div>
 
-                      <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                          <button
-                            onClick={() => openEditModal(c)}
-                            style={{ padding: '6px 10px', backgroundColor: '#f4f4f5', borderRadius: '4px', fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <Edit2 size={13} />
-                            <span>수정</span>
-                          </button>
-                          <button
-                            onClick={() => handleDelete(c.id)}
-                            style={{ padding: '6px 10px', backgroundColor: '#fee2e2', borderRadius: '4px', fontSize: '0.8125rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <Trash2 size={13} />
-                            <span>삭제</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <ConfirmModal
+        open={!!deleteId}
+        title="쿠폰 삭제 Delete coupon"
+        desc="이 쿠폰을 삭제하시겠습니까? 삭제된 쿠폰은 복구할 수 없습니다."
+        confirmLabel="삭제하기 Delete"
+        onConfirm={() => handleDelete(deleteId)}
+        onClose={() => setDeleteId(null)}
+      />
 
         {/* Create / Edit Modal */}
         {isModalOpen && (
-          <div className="backdrop" onClick={() => setIsModalOpen(false)} style={{ zIndex: 100 }}>
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: '560px',
-                margin: '60px auto',
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                overflow: 'hidden',
-                boxShadow: 'var(--shadow-xl)',
-              }}
-            >
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e4e4e7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 700 }}>
-                  {isEditMode ? '쿠폰 정보 수정' : '새 쿠폰 발행'}
-                </h3>
-                <button onClick={() => setIsModalOpen(false)}>
-                  <X size={20} />
+          <>
+            <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
+            <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '쿠폰 정보 수정 Edit coupon' : '새 쿠폰 발행 New coupon'} style={{ maxWidth: 560 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h2>
+                  {isEditMode ? '쿠폰 정보 수정 Edit coupon' : '새 쿠폰 발행 New coupon'}
+                </h2>
+                <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog">
+                  <X size={16} />
                 </button>
               </div>
 
@@ -368,19 +398,18 @@ export function AdminCouponsPage() {
                   <span style={{ fontSize: '0.875rem' }}>쿠폰 활성화 (Active)</span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '16px', borderTop: '1px solid #e4e4e7' }}>
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">
-                    취소
+                <div className="adm-modal-actions">
+                  <button type="button" className="adm-btn" onClick={() => setIsModalOpen(false)}>
+                    취소 Cancel
                   </button>
-                  <button type="submit" className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)' }}>
-                    발행하기
+                  <button type="submit" className="adm-btn adm-btn-primary">
+                    발행하기 Save
                   </button>
                 </div>
               </form>
             </div>
-          </div>
+          </>
         )}
-      </div>
     </AdminLayout>
   );
 }

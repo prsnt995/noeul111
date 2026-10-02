@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'wouter';
 import { api } from '../../utils/api.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Star, Plus, ThumbsUp, X, CheckCircle, MessageSquare } from 'lucide-react';
+import { Star, Plus, X, MessageSquare } from 'lucide-react';
 
 export function ProductReviews({ productId }) {
   const { lang, t } = useLanguage();
+  const { isLoggedIn } = useAuth();
   const { showToast } = useToast();
   const [reviews, setReviews] = useState([]);
   const [summary, setSummary] = useState({ averageRating: '5.0', totalReviews: 0 });
@@ -41,6 +44,10 @@ export function ProductReviews({ productId }) {
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
+    if (!isLoggedIn) {
+      showToast('로그인이 필요한 서비스입니다.', 'error');
+      return;
+    }
     try {
       await api.post(`/products/${productId}/reviews`, formData);
       showToast('리뷰가 성공적으로 등록되었습니다. 감사합니다!', 'success');
@@ -48,7 +55,7 @@ export function ProductReviews({ productId }) {
       setFormData({ author_name: '', rating: 5, title: '', comment: '', image_url: '' });
       fetchReviews();
     } catch (err) {
-      showToast('리뷰 등록에 실패했습니다.', 'error');
+      showToast(err?.message === 'COMMENT_REQUIRED' ? '후기 내용을 입력해주세요.' : '리뷰 등록에 실패했습니다.', 'error');
     }
   };
 
@@ -177,11 +184,21 @@ export function ProductReviews({ productId }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>상품 리뷰 작성</h3>
-              <button onClick={() => setIsWriteModalOpen(false)}>
+              <button onClick={() => setIsWriteModalOpen(false)} aria-label="닫기">
                 <X size={20} />
               </button>
             </div>
 
+            {!isLoggedIn ? (
+              <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                <p style={{ fontSize: '0.875rem', color: '#52525b', marginBottom: '16px' }}>
+                  리뷰 작성은 로그인 후 이용하실 수 있습니다.
+                </p>
+                <Link href="/auth" onClick={() => setIsWriteModalOpen(false)} className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)' }}>
+                  로그인 하러 가기
+                </Link>
+              </div>
+            ) : (
             <form onSubmit={handleSubmitReview} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Star Rating Picker */}
               <div>
@@ -259,6 +276,7 @@ export function ProductReviews({ productId }) {
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

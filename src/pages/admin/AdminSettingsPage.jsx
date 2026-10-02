@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api, adminApi } from '../../utils/api.js';
+import { PageHeader } from '../../components/admin/ui/PageHeader.jsx';
+import { ErrorBanner } from '../../components/admin/ui/Empty.jsx';
+import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Settings, Save, Building, Truck, Globe, Shield, CreditCard, Layout, Phone, Mail, MapPin } from 'lucide-react';
+import { Save, Building, Truck, CreditCard, Layout } from 'lucide-react';
 
 export function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState('payment');
@@ -39,11 +41,13 @@ export function AdminSettingsPage() {
   });
 
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
   const { showToast } = useToast();
 
   const fetchSettings = async () => {
     setLoading(true);
     try {
+      setErrorMsg('');
       const res = await adminApi.get('/admin/content/settings');
       if (res.success && res.data) {
         setSettings((prev) => ({
@@ -57,6 +61,7 @@ export function AdminSettingsPage() {
       }
     } catch (err) {
       console.error('Fetch settings error:', err);
+      setErrorMsg(err?.message || '설정을 불러오지 못했습니다.');
       showToast('설정을 불러오지 못했습니다.', 'error');
     } finally {
       setLoading(false);
@@ -80,68 +85,58 @@ export function AdminSettingsPage() {
   if (loading) {
     return (
       <AdminLayout activePage="settings">
-        <div style={{ textAlign: 'center', padding: '80px', color: '#888' }}>설정 로딩 중...</div>
+        <div style={{ display: 'grid', gap: 10, maxWidth: 840 }}>
+          <div className="adm-skel" style={{ height: 28, width: 280 }} />
+          {[0, 1, 2, 3].map((i) => (<div key={i} className="adm-skel" style={{ height: 56 }} />))}
+          <p style={{ textAlign: 'center', color: '#71717a', fontSize: '0.875rem' }}>설정 로딩 중… Loading settings…</p>
+        </div>
       </AdminLayout>
     );
   }
 
+  const tabs = [
+    { id: 'payment', ko: '무통장 입금 계좌', en: 'Bank Transfer', icon: CreditCard },
+    { id: 'business', ko: '사업자 & 고객센터 연락처', en: 'Business', icon: Building },
+    { id: 'shipping', ko: '배송비 규정', en: 'Shipping', icon: Truck },
+    { id: 'general', ko: '헤더 띠배너 공지', en: 'Announcement', icon: Layout },
+  ];
+
   return (
     <AdminLayout activePage="settings">
-      <div>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>쇼핑몰 환경 & 결제 계좌 설정 (Store Settings)</h1>
-            <p style={{ fontSize: '0.875rem', color: '#71717a' }}>
-              공식 입금 계좌, 사업자/고객센터 연락처, 배송 정책 및 공지 띠배너를 관리합니다.
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        ko="쇼핑몰 환경 & 결제 계좌 설정"
+        en="Store Settings"
+        desc="공식 입금 계좌, 사업자/고객센터 연락처, 배송 정책 및 공지 띠배너를 관리합니다."
+      />
 
-        {/* Tab Navigation */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '28px', borderBottom: '1px solid #e4e4e7', paddingBottom: '12px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setActiveTab('payment')}
-            className={activeTab === 'payment' ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 18px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <CreditCard size={16} />
-            <span>무통장 입금 계좌 (Bank Transfer)</span>
-          </button>
+      <ErrorBanner message={errorMsg ? `설정 로드 실패: ${errorMsg}` : ''} onRetry={fetchSettings} />
 
-          <button
-            onClick={() => setActiveTab('business')}
-            className={activeTab === 'business' ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 18px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Building size={16} />
-            <span>사업자 & 고객센터 연락처</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('shipping')}
-            className={activeTab === 'shipping' ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 18px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Truck size={16} />
-            <span>배송비 규정</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('general')}
-            className={activeTab === 'general' ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 18px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Layout size={16} />
-            <span>헤더 띠배너 공지</span>
-          </button>
-        </div>
+      {/* Tab Navigation */}
+      <div className="adm-card adm-filter-bar" role="tablist" aria-label="Settings sections">
+        {tabs.map((t) => {
+          const Icon = t.icon;
+          const active = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveTab(t.id)}
+              className={`adm-btn${active ? ' adm-btn-primary' : ''}`}
+            >
+              <Icon size={16} aria-hidden />
+              <span>{t.ko} ({t.en})</span>
+            </button>
+          );
+        })}
+      </div>
 
         {/* Settings Form */}
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '840px' }}>
           {/* 1. Bank Transfer & Payment Tab */}
           {activeTab === 'payment' && (
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '28px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="adm-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div style={{ borderBottom: '1px solid #f0f0f2', paddingBottom: '12px' }}>
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#18181b' }}>
                   공식 무통장 입금 계좌 설정 (Official Bank Account)
@@ -242,7 +237,7 @@ export function AdminSettingsPage() {
 
           {/* 2. Business & Legal Contact Tab */}
           {activeTab === 'business' && (
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '28px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="adm-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div style={{ borderBottom: '1px solid #f0f0f2', paddingBottom: '12px' }}>
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#18181b' }}>
                   사업자 정보 및 고객센터 연락처 (Business Information)
@@ -362,7 +357,7 @@ export function AdminSettingsPage() {
 
           {/* 3. Shipping Tab */}
           {activeTab === 'shipping' && (
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '28px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="adm-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div style={{ borderBottom: '1px solid #f0f0f2', paddingBottom: '12px' }}>
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#18181b' }}>
                   배송비 및 무료배송 기준 정책
@@ -401,7 +396,7 @@ export function AdminSettingsPage() {
 
           {/* 4. Header & Announcements Tab */}
           {activeTab === 'general' && (
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '28px', border: '1px solid #e4e4e7', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="adm-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#18181b' }}>상단 헤더 & 공지 띠배너 제어</h3>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', backgroundColor: '#fafafa', borderRadius: '6px' }}>
@@ -446,23 +441,18 @@ export function AdminSettingsPage() {
 
           <button
             type="submit"
-            className="btn-primary"
+            className="adm-btn adm-btn-primary"
             style={{
-              backgroundColor: 'var(--accent-sunset)',
               padding: '14px 28px',
               alignSelf: 'flex-start',
               fontSize: '0.9375rem',
               fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
             }}
           >
-            <Save size={16} />
-            <span>설정 저장하기</span>
+            <Save size={16} aria-hidden />
+            <span>설정 저장하기 Save settings</span>
           </button>
         </form>
-      </div>
     </AdminLayout>
   );
 }

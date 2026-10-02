@@ -1,31 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { api, adminApi } from '../../utils/api.js';
+import {
+  PageHeader,
+  Filters,
+  DataTable,
+  Pagination,
+  ErrorBanner,
+  Drawer,
+  normalizeListResponse,
+  buildListParams,
+} from '../../components/admin/ui/index.js';
+import { adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
+import { toCsv, downloadCsv, csvFilename } from '../../utils/csv.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Search, Eye, Users, ShoppingBag, X, MapPin, Phone, Mail, Calendar, Ban, CheckCircle } from 'lucide-react';
-import { TableSkeleton } from '../../components/admin/AdminSkeleton.jsx';
+import { Eye, MapPin, Phone, Mail, Calendar, Ban, Download } from 'lucide-react';
+
+const PAGE_SIZE = 20;
 
 export function AdminCustomersPage() {
   const [customers, setCustomers] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { showToast } = useToast();
 
   const fetchCustomers = async () => {
     setLoading(true);
     try {
       setErrorMsg('');
-      const params = new URLSearchParams();
-      if (search) params.append('search', search);
-
-      const res = await adminApi.get(`/admin/customers?${params.toString()}`);
-      if (res.success) {
-        setCustomers(res.data);
-      }
+      const qs = buildListParams({ page, pageSize: PAGE_SIZE, search: search.trim(), sort: sort.key, dir: sort.dir });
+      const res = await adminApi.get(`/admin/customers${qs}`);
+      const { data, total: t } = normalizeListResponse(res, page, PAGE_SIZE);
+      setCustomers(data);
+      setTotal(t);
     } catch (err) {
       const msg = err?.message || '';
       console.error('Fetch admin customers failed:', err);
@@ -44,11 +58,45 @@ export function AdminCustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
-  }, []);
+  }, [page, sort]);
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchCustomers();
+  const handleSort = (key) => {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
+    setPage(1);
+  };
+
+  // CSV export of the current search (all pages, capped at 1000 rows).
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const all = [];
+      let pageNum = 1;
+      for (;;) {
+        const qs = buildListParams({ page: pageNum, pageSize: 200, search: search.trim(), sort: sort.key, dir: sort.dir });
+        const res = await adminApi.get(`/admin/customers${qs}`);
+        const { data, total: t } = normalizeListResponse(res, pageNum, 200);
+        all.push(...(data || []));
+        if (all.length >= (t || 0) || !(data || []).length || all.length >= 1000) break;
+        pageNum += 1;
+      }
+      const csv = toCsv(all, [
+        { label: '이름 Name', get: (c) => c.name },
+        { label: '이메일 Email', get: (c) => c.email },
+        { label: '연락처 Phone', get: (c) => c.phone },
+        { label: '우편번호 Postal', get: (c) => c.postal_code },
+        { label: '주소 Address', get: (c) => `${c.address || ''} ${c.detail_address || ''}`.trim() },
+        { label: '수령인 Recipient', get: (c) => c.recipient },
+        { label: '주문건수 Orders', get: (c) => c.order_count },
+        { label: '총구매 Total spent', get: (c) => c.total_spent },
+        { label: '가입일 Joined', get: (c) => String(c.created_at || '').replace('T', ' ').slice(0, 19) },
+      ]);
+      downloadCsv(csvFilename('customers'), csv);
+      showToast(`${all.length}건 CSV 다운로드됨 Downloaded`, 'success');
+    } catch (err) {
+      showToast(err?.message || 'CSV 다운로드 실패', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const openCustomerDetail = async (id) => {
@@ -75,244 +123,173 @@ export function AdminCustomersPage() {
     }
   };
 
+  const columns = [
+    {
+      key: 'name',
+      label: '고객명 / 이메일 Name',
+      sortable: true,
+      render: (c) => (
+        <div>
+          <p style={{ fontWeight: 600, color: '#18181b', margin: 0 }}>{c.name}</p>
+          <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{c.email}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'phone',
+      label: '연락처 Phone',
+      render: (c) => <span style={{ color: '#52525b' }}>{c.phone || '미등록'}</span>,
+    },
+    {
+      key: 'address',
+      label: '기본 배송 주소 Address',
+      render: (c) => (
+        <span style={{ color: '#52525b', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+          {c.address ? `[${c.postal_code}] ${c.address} ${c.detail_address}` : '주소 미등록'}
+        </span>
+      ),
+    },
+    {
+      key: 'order_count',
+      label: '주문 건수 Orders',
+      render: (c) => <span style={{ fontWeight: 600 }}>{c.order_count}건</span>,
+    },
+    {
+      key: 'total_spent',
+      label: '총 구매 금액 Spent',
+      render: (c) => <span style={{ fontWeight: 700, color: 'var(--adm-accent)' }}>{formatKRW(c.total_spent)}</span>,
+    },
+    {
+      key: 'created_at',
+      label: '가입 일시 Joined',
+      sortable: true,
+      render: (c) => (
+        <span style={{ color: '#71717a', fontSize: '0.75rem' }}>{c.created_at?.split('T')[0] || c.created_at?.split(' ')[0]}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '관리 Actions',
+      align: 'right',
+      render: (c) => (
+        <button type="button" className="adm-btn" style={{ padding: '6px 12px', fontSize: '0.8125rem' }} onClick={() => openCustomerDetail(c.id)}>
+          <Eye size={13} aria-hidden />
+          <span>주문 이력</span>
+        </button>
+      ),
+    },
+  ];
+
   return (
     <AdminLayout activePage="customers">
-      <div>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#18181b' }}>고객 관리 (Customer Management)</h1>
-            <p style={{ fontSize: '0.875rem', color: '#71717a' }}>
-              가입 회원 정보, 배송지 주소, 주문 이력 및 총 누적 구매 금액 확인
-            </p>
-          </div>
-        </div>
-
-        {errorMsg && (
-          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '14px 18px', borderRadius: '8px', marginBottom: '18px', fontSize: '0.875rem', lineHeight: 1.5 }}>
-            <strong>고객 로드 실패:</strong> {errorMsg}
-            <button onClick={fetchCustomers} style={{ marginLeft: 12, padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem' }}>다시 시도</button>
-            <a href="/admin/login" style={{ marginLeft: 8, color: '#dc2626', textDecoration: 'underline', fontSize: '0.8125rem' }}>로그인 페이지로 이동 →</a>
-          </div>
+      <PageHeader
+        ko="고객 관리"
+        en="Customer Management"
+        desc="가입 회원 정보, 배송지 주소, 주문 이력 및 총 누적 구매 금액 확인"
+        actions={(
+          <button type="button" className="adm-btn" onClick={handleExportCsv} disabled={exporting}>
+            <Download size={15} aria-hidden />
+            <span>{exporting ? '내보내는 중…' : 'CSV 다운로드 Export'}</span>
+          </button>
         )}
+      />
 
-        {/* Search Bar — free-tier: no phone column in profiles, search is name/email only */}
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '10px',
-            padding: '16px 20px',
-            border: '1px solid #e4e4e7',
-            marginBottom: '24px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <span style={{ fontSize: '0.875rem', color: '#71717a' }}>
-            총 <strong>{customers.length}</strong>명의 회원이 등록되어 있습니다.
-            <span style={{ fontSize: '0.6875rem', color: '#a1a1aa', marginLeft: 8 }}>Supabase free-tier: 100명 lazy</span>
-          </span>
+      <ErrorBanner message={errorMsg ? `고객 로드 실패: ${errorMsg}` : ''} onRetry={fetchCustomers} />
 
-          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={16} color="#999" style={{ position: 'absolute', top: '10px', left: '10px' }} />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="이름, 이메일 검색"
-                className="form-input"
-                style={{ padding: '8px 12px 8px 34px', fontSize: '0.875rem', width: '240px' }}
-              />
-            </div>
-            <button type="submit" className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.875rem' }}>
-              검색
-            </button>
-          </form>
-        </div>
+      <Filters
+        searchValue={search}
+        onSearch={(v) => { setSearch(v); setPage(1); }}
+        searchPlaceholder="이름, 이메일 검색 Search…"
+      >
+        <span style={{ fontSize: '0.8125rem', color: '#71717a', marginLeft: 'auto' }}>
+          총 <strong>{total}</strong>명의 회원
+        </span>
+      </Filters>
 
-        {/* Customers Table */}
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '10px',
-            border: '1px solid #e4e4e7',
-            overflow: 'hidden',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#fafafa', borderBottom: '1px solid #e4e4e7', color: '#71717a', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                  <th style={{ padding: '14px 20px' }}>고객명 / 이메일</th>
-                  <th style={{ padding: '14px 16px' }}>연락처</th>
-                  <th style={{ padding: '14px 16px' }}>기본 배송 주소</th>
-                  <th style={{ padding: '14px 16px' }}>주문 건수</th>
-                  <th style={{ padding: '14px 16px' }}>총 구매 금액</th>
-                  <th style={{ padding: '14px 16px' }}>가입 일시</th>
-                  <th style={{ padding: '14px 20px', textAlign: 'right' }}>관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && customers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 0 }}>
-                      <TableSkeleton rows={5} cols={7} />
-                    </td>
-                  </tr>
-                ) : customers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: '#888' }}>
-                      등록된 고객이 없습니다.
-                    </td>
-                  </tr>
-                ) : (
-                  customers.map((c) => (
-                    <tr key={c.id} style={{ borderBottom: '1px solid #f0f0f2' }}>
-                      <td style={{ padding: '14px 20px' }}>
-                        <p style={{ fontWeight: 600, color: '#18181b' }}>{c.name}</p>
-                        <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{c.email}</span>
-                      </td>
+      <DataTable
+        columns={columns}
+        rows={customers}
+        loading={loading}
+        emptyTitle="등록된 고객이 없습니다 No customers found"
+        emptyDesc="검색어를 조정해 보세요."
+        sort={sort}
+        onSort={handleSort}
+        rowKey={(r) => r.id}
+      />
 
-                      <td style={{ padding: '14px 16px', color: '#52525b' }}>
-                        {c.phone || '미등록'}
-                      </td>
-
-                      <td style={{ padding: '14px 16px', color: '#52525b', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {c.address ? `[${c.postal_code}] ${c.address} ${c.detail_address}` : '주소 미등록'}
-                      </td>
-
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{ fontWeight: 600 }}>{c.order_count}건</span>
-                      </td>
-
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{ fontWeight: 700, color: 'var(--accent-sunset)' }}>
-                          {formatKRW(c.total_spent)}
-                        </span>
-                      </td>
-
-                      <td style={{ padding: '14px 16px', color: '#71717a', fontSize: '0.75rem' }}>
-                        {c.created_at?.split('T')[0] || c.created_at?.split(' ')[0]}
-                      </td>
-
-                      <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => openCustomerDetail(c.id)}
-                          style={{ padding: '6px 12px', backgroundColor: '#f4f4f5', borderRadius: '4px', fontSize: '0.8125rem', color: '#18181b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <Eye size={13} />
-                          <span>주문 이력</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Customer Detail Modal */}
-        {selectedCustomer && (
-          <div className="backdrop" onClick={() => setSelectedCustomer(null)} style={{ zIndex: 100 }}>
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: '680px',
-                maxHeight: '90vh',
-                margin: '40px auto',
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                overflowY: 'auto',
-                boxShadow: 'var(--shadow-xl)',
-                padding: '32px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e4e4e7', paddingBottom: '16px', marginBottom: '20px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>고객 상세 프로필 & 구매 이력</h3>
-                  <p style={{ fontSize: '0.8125rem', color: '#71717a' }}>{selectedCustomer.email}</p>
-                </div>
-                <button onClick={() => setSelectedCustomer(null)}>
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Profile details — latest address from app.addresses, free-tier lazy */}
-              <div style={{ backgroundColor: '#fafafa', padding: '18px', borderRadius: '8px', marginBottom: '24px', fontSize: '0.875rem', lineHeight: 1.7 }}>
-                {detailLoading ? (
-                  <p style={{ color: '#71717a' }}>고객 상세 로딩 중...</p>
-                ) : (
-                  <>
-                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Mail size={14} /> <strong>이메일:</strong> {selectedCustomer.email}</p>
-                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Phone size={14} /> <strong>연락처:</strong> {selectedCustomer.phone || '미등록 (프로필에 저장된 주소 없음)'}</p>
-                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MapPin size={14} /> <strong>등록 배송지:</strong> [{selectedCustomer.postal_code || '-'}] {selectedCustomer.address || '주소 없음'} {selectedCustomer.detail_address} {selectedCustomer.recipient ? `(${selectedCustomer.recipient})` : ''}</p>
-                    <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={14} /> <strong>가입일시:</strong> {selectedCustomer.created_at?.split('T')[0] || selectedCustomer.created_at}</p>
-                    {selectedCustomer.disabled && <p style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6 }}><Ban size={14} /> <strong>계정 상태:</strong> 비활성화됨</p>}
-                    {selectedCustomer.addresses?.length > 1 && (
-                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #e4e4e7' }}>
-                        <p style={{ fontWeight: 700, marginBottom: 6 }}>저장된 배송지 ({selectedCustomer.addresses.length}개)</p>
-                        {selectedCustomer.addresses.slice(0, 3).map((a, i) => (
-                          <p key={i} style={{ fontSize: '0.8125rem', color: '#52525b', marginBottom: 4 }}>
-                            [{a.postal_code}] {a.address} {a.detail_address} — {a.recipient} ({a.phone})
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Orders List */}
-              <div>
-                <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '14px' }}>
-                  주문 내역 ({selectedCustomer.orders?.length || 0}건)
-                </h4>
-
-                {selectedCustomer.orders?.length === 0 ? (
-                  <p style={{ color: '#888', fontSize: '0.875rem' }}>아직 주문 내역이 없습니다.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {selectedCustomer.orders?.map((ord) => (
-                      <div
-                        key={ord.id}
-                        style={{
-                          border: '1px solid #e4e4e7',
-                          borderRadius: '8px',
-                          padding: '16px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{ord.order_number}</span>
-                            <span style={{ fontSize: '0.75rem', color: '#888' }}>{ord.created_at?.split('T')[0] || ord.created_at?.split(' ')[0]}</span>
-                          </div>
-                          <p style={{ fontSize: '0.8125rem', color: '#555', marginTop: '4px' }}>
-                            {ord.items?.[0]?.product_name_ko} {ord.items?.length > 1 ? `외 ${ord.items.length - 1}건` : ''}
-                          </p>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{formatKRW(ord.total_amount)}</span>
-                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--accent-sunset)', fontWeight: 600 }}>
-                            {ord.order_status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+      <div style={{ marginTop: 12 }}>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
       </div>
+
+      {/* Customer Detail Drawer */}
+      <Drawer
+        open={!!selectedCustomer}
+        onClose={() => setSelectedCustomer(null)}
+        title="고객 상세 프로필 & 구매 이력 Customer Detail"
+        subtitle={selectedCustomer?.email || ''}
+      >
+        {selectedCustomer && (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div className="adm-card" style={{ padding: 16, fontSize: '0.875rem', lineHeight: 1.7 }}>
+              {detailLoading ? (
+                <p style={{ color: '#71717a', margin: 0 }}>고객 상세 로딩 중…</p>
+              ) : (
+                <>
+                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 4px' }}><Mail size={14} aria-hidden /> <strong>이메일:</strong> {selectedCustomer.email}</p>
+                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 4px' }}><Phone size={14} aria-hidden /> <strong>연락처:</strong> {selectedCustomer.phone || '미등록 (프로필에 저장된 주소 없음)'}</p>
+                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 4px' }}><MapPin size={14} aria-hidden /> <strong>등록 배송지:</strong> [{selectedCustomer.postal_code || '-'}] {selectedCustomer.address || '주소 없음'} {selectedCustomer.detail_address} {selectedCustomer.recipient ? `(${selectedCustomer.recipient})` : ''}</p>
+                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}><Calendar size={14} aria-hidden /> <strong>가입일시:</strong> {selectedCustomer.created_at?.split('T')[0] || selectedCustomer.created_at}</p>
+                  {selectedCustomer.disabled && <p style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 0' }}><Ban size={14} aria-hidden /> <strong>계정 상태:</strong> 비활성화됨</p>}
+                  {selectedCustomer.addresses?.length > 1 && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #e4e4e7' }}>
+                      <p style={{ fontWeight: 700, marginBottom: 6 }}>저장된 배송지 ({selectedCustomer.addresses.length}개)</p>
+                      {selectedCustomer.addresses.slice(0, 3).map((a, i) => (
+                        <p key={i} style={{ fontSize: '0.8125rem', color: '#52525b', marginBottom: 4 }}>
+                          [{a.postal_code}] {a.address} {a.detail_address} — {a.recipient} ({a.phone})
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div>
+              <h4 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 14px' }}>
+                주문 내역 ({selectedCustomer.orders?.length || 0}건 Orders)
+              </h4>
+              {selectedCustomer.orders?.length === 0 ? (
+                <p style={{ color: '#888', fontSize: '0.875rem' }}>아직 주문 내역이 없습니다.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {selectedCustomer.orders?.map((ord) => (
+                    <div
+                      key={ord.id}
+                      style={{ border: '1px solid #e4e4e7', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{ord.order_number}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>{ord.created_at?.split('T')[0] || ord.created_at?.split(' ')[0]}</span>
+                        </div>
+                        <p style={{ fontSize: '0.8125rem', color: '#555', marginTop: '4px', marginBottom: 0 }}>
+                          {ord.items?.[0]?.product_name_ko} {ord.items?.length > 1 ? `외 ${ord.items.length - 1}건` : ''}
+                        </p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{formatKRW(ord.total_amount)}</span>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
+                          {ord.order_status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Drawer>
     </AdminLayout>
   );
 }

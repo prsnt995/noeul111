@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
+import { fileURLToPath } from 'node:url';
 
 // Fail-closed gating tests. Supabase env is blanked BEFORE the app module
 // loads (dotenv never overrides existing vars), so every database-backed
@@ -11,9 +12,10 @@ describe('Phase 1-4 — Auth gating and fail-closed behavior', () => {
     process.env.SUPABASE_SECRET_KEY = '';
     process.env.SUPABASE_PUBLISHABLE_KEY = '';
     process.env.WORKERS_ENABLED = '0';
-    // Runtime-only URL: keeps TypeScript from mapping '../api/app.js' to the
-    // git-ignored api/*.ts reference tree (NodeNext .js->.ts resolution).
-    const mod = await import(new URL('../api/app.js', import.meta.url).href);
+    // Filesystem path (not URL href) so workspaces with spaces resolve.
+    // Keeps TypeScript from mapping '../api/app.js' to the git-ignored
+    // api/*.ts reference tree (NodeNext .js->.ts resolution).
+    const mod = await import(fileURLToPath(new URL('../api/app.js', import.meta.url)));
     app = mod.default;
   });
 

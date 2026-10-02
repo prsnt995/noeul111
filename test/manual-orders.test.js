@@ -96,10 +96,14 @@ describe('Manual / external orders — backend wiring', () => {
   });
 
   it('failed manual save releases the coupon hold too', () => {
+    // P0 atomic placement: holds are owned by app.place_order (row locks +
+    // single transaction) with coupon_invalid/insufficient_stock outcomes, so
+    // no JS compensation flags are needed. release_hold still owns cancel.
     const admin = read('api/admin.js');
     const idx = admin.indexOf("orders/manual");
     const block = admin.slice(idx, idx + 14000);
-    expect(block.includes('couponReserved')).toBe(true);
+    expect(block.includes("rpc('place_order'")).toBe(true);
+    expect(block.includes('coupon_invalid')).toBe(true);
   });
 
   it('percentage coupons use percent math with max cap', () => {

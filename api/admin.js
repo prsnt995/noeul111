@@ -101,6 +101,74 @@ async function staffIds(database) {
   return (data || []).map(r => r.user_id);
 }
 
+// ---------- Standard admin list pagination ----------
+// Every admin list endpoint accepts modern `page`/`pageSize` plus legacy
+// `limit`/`offset` aliases, plus `sort`/`order`/`search`. Responses always
+// include `pagination: { page, pageSize, total, totalPages }` alongside the
+// legacy `count` (page length) / `total` (full match count) fields, so old
+// clients keep working while new UI paginates properly.
+function parseListQuery(query = {}, defaults = {}) {
+  const maxPageSize = Math.max(Number(defaults.maxPageSize) || 100, 1);
+  const fallbackSize = Math.min(Math.max(Number(defaults.pageSize) || 20, 1), maxPageSize);
+  const sizeRaw = query.pageSize ?? query.limit ?? fallbackSize;
+  const pageSize = Math.min(Math.max(Number(sizeRaw) || fallbackSize, 1), maxPageSize);
+  let page;
+  if (query.page !== undefined && query.page !== '') {
+    page = Math.max(Number(query.page) || 1, 1);
+  } else if (query.offset !== undefined && query.offset !== '') {
+    page = Math.floor(Math.max(Number(query.offset) || 0, 0) / pageSize) + 1;
+  } else {
+    page = 1;
+  }
+  const offset = (page - 1) * pageSize;
+  const sort = typeof query.sort === 'string' && query.sort ? query.sort : (defaults.sort || null);
+  const rawOrder = String(query.order || '').toLowerCase();
+  const order = rawOrder === 'asc' || rawOrder === 'desc' ? rawOrder : (defaults.order || 'desc');
+  const search = String(query.search || '').trim();
+  return { page, pageSize, offset, limit: pageSize, sort, order, search };
+}
+
+function pickSort(requested, allowed, fallback) {
+  return Array.isArray(allowed) && allowed.includes(requested) ? requested : fallback;
+}
+
+// PostgREST splits or() clauses on commas and treats %/_ as wildcards, so raw
+// admin search input can break out of its filter or 400. Mirrors the catalog
+// escaper in api/app.js: strip commas, escape wildcards, cap length.
+function escapeIlike(term) {
+  return String(term || '').replace(/\\/g, '\\\\').replace(/[%_]/g, c => `\\${c}`).replace(/,/g, '').slice(0, 80);
+}
+
+function pageEnvelope({ data = [], total = 0, page = 1, pageSize = 20 } = {}) {
+  const safeTotal = Math.max(Number(total) || 0, 0);
+  const safeSize = Math.max(Number(pageSize) || 20, 1);
+  return {
+    success: true,
+    data,
+    pagination: {
+      page: Math.max(Number(page) || 1, 1),
+      pageSize: safeSize,
+      total: safeTotal,
+      totalPages: Math.max(1, Math.ceil(safeTotal / safeSize)),
+    },
+    count: (data || []).length,
+    total: safeTotal,
+  };
+}
+
+// Variant-aggregated stock per product. Stock lives on product_variants,
+// so list-level stock filters must resolve matching product ids BEFORE the
+// range query — filtering composed rows after range silently breaks pages.
+async function variantStockSums(db) {
+  const client = getDb(db);
+  const { data: variants } = await client.from('product_variants').select('product_id,stock').then(r => r, () => ({ data: [] }));
+  const sums = new Map();
+  for (const v of (variants || [])) {
+    sums.set(v.product_id, (sums.get(v.product_id) || 0) + (v.stock || 0));
+  }
+  return sums;
+}
+
 export function registerAdminRoutes(app, ctx) {
   const { database, error, auditLog, authenticate, staff, stepUp, releaseHoldRpc } = ctx;
   const need = roles => [authenticate, staff(roles)];
@@ -108,6 +176,7 @@ export function registerAdminRoutes(app, ctx) {
   // ---------- Dashboard — resilient, never 503 (free-tier cold start, empty tables) ----------
   app.get('/api/v1/admin/dashboard/stats', ...need(R.dashboard), async (req, res) => {
     try {
+      const recentLimit = Math.min(Math.max(Number(req.query.recent) || 8, 1), 50);
       const [ordersRes, productsRes, variantsRes, profilesRes] = await Promise.all([
         database().from('orders').select('id,order_number,status,amount,created_at,user_id,order_source').order('created_at', { ascending: false }).limit(500).then(r => r, e => { console.error('dashboard orders error', e); return { data: [] }; }),
         database().from('products').select('id,gender,is_active,is_new').then(r => r, e => { console.error('dashboard products error', e); return { data: [] }; }),
@@ -156,7 +225,7 @@ export function registerAdminRoutes(app, ctx) {
       const itemCounts = {};
       let items = [];
       if (list.length) {
-        const { data: itemRows } = await database().from('order_items').select('order_id').in('order_id', list.slice(0, 8).map(o => o.id)).then(r => r, e => ({ data: [] }));
+        const { data: itemRows } = await database().from('order_items').select('order_id').in('order_id', list.slice(0, recentLimit).map(o => o.id)).then(r => r, e => ({ data: [] }));
         items = itemRows || [];
       }
       for (const it of (items || [])) itemCounts[it.order_id] = (itemCounts[it.order_id] || 0) + 1;
@@ -183,7 +252,7 @@ export function registerAdminRoutes(app, ctx) {
           lowStockCount: lowStockItems.length,
         },
         lowStockItems,
-        recentOrders: list.slice(0, 8).map(o => ({ ...o, item_count: itemCounts[o.id] || 0 })),
+        recentOrders: list.slice(0, recentLimit).map(o => ({ ...o, item_count: itemCounts[o.id] || 0 })),
         salesTrend: [],
         salesBySource,
       });
@@ -209,12 +278,16 @@ export function registerAdminRoutes(app, ctx) {
   // ---------- Customers (profiles without staff rows) — enriched with latest address for cloth store ----------
   app.get('/api/v1/admin/customers', ...need(R.customers), async (req, res) => {
     try {
-      const search = String(req.query.search || '').trim();
+      const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
+        pageSize: 100, maxPageSize: 200, sort: 'created_at', order: 'desc',
+      });
+      const sortCol = pickSort(sort, ['created_at', 'name', 'email'], 'created_at');
+      const ascending = order === 'asc';
       const staff = await staffIds(database);
-      let q = database().from('profiles').select('*').order('created_at', { ascending: false }).limit(100);
+      let q = database().from('profiles').select('*', { count: 'exact' }).order(sortCol, { ascending }).range(offset, offset + pageSize - 1);
       if (staff.length) q = q.not('id', 'in', `(${staff.join(',')})`);
-      if (search) q = q.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
-      const { data: customers, error: e } = await q;
+      if (search) { const safe = escapeIlike(search); if (safe) q = q.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`); }
+      const { data: customers, error: e, count: total } = await q;
       if (e) throw e;
       const ids = (customers || []).map(c => c.id);
       const [{ data: orders }, { data: addresses }] = await Promise.all([
@@ -232,8 +305,7 @@ export function registerAdminRoutes(app, ctx) {
       for (const a of (addresses || [])) {
         if (!latestAddr[a.user_id]) latestAddr[a.user_id] = a;
       }
-      res.json({
-        success: true,
+      res.json(pageEnvelope({
         data: (customers || []).map(c => {
           const addr = latestAddr[c.id] || {};
           return {
@@ -246,7 +318,10 @@ export function registerAdminRoutes(app, ctx) {
             ...(agg[c.id] || { order_count: 0, total_spent: 0 }),
           };
         }),
-      });
+        total: total ?? (customers || []).length,
+        page,
+        pageSize,
+      }));
     } catch (e) { console.error('customers list error', e); error(res, 503, 'CUSTOMERS_UNAVAILABLE'); }
   });
 
@@ -313,7 +388,7 @@ export function registerAdminRoutes(app, ctx) {
       const { email, name, role } = req.body || {};
       const validRoles = ['super_admin', 'admin'];
       if (!email || !validRoles.includes(role)) return error(res, 400, 'EMAIL_AND_ROLE_REQUIRED');
-      const { data: profile } = await database().from('profiles').select('id,email,name').ilike('email', String(email).trim()).maybeSingle();
+      const { data: profile } = await database().from('profiles').select('id,email,name').ilike('email', escapeIlike(String(email).trim())).maybeSingle();
       if (!profile) return error(res, 404, 'PROFILE_NOT_FOUND_SIGN_IN_FIRST');
       const { error: e } = await database().from('staff_members').upsert({ user_id: profile.id, role, active: true }, { onConflict: 'user_id' });
       if (e) throw e;
@@ -477,32 +552,66 @@ export function registerAdminRoutes(app, ctx) {
 
   app.get('/api/v1/admin/products', ...need(R.catalog), async (req, res) => {
     try {
-      const { category, search, stockStatus, status, filterType, limit: qLimit, offset: qOffset } = req.query;
-      const limit = Math.min(Math.max(Number(qLimit) || 20, 1), 100);
-      const offset = Math.max(Number(qOffset) || 0, 0);
-      let q = database().from('products').select('*', { count: 'exact' }).order('id', { ascending: false }).range(offset, offset + limit - 1);
+      const { category, status, filterType, stockStatus } = req.query;
+      const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
+        pageSize: 20, maxPageSize: 100, sort: 'id', order: 'desc',
+      });
+      const sortCol = pickSort(sort, ['id', 'created_at', 'price'], 'id');
+      const ascending = order === 'asc';
+
+      // Stock modes aggregate variant rows, so matching product ids must be
+      // resolved BEFORE range() — never filter composed rows after the page.
+      const stockMode = stockStatus === 'low' ? 'low'
+        : stockStatus === 'out' || filterType === 'out_of_stock' ? 'out'
+        : stockStatus === 'in' || filterType === 'in_stock' ? 'in' : null;
+      let stockIds = null;
+      if (stockMode) {
+        const sums = await variantStockSums(database);
+        if (stockMode === 'out') {
+          // Products without any variant row read as zero stock.
+          const { data: allProducts } = await database().from('products').select('id').then(r => r, () => ({ data: [] }));
+          stockIds = (allProducts || []).filter(p => (sums.get(p.id) ?? 0) <= 0).map(p => p.id);
+        } else {
+          stockIds = [...sums.entries()]
+            .filter(([, sum]) => (stockMode === 'low' ? sum > 0 && sum <= 15 : sum > 0))
+            .map(([pid]) => pid);
+        }
+        if (!stockIds.length) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize }));
+      }
+
+      const applyCommon = (qb) => {
+        let out = qb;
+        if (search) {
+          const safe = escapeIlike(search);
+          if (safe) out = out.or(`name_ko.ilike.%${safe}%,name_en.ilike.%${safe}%,sku.ilike.%${safe}%`);
+        }
+        if (filterType === 'new') out = out.eq('is_new', true);
+        if (filterType === 'best') out = out.eq('is_best', true);
+        if (filterType === 'sale') out = out.not('discount_price', 'is', null);
+        if (status && status !== 'all') out = out.eq('is_active', status === 'active');
+        if (stockIds) out = out.in('id', stockIds);
+        return out;
+      };
+
+      let data = null;
+      let total = 0;
       if (category && category !== 'all') {
         const { data: cat } = await database().from('categories').select('id').or(`slug.eq.${category},id.eq.${Number(category) || -1}`).maybeSingle();
-        if (!cat) return res.json({ success: true, count: 0, total: 0, data: [] });
-        q = database().from('products').select('*', { count: 'exact' }).eq('category_id', cat.id).order('id', { ascending: false }).range(offset, offset + limit - 1);
-        if (search && String(search).trim()) {
-          const term = String(search).trim();
-          q = q.or(`name_ko.ilike.%${term}%,name_en.ilike.%${term}%,sku.ilike.%${term}%`);
-        }
-        if (filterType === 'new') q = q.eq('is_new', true);
-        if (filterType === 'sale') q = q.not('discount_price', 'is', null);
-        if (status && status !== 'all') q = q.eq('is_active', status === 'active');
+        if (!cat) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize }));
+        const r = await applyCommon(
+          database().from('products').select('*', { count: 'exact' }).eq('category_id', cat.id).order(sortCol, { ascending }).range(offset, offset + pageSize - 1)
+        );
+        if (r.error) throw r.error;
+        data = r.data;
+        total = r.count ?? (r.data || []).length;
       } else {
-        if (search && String(search).trim()) {
-          const term = String(search).trim();
-          q = q.or(`name_ko.ilike.%${term}%,name_en.ilike.%${term}%,sku.ilike.%${term}%`);
-        }
-        if (filterType === 'new') q = q.eq('is_new', true);
-        if (filterType === 'sale') q = q.not('discount_price', 'is', null);
-        if (status && status !== 'all') q = q.eq('is_active', status === 'active');
+        const r = await applyCommon(
+          database().from('products').select('*', { count: 'exact' }).order(sortCol, { ascending }).range(offset, offset + pageSize - 1)
+        );
+        if (r.error) throw r.error;
+        data = r.data;
+        total = r.count ?? (r.data || []).length;
       }
-      const { data, error: e, count: total } = await q;
-      if (e) throw e;
       const ids = (data || []).map(p => p.id);
       // Batch fetch variants + media + categories in 3 queries (free-tier: 3 vs N*3)
       let variantsByProduct = new Map();
@@ -524,7 +633,7 @@ export function registerAdminRoutes(app, ctx) {
         }
         for (const c of (cats || [])) catById.set(c.id, c);
       }
-      let composed = (data || []).map(p => {
+      const composed = (data || []).map(p => {
         const list = variantsByProduct.get(p.id) || [];
         const cat = catById.get(p.category_id);
         const media = mediaByProduct.get(p.id) || [];
@@ -552,12 +661,7 @@ export function registerAdminRoutes(app, ctx) {
           discount_rate: p.discount_price && p.discount_price < p.price ? Math.round(((p.price - p.discount_price) / p.price) * 100) : 0,
         };
       });
-      if (stockStatus === 'low') composed = composed.filter(p => p.stock > 0 && p.stock <= 15);
-      else if (stockStatus === 'out') composed = composed.filter(p => p.stock <= 0);
-      else if (stockStatus === 'in') composed = composed.filter(p => p.stock > 0);
-      else if (filterType === 'out_of_stock') composed = composed.filter(p => p.stock <= 0);
-      else if (filterType === 'in_stock') composed = composed.filter(p => p.stock > 0);
-      res.json({ success: true, count: composed.length, total: total ?? composed.length, data: composed });
+      res.json(pageEnvelope({ data: composed, total, page, pageSize }));
     } catch { error(res, 503, 'PRODUCTS_UNAVAILABLE'); }
   });
 
@@ -575,7 +679,9 @@ export function registerAdminRoutes(app, ctx) {
         category_id: Number(b.category_id),
         name_ko: String(b.name_ko).slice(0, 200), name_en: String(b.name_en || b.name_ko).slice(0, 200),
         description_ko: String(b.description_ko || ''), description_en: String(b.description_en || ''),
-        price, discount_price: discount, gender: b.gender || 'women',
+        material_ko: String(b.material_ko || '').slice(0, 200), material_en: String(b.material_en || '').slice(0, 200),
+        price, discount_price: discount, gender: ['men', 'women', 'unisex'].includes(b.gender) ? b.gender : 'women',
+        best_rank: (b.best_rank === '' || b.best_rank == null) ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null),
         is_active: (b.status || 'active') === 'active', is_new: !!b.is_new, is_best: !!b.is_best,
       }).select().maybeSingle();
       if (e || !created) throw e || new Error('CREATE_FAILED');
@@ -596,6 +702,8 @@ export function registerAdminRoutes(app, ctx) {
       if (b.name_en !== undefined) patch.name_en = String(b.name_en).slice(0, 200);
       if (b.description_ko !== undefined) patch.description_ko = String(b.description_ko);
       if (b.description_en !== undefined) patch.description_en = String(b.description_en);
+      if (b.material_ko !== undefined) patch.material_ko = String(b.material_ko).slice(0, 200);
+      if (b.material_en !== undefined) patch.material_en = String(b.material_en).slice(0, 200);
       if (b.category_id !== undefined) patch.category_id = Number(b.category_id);
       if (b.price !== undefined) {
         if (!Number.isInteger(Number(b.price)) || Number(b.price) <= 0) return error(res, 400, 'INVALID_PRICE');
@@ -607,10 +715,11 @@ export function registerAdminRoutes(app, ctx) {
         if (d !== null && (!Number.isInteger(d) || d <= 0 || d >= base)) return error(res, 400, 'INVALID_DISCOUNT');
         patch.discount_price = d;
       }
-      if (b.gender !== undefined) patch.gender = b.gender;
+      if (b.gender !== undefined) patch.gender = ['men', 'women', 'unisex'].includes(b.gender) ? b.gender : 'unisex';
       if (b.status !== undefined) patch.is_active = b.status === 'active';
       if (b.is_new !== undefined) patch.is_new = !!b.is_new;
       if (b.is_best !== undefined) patch.is_best = !!b.is_best;
+      if (b.best_rank !== undefined) patch.best_rank = (b.best_rank === null || b.best_rank === '') ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null);
       if (b.sku !== undefined) patch.sku = String(b.sku).toUpperCase().slice(0, 60);
       if (Object.keys(patch).length) {
         const { error: e } = await database().from('products').update(patch).eq('id', p.id);
@@ -810,9 +919,16 @@ export function registerAdminRoutes(app, ctx) {
 
   app.get('/api/v1/admin/coupons', ...need(R.catalog), async (req, res) => {
     try {
-      const { data, error: e } = await database().from('coupons').select('*').order('code');
+      const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
+        pageSize: 100, maxPageSize: 200, sort: 'code', order: 'asc',
+      });
+      const sortCol = pickSort(sort, ['code', 'ends_at'], 'code');
+      const ascending = order === 'asc';
+      let q = database().from('coupons').select('*', { count: 'exact' }).order(sortCol, { ascending }).range(offset, offset + pageSize - 1);
+      if (search) q = q.ilike('code', `%${escapeIlike(search)}%`);
+      const { data, error: e, count: total } = await q;
       if (e) throw e;
-      res.json({ success: true, data: (data || []).map(toLegacyCoupon) });
+      res.json(pageEnvelope({ data: (data || []).map(toLegacyCoupon), total: total ?? (data || []).length, page, pageSize }));
     } catch { error(res, 503, 'COUPONS_UNAVAILABLE'); }
   });
 
@@ -869,30 +985,79 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPON_DELETE_FAILED'); }
   });
   // ---------- Orders ----------
-  function toAdminOrder(o, items, names) {
+  function toAdminOrder(o, items, names, extra = {}) {
     const addr = o.address || {};
     const derivedPay = o.status === 'paid' ? 'paid' : o.status === 'pending_payment' ? 'pending_payment' : o.status;
+    const media = extra.media || {};
+    const ship = extra.ship || null;
     return {
       id: o.id, order_number: o.order_number, created_at: o.created_at,
       order_source: normalizeOrderSource(o.order_source),
       source_detail: o.source_detail || '',
-      customer_name: addr.recipient || '', customer_email: '', customer_phone: addr.phone || '',
+      customer_name: addr.recipient || '', customer_email: addr.email || extra.email || '', customer_phone: addr.phone || '',
       postal_code: addr.postal_code || '', address: addr.address || '',
       detail_address: addr.detail_address || '', shipping_memo: addr.shipping_memo || '',
       subtotal: o.subtotal, discount_amount: o.discount, coupon_code: o.coupon_code,
       shipping_fee: o.shipping, total_amount: o.amount,
       payment_method: 'toss_card', payment_status: derivedPay, order_status: o.status,
       payment_receipt_url: null, payment_sender_name: '', verified_by: null, verified_at: null,
-      payment_admin_notes: null, courier_name: '', tracking_number: '',
+      payment_admin_notes: null,
+      courier_name: ship?.courier_name || '', tracking_number: ship?.tracking_number || '',
       paid_at: ['paid', 'processing', 'shipped', 'delivered'].includes(o.status) ? o.created_at : null,
       items: (items || []).map(i => ({
         product_name_ko: names?.[i.variant_id]?.name_ko || i.snapshot?.sku || '',
         product_name_en: names?.[i.variant_id]?.name_en || '',
         product_sku: i.snapshot?.sku || '',
-        image_url: '', price: i.unit_price, quantity: i.quantity,
+        image_url: media[i.variant_id] || '', price: i.unit_price, quantity: i.quantity,
         size: i.snapshot?.size || '', color: i.snapshot?.color || '',
       })),
     };
+  }
+
+  // Batched list projection: 5 queries total regardless of page size
+  // (replaces the per-row adminOrderDetail N+1 in the list endpoint).
+  async function adminOrderList(orderRows) {
+    const rows = orderRows || [];
+    if (!rows.length) return [];
+    const ids = rows.map(o => o.id);
+    const [{ data: items }, { data: shipments }, { data: profiles }] = await Promise.all([
+      database().from('order_items').select('*').in('order_id', ids).then(r => r, () => ({ data: [] })),
+      database().from('shipments').select('order_id,courier_name,tracking_number,created_at').in('order_id', ids).order('created_at', { ascending: false }).then(r => r, () => ({ data: [] })),
+      database().from('profiles').select('id,email').in('id', [...new Set(rows.map(o => o.user_id))]).then(r => r, () => ({ data: [] })),
+    ]);
+    const list = items || [];
+    const vids = [...new Set(list.map(i => i.variant_id).filter(Boolean))];
+    let names = {};
+    let media = {};
+    if (vids.length) {
+      const { data: vars } = await database().from('product_variants').select('id,product_id,products(name_ko,name_en)').in('id', vids).then(r => r, () => ({ data: [] }));
+      const pidByVid = {};
+      for (const v of (vars || [])) { names[v.id] = v.products || {}; if (v.product_id) pidByVid[v.id] = v.product_id; }
+      const pids = [...new Set(Object.values(pidByVid))];
+      if (pids.length) {
+        const { data: mediaRows } = await database().from('product_media').select('product_id,url,sort_order').in('product_id', pids).order('sort_order').then(r => r, () => ({ data: [] }));
+        const firstByProduct = new Map();
+        for (const m of (mediaRows || [])) {
+          if (!firstByProduct.has(m.product_id)) firstByProduct.set(m.product_id, m.url);
+        }
+        for (const [vid, pid] of Object.entries(pidByVid)) {
+          if (firstByProduct.has(pid)) media[vid] = firstByProduct.get(pid);
+        }
+      }
+    }
+    const emailByUser = Object.fromEntries(((profiles || []).map(p => [p.id, p.email])));
+    const itemsByOrder = new Map();
+    for (const it of list) {
+      if (!itemsByOrder.has(it.order_id)) itemsByOrder.set(it.order_id, []);
+      itemsByOrder.get(it.order_id).push(it);
+    }
+    const shipByOrder = new Map();
+    for (const s of (shipments || [])) {
+      if (!shipByOrder.has(s.order_id)) shipByOrder.set(s.order_id, s);
+    }
+    return rows.map(o => toAdminOrder(o, itemsByOrder.get(o.id) || [], names, {
+      media, ship: shipByOrder.get(o.id) || null, email: emailByUser[o.user_id] || '',
+    }));
   }
 
   async function adminOrderDetail(orderId) {
@@ -910,10 +1075,18 @@ export function registerAdminRoutes(app, ctx) {
 
   app.get('/api/v1/admin/orders', ...need(R.orders), async (req, res) => {
     try {
-      const { status, payment_status, source, search, limit = 100, offset = 0 } = req.query;
-      let q = database().from('orders').select('*').order('created_at', { ascending: false })
-        .range(Number(offset) || 0, (Number(offset) || 0) + Math.min(Number(limit) || 100, 200) - 1);
-      if (status && status !== 'all') q = q.eq('status', status === 'cancelled' ? 'canceled' : status);
+      const { status, payment_status, source } = req.query;
+      const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
+        pageSize: 100, maxPageSize: 200, sort: 'created_at', order: 'desc',
+      });
+      const sortCol = pickSort(sort, ['created_at', 'amount'], 'created_at');
+      const ascending = order === 'asc';
+      let q = database().from('orders').select('*', { count: 'exact' }).order(sortCol, { ascending })
+        .range(offset, offset + pageSize - 1);
+      // UI labels predate the DB enum: map legacy display values to real
+      // statuses (pending_verification = awaiting deposit = pending_payment).
+      const STATUS_ALIASES = { cancelled: 'canceled', pending_verification: 'pending_payment', confirmed: 'paid' };
+      if (status && status !== 'all') q = q.eq('status', STATUS_ALIASES[status] || status);
       if (payment_status && payment_status !== 'all') {
         if (payment_status === 'paid') q = q.eq('status', 'paid');
         else if (payment_status === 'pending_payment' || payment_status === 'under_review') q = q.eq('status', 'pending_payment');
@@ -922,36 +1095,43 @@ export function registerAdminRoutes(app, ctx) {
         if (isValidOrderSource(source)) q = q.eq('order_source', String(source).toLowerCase());
         else return error(res, 400, 'INVALID_SOURCE');
       }
-      if (search && String(search).trim()) {
-        const term = String(search).trim();
-        q = q.or(`order_number.ilike.%${term}%,id.eq.${term}`);
+      if (search) {
+        const safe = escapeIlike(search);
+        // Name/phone live in the address jsonb snapshot — match the UI
+        // placeholder (order no, customer name, depositor, phone).
+        const namePhone = `,address->>recipient.ilike.%${safe}%,address->>phone.ilike.%${safe}%`;
+        // orders.id is a uuid: only attempt the equality arm for uuid-shaped
+        // input, otherwise a raw string 400s the whole listing.
+        const orClause = /^[0-9a-f-]{1,64}$/i.test(search.trim())
+          ? `order_number.ilike.%${safe}%,id.eq.${search.trim()}${namePhone}`
+          : `order_number.ilike.%${safe}%${namePhone}`;
+        if (safe) q = q.or(orClause);
       }
-      const { data, error: e } = await q;
+      const { data, error: e, count: total } = await q;
       if (e) {
         // Pre-migration DBs lack order_source — retry without the source filter.
         if (source && source !== 'all' && String(e.message || '').includes('order_source')) {
-          let fallback = database().from('orders').select('*').order('created_at', { ascending: false })
-            .range(Number(offset) || 0, (Number(offset) || 0) + Math.min(Number(limit) || 100, 200) - 1);
+          let fallback = database().from('orders').select('*').order(sortCol, { ascending })
+            .range(offset, offset + pageSize - 1);
           if (status && status !== 'all') fallback = fallback.eq('status', status === 'cancelled' ? 'canceled' : status);
           const { data: fb, error: fbErr } = await fallback;
           if (fbErr) throw fbErr;
-          const out = [];
-          for (const o of (fb || []).filter(o => normalizeOrderSource(o.order_source) === String(source).toLowerCase())) out.push(await adminOrderDetail(o.id));
-          res.json({ success: true, data: out });
+          const out = await adminOrderList((fb || []).filter(o => normalizeOrderSource(o.order_source) === String(source).toLowerCase()));
+          // fb is already range-limited, so out is a single page here.
+          res.json(pageEnvelope({ data: out, total: out.length, page, pageSize }));
           return;
         }
         throw e;
       }
-      const out = [];
-      for (const o of (data || [])) out.push(await adminOrderDetail(o.id));
-      res.json({ success: true, data: out });
+      const out = await adminOrderList(data || []);
+      res.json(pageEnvelope({ data: out, total: total ?? out.length, page, pageSize }));
     } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); }
   });
 
   // Manual / external order creation (Instagram, TikTok, other).
   // Bank-transfer verify flow only: always starts pending_payment so stock is
   // reserved and payment is confirmed via the existing verify-payment path.
-  // Stock handling mirrors the storefront JS fallback (reserve + compensate).
+  // Placement is atomic via app.place_order (same as the storefront).
   app.post('/api/v1/admin/orders/manual', ...need(R.orders), async (req, res) => {
     try {
       const s = req.locals.session;
@@ -1059,84 +1239,33 @@ export function registerAdminRoutes(app, ctx) {
       const number = `NE${Date.now().toString(36).toUpperCase()}${random().slice(2, 8).toUpperCase()}`;
       const idempotencyKey = `manual-${uid()}`;
       const requestHash = createHash('sha256').update(JSON.stringify({ items, coupon_code: couponCode, address, orderSource })).digest('hex');
-      const baseRow = {
-        user_id: ownerId, order_number: number, subtotal, discount, shipping: shippingFee,
-        amount, coupon_code: couponCode, address, status: 'pending_payment',
-        idempotency_key: idempotencyKey, request_hash: requestHash,
-        order_source: orderSource, source_detail: sourceDetail || null,
-      };
-      // External (SNS) orders are paid by bank transfer hours/days later —
-      // the 45-minute default expiry would auto-cancel them via the expiry
-      // sweeper. Website manual orders keep the storefront default.
+      // P0 atomic placement: app.place_order validates stock + coupon under row
+      // locks and writes order + items + outbox in one transaction, so concurrent
+      // manual and storefront checkouts cannot oversell or over-redeem coupons.
+      // Staff-only extras the RPC does not own (source, long SNS expiry) are
+      // applied as a post-write update; coupon use here is staff-authorized.
+      const tryPlaceOrderRpc = () => database().rpc('place_order', { p_user_id: ownerId, p_order_number: number, p_idempotency_key: idempotencyKey, p_request_hash: requestHash, p_subtotal: subtotal, p_discount: discount, p_shipping: shippingFee, p_amount: amount, p_coupon_code: couponCode, p_address: address, p_items: lines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, snapshot: l.snapshot || {} })) });
+      const { data: placed, error: rpcError } = await tryPlaceOrderRpc();
+      if (rpcError) throw rpcError;
+      if (placed?.outcome === 'insufficient_stock') return error(res, 409, 'INSUFFICIENT_STOCK');
+      if (placed?.outcome === 'coupon_invalid') return error(res, 400, 'COUPON_INVALID');
+      if (placed?.outcome !== 'created') throw new Error('ORDER_CREATE_FAILED');
+      const extras = { order_source: orderSource, source_detail: sourceDetail || null };
       if (orderSource !== 'website') {
-        baseRow.expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        extras.expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       }
-      let order = null;
-      {
-        const { data, error: oErr } = await database().from('orders').insert(baseRow).select().maybeSingle();
-        if (oErr) {
-          if (String(oErr.message || '').includes('order_source')) {
-            const legacyRow = { ...baseRow };
-            delete legacyRow.order_source;
-            delete legacyRow.source_detail;
-            const retry = await database().from('orders').insert(legacyRow).select().maybeSingle();
-            if (retry.error || !retry.data) throw retry.error || new Error('ORDER_CREATE_FAILED');
-            order = retry.data;
-          } else {
-            throw oErr;
-          }
-        } else {
-          order = data;
-        }
-      }
-      if (!order) throw new Error('ORDER_CREATE_FAILED');
-      let couponReserved = false;
       try {
-        for (const [vid, qty] of demand) {
-          const { data: cur } = await database().from('product_variants').select('stock,reserved').eq('id', vid).maybeSingle();
-          if (!cur || (cur.stock || 0) - (cur.reserved || 0) < qty) throw Object.assign(new Error('INSUFFICIENT_STOCK'), { status: 409 });
-          await database().from('product_variants').update({ reserved: (cur.reserved || 0) + qty }).eq('id', vid);
-        }
-        if (couponCode) {
-          const { data: cRow } = await database().from('coupons').select('reserved').eq('code', couponCode).maybeSingle();
-          await database().from('coupons').update({ reserved: (cRow?.reserved || 0) + 1 }).eq('code', couponCode);
-          couponReserved = true;
-        }
-        const grouped = new Map();
-        for (const l of lines) {
-          const g = grouped.get(l.variant_id) || { variant_id: l.variant_id, quantity: 0, unit_price: l.unit_price, snapshot: l.snapshot || {} };
-          g.quantity += l.quantity;
-          grouped.set(l.variant_id, g);
-        }
-        await database().from('order_items').insert([...grouped.values()].map(l => ({
-          order_id: order.id, variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, snapshot: l.snapshot || {},
-        })));
-        await database().from('outbox').insert({
-          effect_key: `order:${order.id}`, kind: 'ORDER_CREATED', payload: { order_id: order.id },
-        });
-        await database().from('order_status_history').insert({
-          order_id: order.id, status: 'pending_payment',
-          note: `Manual order (${orderSource}) by admin`, actor_id: s.user_id,
-        });
-      } catch (stepErr) {
-        try {
-          for (const [vid, qty] of demand) {
-            const { data: cur } = await database().from('product_variants').select('reserved').eq('id', vid).maybeSingle();
-            if (cur && (cur.reserved || 0) >= qty) {
-              await database().from('product_variants').update({ reserved: cur.reserved - qty }).eq('id', vid);
-            }
-          }
-          if (couponReserved && couponCode) {
-            const { data: cCur } = await database().from('coupons').select('reserved').eq('code', couponCode).maybeSingle();
-            if (cCur && (cCur.reserved || 0) > 0) {
-              await database().from('coupons').update({ reserved: cCur.reserved - 1 }).eq('code', couponCode);
-            }
-          }
-          await database().from('orders').delete().eq('id', order.id);
-        } catch {}
-        if (stepErr && stepErr.message === 'INSUFFICIENT_STOCK') return error(res, 409, 'INSUFFICIENT_STOCK');
-        throw stepErr;
+        await database().from('orders').update(extras).eq('id', placed.order_id);
+      } catch (extrasErr) {
+        if (!String(extrasErr?.message || '').includes('order_source')) throw extrasErr;
+        // Legacy DB without order_source columns: the atomic order stands on defaults.
       }
+      const { data: order } = await database().from('orders').select('*').eq('id', placed.order_id).maybeSingle();
+      if (!order) throw new Error('ORDER_CREATE_FAILED');
+      await database().from('order_status_history').insert({
+        order_id: order.id, status: 'pending_payment',
+        note: `Manual order (${orderSource}) by admin`, actor_id: s.user_id,
+      });
       await auditLog(req, 'MANUAL_ORDER_CREATE', { table: 'orders', id: order.id, after: { order_source: orderSource, amount } });
       res.status(201).json({ success: true, data: await adminOrderDetail(order.id) });
     } catch (e) {
@@ -1149,7 +1278,8 @@ export function registerAdminRoutes(app, ctx) {
   app.get('/api/v1/admin/reports/sales', ...need(R.dashboard), async (req, res) => {
     try {
       const { from, to, source, format } = req.query;
-      let q = database().from('orders').select('id,order_number,status,amount,created_at,order_source').order('created_at', { ascending: false }).limit(1000);
+      const cap = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000);
+      let q = database().from('orders').select('id,order_number,status,amount,created_at,order_source').order('created_at', { ascending: false }).limit(cap);
       if (from) q = q.gte('created_at', String(from));
       if (to) q = q.lte('created_at', String(to));
       if (source && source !== 'all') {
@@ -1274,15 +1404,25 @@ export function registerAdminRoutes(app, ctx) {
   // ---------- Reviews ----------
   app.get('/api/v1/admin/reviews', ...need(R.catalog), async (req, res) => {
     try {
-      const { data: reviews } = await database().from('reviews').select('*').order('created_at', { ascending: false }).limit(200);
+      const { status } = req.query;
+      const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
+        pageSize: 100, maxPageSize: 200, sort: 'created_at', order: 'desc',
+      });
+      const sortCol = pickSort(sort, ['created_at', 'rating'], 'created_at');
+      const ascending = order === 'asc';
+      let q = database().from('reviews').select('*', { count: 'exact' }).order(sortCol, { ascending }).range(offset, offset + pageSize - 1);
+      if (status === 'approved') q = q.eq('is_approved', true);
+      else if (status === 'pending') q = q.eq('is_approved', false);
+      else if (status === 'featured') q = q.eq('is_featured', true);
+      if (search) q = q.ilike('comment', `%${escapeIlike(search)}%`);
+      const { data: reviews, count: total } = await q.then(r => r, () => ({ data: [], count: 0 }));
       const pids = [...new Set((reviews || []).map(r => r.product_id))];
       let byId = {};
       if (pids.length) {
         const { data: prods } = await database().from('products').select('id,sku,name_ko,name_en').in('id', pids);
         byId = Object.fromEntries((prods || []).map(p => [p.id, p]));
       }
-      res.json({
-        success: true,
+      res.json(pageEnvelope({
         data: (reviews || []).map(r => ({
           ...r,
           product_name_ko: byId[r.product_id]?.name_ko || '',
@@ -1292,7 +1432,10 @@ export function registerAdminRoutes(app, ctx) {
           is_approved: !!r.is_approved,
           is_featured: !!r.is_featured,
         })),
-      });
+        total: total ?? (reviews || []).length,
+        page,
+        pageSize,
+      }));
     } catch { error(res, 503, 'REVIEWS_UNAVAILABLE'); }
   });
 
@@ -1343,12 +1486,13 @@ export function registerAdminRoutes(app, ctx) {
 
   app.get('/api/v1/admin/media', ...need(R.catalog), async (req, res) => {
     try {
+      const { page, pageSize, offset } = parseListQuery(req.query, { pageSize: 200, maxPageSize: 200 });
       const search = String(req.query.search || '').toLowerCase();
       const tag = String(req.query.tag || '').toLowerCase();
       let items = docList(await readDoc(database, 'media', []));
       if (search) items = items.filter(m => `${m.name} ${m.tags}`.toLowerCase().includes(search));
       if (tag) items = items.filter(m => String(m.tags || '').toLowerCase().includes(tag));
-      res.json({ success: true, data: items.slice(0, 200) });
+      res.json(pageEnvelope({ data: items.slice(offset, offset + pageSize), total: items.length, page, pageSize }));
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
 
@@ -1450,7 +1594,9 @@ export function registerAdminRoutes(app, ctx) {
 
   app.get('/api/v1/admin/content/banners', ...need(R.cms), async (req, res) => {
     try {
-      res.json({ success: true, data: docList(await readDoc(database, 'banners', [])) });
+      const { page, pageSize, offset } = parseListQuery(req.query, { pageSize: 100, maxPageSize: 200 });
+      const items = docList(await readDoc(database, 'banners', []));
+      res.json(pageEnvelope({ data: items.slice(offset, offset + pageSize), total: items.length, page, pageSize }));
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
   });
 

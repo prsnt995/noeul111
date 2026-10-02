@@ -12,7 +12,7 @@ describe('Wave 1 — Session and token security', () => {
     let crypto: any;
     beforeEach(async () => {
       process.env.SESSION_KEY = 'a'.repeat(64);
-      const mod = await import(new URL('../server/lib/sessionCrypto.js', import.meta.url).href + `?t=${Date.now()}`);
+      const mod = await import(`${fileURLToPath(new URL('../server/lib/sessionCrypto.js', import.meta.url))}?t=${Date.now()}`);
       crypto = mod;
       crypto._resetSessionKeyForTests();
     });

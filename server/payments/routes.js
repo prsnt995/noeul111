@@ -18,5 +18,8 @@ export function registerPaymentRoutes(app, { service, authenticate, staff, stepU
   app.post('/api/v1/payments/toss/confirm', authenticate, limiter, run(req => service.confirm(req.body || {}, req.locals.session.user_id)));
   app.post('/api/v1/admin/payments/:id/refunds', authenticate, staff(['super_admin','admin','order_manager']), stepUp,
     run(req => service.refund({ actorId: req.locals.session.user_id, orderId: req.params.id, reason: req.body?.reason, amount: req.body?.amount, operationId: req.get('Idempotency-Key') })));
-  app.post('/api/v1/payments/toss/webhook', run(req => service.webhook(req.body || {})));
+  // Webhook is reconciliation-only (payload re-verified against the PG via
+  // retrieve; unknown keys fail closed) but each hit costs a PG call, so it
+  // shares the payment rate limiter — Toss retries delivery on 429.
+  app.post('/api/v1/payments/toss/webhook', limiter, run(req => service.webhook(req.body || {})));
 }

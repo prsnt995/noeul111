@@ -93,6 +93,7 @@ export function TossPaymentSuccessPage() {
     <h1>{state.loading ? '결제를 확인하고 있어요' : state.paid ? '결제가 완료되었습니다' : '결제 상태 확인이 필요합니다'}</h1>
     {!state.loading && !state.paid && <p role="alert">결제가 승인되었을 수 있으니 다시 결제하지 말고 주문 내역을 확인하거나 고객센터로 문의해주세요.</p>}
     {state.paid && <p>주문번호: {state.orderId}</p>}
+    {state.paid && <p><Link href={`/order-success/${encodeURIComponent(state.orderId)}`}>주문 상세 보기</Link></p>}
     {!state.loading && !state.paid && <PaymentRecoveryButton onPaid={orderId => setState({ loading: false, paid: true, orderId })} />}
     <Link href="/account">주문 내역 보기</Link>
   </main>;

@@ -399,11 +399,12 @@ export function HomePage() {
           </div>
         ) : (
           <div key={`${selectedGender}-${selectedCategory}-${activeFilter}`} className="product-grid noeul-product-grid home-grid-animated">
-            {products.map((prod) => (
+            {products.map((prod, i) => (
               <ProductCard
                 key={prod.id}
                 product={prod}
                 variant="overlay"
+                eager={i < 3}
               />
             ))}
           </div>

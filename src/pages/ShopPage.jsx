@@ -272,11 +272,12 @@ export function ShopPage() {
           </div>
            ) : (
           <div className="noeul-product-grid product-grid">
-            {products.map((prod) => (
+            {products.map((prod, i) => (
               <ProductCard
                 key={prod.id}
                 product={prod}
                 variant="overlay"
+                eager={i < 3}
               />
             ))}
           </div>

@@ -3,49 +3,67 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ProductCard } from '../common/ProductCard.jsx';
 
 const AUTOPLAY_MS = 2500;
+const TRACK_GAP = 12;
 
-function getVisibleCount() {
-  if (typeof window === 'undefined') return 3;
-  if (window.innerWidth <= 768) return 1;
-  if (window.innerWidth <= 1024) return 2;
-  return 3;
+// Fixed slide widths keep BEST cards compact: 280px desktop → 373px tall
+// media (3/4), smaller on tablet/mobile. Never percentage-based.
+function getSlideWidth() {
+  if (typeof window === 'undefined') return 280;
+  if (window.innerWidth <= 768) return 220;
+  if (window.innerWidth <= 1024) return 250;
+  return 280;
 }
 
 export function BestSellersCarousel({ items = [], loading = false, title, subtitle }) {
-  const [visibleCount, setVisibleCount] = useState(getVisibleCount);
+  const [slideW, setSlideW] = useState(getSlideWidth);
+  const [viewportW, setViewportW] = useState(0);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [touchX, setTouchX] = useState(null);
   const timerRef = useRef(null);
+  const viewportRef = useRef(null);
 
   const total = items.length;
 
   useEffect(() => {
-    const onResize = () => setVisibleCount(getVisibleCount());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const measure = () => {
+      setSlideW(getSlideWidth());
+      setViewportW(viewportRef.current?.clientWidth || 0);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
   }, []);
 
-  useEffect(() => {
-    setIndex(0);
-  }, [total, visibleCount]);
+  // Pixel-exact track: offset clamps so the track end lands flush with the
+  // viewport end — never a blank gap.
+  const step = slideW + TRACK_GAP;
+  const trackW = total * slideW + Math.max(0, total - 1) * TRACK_GAP;
+  const showControls = total > 0 && trackW > viewportW + 1;
+  const maxOffset = Math.max(0, trackW - viewportW);
+  const maxStart = Math.floor(maxOffset / step);
+  const offset = Math.min(index * step, maxOffset);
 
   const goNext = useCallback(() => {
-    if (total <= 1) return;
-    setIndex((i) => (i + 1) % total);
-  }, [total]);
+    if (!showControls) return;
+    setIndex((i) => (i >= maxStart ? 0 : i + 1));
+  }, [showControls, maxStart]);
 
   const goPrev = useCallback(() => {
-    if (total <= 1) return;
-    setIndex((i) => (i - 1 + total) % total);
-  }, [total]);
+    if (!showControls) return;
+    setIndex((i) => (i <= 0 ? maxStart : i - 1));
+  }, [showControls, maxStart]);
 
   useEffect(() => {
-    if (loading || paused || total <= visibleCount) return undefined;
+    setIndex((i) => Math.min(i, maxStart));
+  }, [maxStart, total]);
+
+  useEffect(() => {
+    if (loading || paused || !showControls) return undefined;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
     timerRef.current = setInterval(goNext, AUTOPLAY_MS);
     return () => clearInterval(timerRef.current);
-  }, [loading, paused, total, visibleCount, goNext]);
+  }, [loading, paused, showControls, goNext]);
 
   if (loading) {
     return (
@@ -56,10 +74,10 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
             <h2 className="best-carousel-title">{title || 'BEST'}</h2>
           </div>
         </div>
-        <div className="best-carousel-viewport">
-          <div className="best-carousel-track">
+        <div className="best-carousel-viewport" ref={viewportRef}>
+          <div className="best-carousel-track" style={{ gap: TRACK_GAP }}>
             {[0, 1, 2].map((k) => (
-              <div key={k} className="best-carousel-slide">
+              <div key={k} className="best-carousel-slide" style={{ flex: '0 0 auto', width: slideW, maxWidth: slideW }}>
                 <div className="best-skeleton-card">
                   <div className="best-skeleton-media" />
                   <div className="best-skeleton-line" />
@@ -74,14 +92,6 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
   }
 
   if (!total) return null;
-
-  const showControls = total > visibleCount;
-  // Static mode (fewer items than slots): fill the row, no sliding, no empty gap.
-  // Sliding mode (more items than slots): shift-by-1 track as before.
-  const slideBasis = !showControls
-    ? `calc(${100 / total}% - ${((total - 1) * 12) / total}px)`
-    : visibleCount === 3 ? 'calc(33.333% - 8px)' : visibleCount === 2 ? 'calc(50% - 6px)' : 'calc(85% - 6px)';
-  const offsetPct = total > 0 ? (index * 100) / total : 0;
 
   return (
     <section
@@ -112,6 +122,7 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
 
       <div
         className="best-carousel-viewport"
+        ref={viewportRef}
         onTouchStart={(e) => {
           if (!showControls) return;
           setTouchX(e.touches[0].clientX);
@@ -137,21 +148,22 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
           style={
             showControls
               ? {
-                  width: `${(total / visibleCount) * 100}%`,
-                  transform: `translateX(-${offsetPct}%)`,
+                  gap: TRACK_GAP,
+                  width: trackW,
+                  transform: `translateX(-${offset}px)`,
                 }
-              : { width: '100%', transform: 'none' }
+              : { gap: TRACK_GAP, width: '100%', transform: 'none', justifyContent: 'center' }
           }
         >
-          {items.map((prod) => (
+          {items.map((prod, i) => (
             <div
               key={prod.id || prod.slug}
               className="best-carousel-slide"
-              style={{ flexBasis: slideBasis, maxWidth: slideBasis }}
+              style={{ flex: '0 0 auto', width: slideW, maxWidth: slideW }}
               aria-roledescription="slide"
-              aria-label={`Best item ${index + 1} of ${total}`}
+              aria-label={`Best item ${i + 1} of ${total}`}
             >
-              <ProductCard product={prod} variant="classic" />
+              <ProductCard product={prod} variant="classic" eager />
             </div>
           ))}
         </div>
@@ -159,13 +171,13 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
 
       {showControls && (
         <div className="best-carousel-dots" role="tablist" aria-label="Best items pages">
-          {items.map((prod, i) => (
+          {Array.from({ length: maxStart + 1 }, (_, i) => (
             <button
-              key={prod.id || i}
+              key={i}
               type="button"
               role="tab"
               aria-selected={i === index}
-              aria-label={`Go to item ${i + 1}`}
+              aria-label={`Go to best items page ${i + 1} of ${maxStart + 1}`}
               className={i === index ? 'active' : ''}
               onClick={() => setIndex(i)}
             />

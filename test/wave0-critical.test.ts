@@ -17,7 +17,7 @@ describe('Wave 0 — Critical path restores', () => {
         seen = { url, init };
         return { ok: true, json: async () => ({ success: true }) };
       };
-      ({ api } = await import(new URL('../src/utils/api.js', import.meta.url).href));
+      ({ api } = await import(fileURLToPath(new URL('../src/utils/api.js', import.meta.url))));
     });
 
     it('forwards custom headers on POST (checkout Idempotency-Key)', async () => {
