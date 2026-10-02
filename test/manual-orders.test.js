@@ -70,12 +70,21 @@ describe('Manual / external orders — backend wiring', () => {
     expect(admin.includes('order_source')).toBe(true);
     // Manual orders start unpaid (bank-transfer verify flow), never paid.
     const manualIdx = admin.indexOf("orders/manual");
-    const manualBlock = admin.slice(manualIdx, manualIdx + 6000);
+    const manualBlock = admin.slice(manualIdx, manualIdx + 9000);
     expect(manualBlock.includes("status: 'pending_payment'")).toBe(true);
     expect(manualBlock.includes("status: 'paid'")).toBe(false);
     // Stock is reserved with compensation, like the storefront fallback.
     expect(manualBlock.includes('reserved')).toBe(true);
     expect(manualBlock.includes('INSUFFICIENT_STOCK')).toBe(true);
+  });
+
+  it('manual create resolves variant_id from product_id + color + size', () => {
+    const admin = read('api/admin.js');
+    const idx = admin.indexOf("orders/manual");
+    const block = admin.slice(idx, idx + 9000);
+    expect(block.includes('product_id')).toBe(true);
+    expect(block.includes(".eq('color'")).toBe(true);
+    expect(block.includes(".eq('size'")).toBe(true);
   });
 
   it('Supabase migration adds order_source with check constraint', () => {

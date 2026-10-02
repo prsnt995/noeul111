@@ -114,6 +114,9 @@ export function ProductDetailPage() {
   const isWish = product ? isWishlisted(product.id) : false;
   const productName = product ? (lang === 'ko' ? (product.name_ko || product.name_en) : (product.name_en || product.name_ko)) : '';
   const variants = product ? (Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : []) : [];
+  // Price/URL may fall back to any same-color variant (older products), but
+  // availability must match the exact color+size combo — unoffered combos
+  // (no variant row) are never purchasable.
   const getVariant = (colorObj, sizeVal) => {
     const cName = colorObj?.name_en || colorObj?.name || colorObj;
     return variants.find(v => v.color === cName && v.size === sizeVal) || variants.find(v => v.color === cName) || variants.find(v => v.size === sizeVal) || null;
@@ -122,9 +125,11 @@ export function ProductDetailPage() {
   const basePrice = product ? (product.discount_price || product.price) : 0;
   const finalPrice = currentVariant ? Math.max(1, basePrice + (currentVariant.price_delta || 0)) : basePrice;
   const isVariantAvailable = (colorObj, sizeVal) => {
-    const v = getVariant(colorObj || selectedColor, sizeVal || selectedSize);
+    const cName = colorObj?.name_en || colorObj?.name || colorObj?.name_ko || colorObj;
+    const sz = sizeVal ?? selectedSize;
+    const v = variants.find(x => x.color === cName && x.size === sz && x.active !== false);
     if (!v) return false;
-    const stock = (v.stock ?? product?.stock ?? 0);
+    const stock = (v.stock ?? 0);
     const reserved = (v.reserved ?? 0);
     return (stock - reserved) > 0;
   };

@@ -378,7 +378,6 @@ export function registerAdminRoutes(app, ctx) {
       is_best: !!p.is_best,
       is_sale: !!(p.discount_price && p.discount_price < p.price),
       is_featured: false,
-      display_order: 0,
       discount_rate: p.discount_price && p.discount_price < p.price ? Math.round(((p.price - p.discount_price) / p.price) * 100) : 0,
     };
   }
@@ -388,28 +387,54 @@ export function registerAdminRoutes(app, ctx) {
     const colors = (Array.isArray(body.colors) && body.colors.length ? body.colors : [{ name_ko: 'DEFAULT', name_en: 'DEFAULT', hex: '' }])
       .map(c => (typeof c === 'string' ? { name: c } : c))
       .map(c => ({ color: c.name_en || c.name_ko || c.name || 'DEFAULT', swatch: c.hex || '' }));
-    return { sizes, colors };
+    // Per-combo stock map: keys are `${color}|||${size}`. When provided it is
+    // the single source of truth for WHICH combos are offered (absent key =
+    // combo not sold) and each value is that combo's stock.
+    const stockMap = new Map();
+    const raw = body.variant_stock;
+    const hasStockMap = Boolean(raw && typeof raw === 'object' && !Array.isArray(raw));
+    if (hasStockMap) {
+      for (const [key, val] of Object.entries(raw)) {
+        if (typeof key !== 'string' || key.indexOf('|||') <= 0) continue;
+        const n = Math.round(Number(val));
+        if (!Number.isFinite(n) || n < 0) continue;
+        stockMap.set(key, Math.min(n, 99999));
+      }
+    }
+    return { sizes, colors, stockMap, hasStockMap };
   }
 
   async function syncVariants(productId, productSku, body) {
-    const { sizes, colors } = combosFromBody(body);
+    const { sizes, colors, stockMap, hasStockMap } = combosFromBody(body);
     const { data: existing } = await database().from('product_variants').select('*').eq('product_id', productId);
     const have = new Map((existing || []).map(v => [`${v.color}|||${v.size}`, v]));
+    const swatchByColor = new Map(colors.map(c => [c.color, c.swatch]));
     const want = new Set();
+    if (hasStockMap) {
+      for (const key of stockMap.keys()) want.add(key);
+    } else {
+      for (const c of colors) for (const size of sizes) want.add(`${c.color}|||${size}`);
+    }
     let n = 0;
-    for (const c of colors) {
-      for (const size of sizes) {
-        const key = `${c.color}|||${size}`;
-        want.add(key);
-        n += 1;
-        if (!have.has(key)) {
-          let sku = `${productSku}-${String(c.color).slice(0, 8)}-${String(size).slice(0, 8)}`.toUpperCase().replace(/[^A-Z0-9-]+/g, '-');
-          const { error } = await database().from('product_variants').insert({
-            product_id: productId, sku: `${sku}-${random().slice(0, 4)}`,
-            color: c.color, size: String(size), swatch: c.swatch, stock: 0, active: true,
-          });
-          if (error) throw error;
-        }
+    for (const key of want) {
+      const sep = key.indexOf('|||');
+      const color = key.slice(0, sep);
+      const size = key.slice(sep + 3);
+      const requested = hasStockMap ? (stockMap.get(key) ?? 0) : 0;
+      n += 1;
+      const prev = have.get(key);
+      if (!prev) {
+        let sku = `${productSku}-${String(color).slice(0, 8)}-${String(size).slice(0, 8)}`.toUpperCase().replace(/[^A-Z0-9-]+/g, '-');
+        const { error } = await database().from('product_variants').insert({
+          product_id: productId, sku: `${sku}-${random().slice(0, 4)}`,
+          color, size, swatch: swatchByColor.get(color) || '', stock: requested, active: true,
+        });
+        if (error) throw error;
+      } else if (hasStockMap && (prev.stock || 0) !== requested) {
+        // DB check: reserved <= stock, so a lowering can't dip under holds.
+        const target = Math.max(requested, prev.reserved || 0);
+        const { error } = await database().from('product_variants').update({ stock: target }).eq('id', prev.id);
+        if (error) throw error;
       }
     }
     // Remove deselected combos only when nothing holds them (FK blocks ordered ones).
@@ -499,13 +524,19 @@ export function registerAdminRoutes(app, ctx) {
           sizes: [...new Set(list.map(v => v.size))],
           colors: [...new Map(list.map(v => [v.color, { name_ko: v.color, name_en: v.color, hex: v.swatch || '' }])).values()],
           images: media.map(m => m.url),
+          media: media || [],
+          // Raw variants (id/color/size/stock/reserved) so the admin
+          // color×size stock table can prefill and edit per-combo stock.
+          variants: list.map(v => ({
+            id: v.id, color: v.color, size: v.size, stock: v.stock || 0,
+            reserved: v.reserved || 0, active: v.active !== false, sku: v.sku,
+          })),
           stock: list.reduce((s, v) => s + (v.stock || 0), 0),
           status: p.is_active ? 'active' : 'hidden',
           is_new: !!p.is_new,
           is_best: !!p.is_best,
           is_sale: !!(p.discount_price && p.discount_price < p.price),
           is_featured: false,
-          display_order: 0,
           discount_rate: p.discount_price && p.discount_price < p.price ? Math.round(((p.price - p.discount_price) / p.price) * 100) : 0,
         };
       });
@@ -573,7 +604,7 @@ export function registerAdminRoutes(app, ctx) {
         const { error: e } = await database().from('products').update(patch).eq('id', p.id);
         if (e) throw e;
       }
-      if (b.sizes !== undefined || b.colors !== undefined) await syncVariants(p.id, patch.sku || p.sku, { sizes: b.sizes, colors: b.colors });
+      if (b.sizes !== undefined || b.colors !== undefined || b.variant_stock !== undefined) await syncVariants(p.id, patch.sku || p.sku, b);
       if (b.images !== undefined) await syncMedia(p.id, b.images);
       await auditLog(req, 'PRODUCT_UPDATE', { table: 'products', id: p.id });
       const { data: updated } = await database().from('products').select('*').eq('id', p.id).maybeSingle();
@@ -921,9 +952,29 @@ export function registerAdminRoutes(app, ctx) {
       if (!items || !Array.isArray(items) || items.length === 0 || items.length > 50) {
         return error(res, 400, 'INVALID_ITEMS');
       }
+      // Resolve variant_id from product_id + color + size when the picker
+      // sent a legacy-shaped line without one (e.g. product data fetched
+      // before the variants field existed, or a product with no variants).
       for (const it of items) {
-        if (!it || typeof it.variant_id !== 'string' || !it.variant_id) return error(res, 400, 'INVALID_ITEM');
-        if (!Number.isInteger(it.quantity) || it.quantity < 1 || it.quantity > 99) return error(res, 400, 'INVALID_ITEM');
+        if (it && !it.variant_id && it.product_id) {
+          const color = String(it.color || 'DEFAULT');
+          const size = String(it.size || 'FREE');
+          const { data: match } = await database().from('product_variants')
+            .select('id')
+            .eq('product_id', it.product_id)
+            .eq('color', color)
+            .eq('size', size)
+            .maybeSingle();
+          if (match) it.variant_id = match.id;
+        }
+      }
+      for (const it of items) {
+        if (!it || !Number.isInteger(it.quantity) || it.quantity < 1 || it.quantity > 99) return error(res, 400, 'INVALID_ITEM');
+        if (typeof it.variant_id !== 'string' || !it.variant_id) {
+          // Line has product_id/color/size but no variant row matched it.
+          if (it && it.product_id) return error(res, 404, 'VARIANT_UNAVAILABLE');
+          return error(res, 400, 'INVALID_ITEM');
+        }
       }
       const demand = new Map();
       for (const it of items) demand.set(it.variant_id, (demand.get(it.variant_id) || 0) + it.quantity);

@@ -32,7 +32,33 @@ const PRESET_COLORS = [
   { name_ko: '네이비', name_en: 'Navy', hex: '#1e3a8a' },
   { name_ko: '베이지', name_en: 'Beige', hex: '#d4b996' },
   { name_ko: '브라운', name_en: 'Brown', hex: '#78350f' },
+  { name_ko: '레드', name_en: 'Red', hex: '#dc2626' },
+  { name_ko: '와인', name_en: 'Wine', hex: '#7f1d1d' },
+  { name_ko: '스카이', name_en: 'Sky', hex: '#7dd3fc' },
+  { name_ko: '핑크', name_en: 'Pink', hex: '#f9a8d4' },
+  { name_ko: '민트', name_en: 'Mint', hex: '#a7f3d0' },
+  { name_ko: '라벤더', name_en: 'Lavender', hex: '#c4b5fd' },
+  { name_ko: '올리브', name_en: 'Olive', hex: '#65a30d' },
+  { name_ko: '버터', name_en: 'Butter', hex: '#fde68a' },
+  { name_ko: '카멜', name_en: 'Camel', hex: '#d6a66a' },
+  { name_ko: '스틸', name_en: 'Steel', hex: '#64748b' },
+  { name_ko: '아이보리', name_en: 'Ivory', hex: '#fffff0' },
 ];
+
+// Same priority as the backend combosFromBody (api/admin.js) so table keys
+// always match variant rows: name_en first, then name_ko, name, DEFAULT.
+const colorKey = (c) => (typeof c === 'string' ? c : (c?.name_en || c?.name_ko || c?.name || 'DEFAULT'));
+const comboKey = (c, size) => `${colorKey(c)}|||${size}`;
+const cellFilled = (v) => v !== undefined && v !== null && String(v).trim() !== '';
+const cellHeadStyle = {
+  padding: '8px 10px',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  color: '#52525b',
+  backgroundColor: '#f4f4f5',
+  border: '1px solid #e4e4e7',
+  whiteSpace: 'nowrap',
+};
 
 export function AdminProductsPage() {
   const [products, setProducts] = useState([]);
@@ -67,16 +93,19 @@ export function AdminProductsPage() {
     material_en: '',
     price: '',
     discount_price: '',
-    stock: 20,
     is_new: true,
     is_sale: false,
     is_best: false,
-    display_order: 0,
     status: 'active',
     images: [],
     sizes: ['S', 'M', 'L'],
     colors: [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }],
+    // Color×Size combo stock: key `${color}|||${size}`, value '' = not offered.
+    variant_stock: {},
   });
+
+  // Custom color draft (name + hex picker) appended to presets
+  const [newColor, setNewColor] = useState({ name_ko: '', name_en: '', hex: '#18181b' });
 
   const fetchProducts = async (reset = true) => {
     const targetPage = reset ? 0 : page;
@@ -134,6 +163,7 @@ export function AdminProductsPage() {
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingId(null);
+    setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
     setFormData({
       sku: `NE-${Date.now().toString().slice(-6)}`,
       category_id: categories[0]?.id || 1,
@@ -145,15 +175,14 @@ export function AdminProductsPage() {
       material_en: '100% Cotton',
       price: '',
       discount_price: '',
-      stock: 25,
       is_new: true,
       is_sale: false,
       is_best: false,
-      display_order: 0,
       status: 'active',
       images: [],
       sizes: ['S', 'M', 'L', 'XL'],
       colors: [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }],
+      variant_stock: {},
     });
     setIsModalOpen(true);
   };
@@ -161,10 +190,16 @@ export function AdminProductsPage() {
   const openEditModal = (p) => {
     setIsEditMode(true);
     setEditingId(p.id);
+    setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
     // Preserve per-image color mapping for reorder plan (media has color, images is fallback)
     const mediaWithColor = Array.isArray(p.media) && p.media.length
       ? p.media.map(m => ({ url: m.url, color: m.color || null, variant_id: m.variant_id || null }))
       : (p.images || []).map(url => (typeof url === 'string' ? { url, color: null } : url));
+    // Prefill combo stock from existing variants (blank = combo not offered)
+    const variant_stock = {};
+    (p.variants || []).forEach(v => {
+      variant_stock[comboKey({ name_en: v.color }, v.size)] = String(v.stock ?? 0);
+    });
     setFormData({
       sku: p.sku || '',
       category_id: p.category_id,
@@ -176,28 +211,42 @@ export function AdminProductsPage() {
       material_en: p.material_en || '',
       price: p.price || '',
       discount_price: p.discount_price || '',
-      stock: p.stock ?? 0,
       is_new: Boolean(p.is_new),
       is_sale: Boolean(p.is_sale || (p.discount_price && p.discount_price < p.price)),
       is_best: Boolean(p.is_best),
-      display_order: p.display_order || 0,
       status: p.status || 'active',
       images: mediaWithColor,
       sizes: p.sizes?.length > 0 ? p.sizes : ['FREE'],
       colors: p.colors?.length > 0 ? p.colors : [{ name_ko: '블랙', name_en: 'Black', hex: '#111' }],
+      variant_stock,
     });
     setIsModalOpen(true);
   };
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
+    // Build the offered-combo map: only filled cells are sent (blank = not
+    // offered), validated as integers 0..99999.
+    const variant_stock = {};
+    for (const c of formData.colors) {
+      for (const sz of formData.sizes) {
+        const raw = formData.variant_stock[comboKey(c, sz)];
+        if (!cellFilled(raw)) continue;
+        const n = Math.round(Number(raw));
+        if (!Number.isFinite(n) || n < 0 || n > 99999) {
+          showToast(`재고 값이 올바르지 않습니다: ${colorKey(c)} / ${sz}`, 'error');
+          return;
+        }
+        variant_stock[comboKey(c, sz)] = n;
+      }
+    }
+    const emptyColors = formData.colors.filter(c => !formData.sizes.some(sz => cellFilled(formData.variant_stock[comboKey(c, sz)])));
     try {
       const payload = {
         ...formData,
         price: Number(formData.price),
         discount_price: formData.discount_price ? Number(formData.discount_price) : null,
-        stock: Number(formData.stock),
-        display_order: Number(formData.display_order || 0),
+        variant_stock,
       };
 
       if (isEditMode) {
@@ -206,6 +255,9 @@ export function AdminProductsPage() {
       } else {
         await adminApi.post('/admin/products', payload);
         showToast('새 상품이 등록되었습니다.', 'success');
+      }
+      if (emptyColors.length) {
+        showToast(`판매 조합 없는 색상(고객에게 숨김): ${emptyColors.map(colorKey).join(', ')}`, 'info');
       }
 
       setIsModalOpen(false);
@@ -268,6 +320,44 @@ export function AdminProductsPage() {
     } else {
       setFormData({ ...formData, colors: [...current, colorObj] });
     }
+  };
+
+  const addCustomColor = () => {
+    const name_en = newColor.name_en.trim();
+    const name_ko = newColor.name_ko.trim() || name_en;
+    if (!name_en) {
+      showToast('영문 색상명을 입력하세요 (예: Dusty Blue)', 'error');
+      return;
+    }
+    if (formData.colors.some((c) => c.name_en === name_en)) {
+      showToast('이미 존재하는 색상입니다.', 'error');
+      return;
+    }
+    setFormData({ ...formData, colors: [...formData.colors, { name_ko, name_en, hex: newColor.hex }] });
+    setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
+  };
+
+  const setComboCell = (color, size, value) => {
+    setFormData({ ...formData, variant_stock: { ...formData.variant_stock, [comboKey(color, size)]: value } });
+  };
+
+  const fillAllBlankWithZero = () => {
+    const next = { ...formData.variant_stock };
+    for (const c of formData.colors) {
+      for (const sz of formData.sizes) {
+        const k = comboKey(c, sz);
+        if (!cellFilled(next[k])) next[k] = '0';
+      }
+    }
+    setFormData({ ...formData, variant_stock: next });
+  };
+
+  const clearAllCells = () => {
+    const next = {};
+    for (const c of formData.colors) {
+      for (const sz of formData.sizes) next[comboKey(c, sz)] = '';
+    }
+    setFormData({ ...formData, variant_stock: next });
   };
 
   return (
@@ -419,7 +509,6 @@ export function AdminProductsPage() {
                     <tr key={p.id} style={{ borderBottom: '1px solid #f0f0f2', opacity: p.status === 'hidden' ? 0.6 : 1 }}>
                       <td style={{ padding: '14px 16px', color: '#71717a', fontWeight: 600 }}>
                         #{p.id}
-                        <span style={{ display: 'block', fontSize: '0.6875rem', color: '#a1a1aa' }}>Order: {p.display_order || 0}</span>
                       </td>
 
                       {/* Product Main Image & Bilingual Names */}
@@ -674,8 +763,8 @@ export function AdminProductsPage() {
                   </div>
                 </div>
 
-                {/* 2. Category, SKU & Display Order */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                {/* 2. Category & SKU */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">카테고리 *</label>
                     <select
@@ -699,21 +788,10 @@ export function AdminProductsPage() {
                       className="form-input"
                     />
                   </div>
-
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">진열 순서 (Display Order)</label>
-                    <input
-                      type="number"
-                      value={formData.display_order}
-                      onChange={(e) => setFormData({ ...formData, display_order: e.target.value })}
-                      placeholder="0 (숫자가 작을수록 우선)"
-                      className="form-input"
-                    />
-                  </div>
                 </div>
 
-                {/* 3. Pricing & Stock */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                {/* 3. Pricing */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">정상 판매가 (KRW ₩) *</label>
                     <input
@@ -733,17 +811,6 @@ export function AdminProductsPage() {
                       value={formData.discount_price}
                       onChange={(e) => setFormData({ ...formData, discount_price: e.target.value })}
                       placeholder="79000"
-                      className="form-input"
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">재고 수량 (Stock) *</label>
-                    <input
-                      type="number"
-                      required
-                      value={formData.stock}
-                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                       className="form-input"
                     />
                   </div>
@@ -873,10 +940,199 @@ export function AdminProductsPage() {
                         );
                       })}
                     </div>
+
+                    {/* Custom color: name + hex picker */}
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        value={newColor.name_ko}
+                        onChange={(e) => setNewColor({ ...newColor, name_ko: e.target.value })}
+                        placeholder="한글명 (더스티 블루)"
+                        className="form-input"
+                        style={{ width: '130px', padding: '6px 8px', fontSize: '0.75rem' }}
+                      />
+                      <input
+                        type="text"
+                        value={newColor.name_en}
+                        onChange={(e) => setNewColor({ ...newColor, name_en: e.target.value })}
+                        placeholder="English (Dusty Blue)"
+                        className="form-input"
+                        style={{ width: '140px', padding: '6px 8px', fontSize: '0.75rem' }}
+                      />
+                      <input
+                        type="color"
+                        value={newColor.hex}
+                        onChange={(e) => setNewColor({ ...newColor, hex: e.target.value })}
+                        title="색상 선택"
+                        style={{ width: '32px', height: '30px', padding: '2px', border: '1px solid #e4e4e7', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={addCustomColor}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: '#ffffff',
+                          color: '#18181b',
+                          border: '1px dashed #18181b',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        + 색상 추가
+                      </button>
+                    </div>
+
+                    {/* Custom colors added beyond presets (removable) */}
+                    {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en)).length > 0 && (
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                        {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en)).map((cObj) => (
+                          <span
+                            key={cObj.name_en}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              backgroundColor: '#18181b',
+                              color: '#ffffff',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: cObj.hex, border: '1px solid #ccc' }} />
+                            <span>{cObj.name_ko} ({cObj.name_en})</span>
+                            <button
+                              type="button"
+                              onClick={() => toggleColorSelection(cObj)}
+                              aria-label={`${cObj.name_en} 삭제`}
+                              style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: 0, fontSize: '0.875rem', lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* 6. Product Image Manager — reorder plan: each image can be linked to a color (e.g., 2 blue, 3 green). On storefront, selecting blue reorders that color's images first, still shows all 5. */}
+                {/* 6. Variant Stock Matrix — Color × Size mini table.
+                    Blank cell = combo not offered; 0 = offered but sold out. */}
+                <div style={{ backgroundColor: '#fbfbfb', padding: '16px', borderRadius: '8px', border: '1px solid #f0f0f2' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-sunset)', textTransform: 'uppercase' }}>
+                      6. 옵션별 재고 (Color × Size Stock)
+                    </span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button type="button" onClick={fillAllBlankWithZero} style={{ padding: '5px 10px', fontSize: '0.6875rem', fontWeight: 700, backgroundColor: '#ffffff', border: '1px solid #e4e4e7', borderRadius: '4px', cursor: 'pointer', color: '#52525b' }}>
+                        빈칸 전체 0 채우기
+                      </button>
+                      <button type="button" onClick={clearAllCells} style={{ padding: '5px 10px', fontSize: '0.6875rem', fontWeight: 700, backgroundColor: '#ffffff', border: '1px solid #e4e4e7', borderRadius: '4px', cursor: 'pointer', color: '#52525b' }}>
+                        전체 비우기
+                      </button>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '0.6875rem', color: '#71717a', margin: '0 0 10px' }}>
+                    숫자를 입력하면 해당 조합을 판매합니다. 빈 칸은 판매하지 않는 조합이며, 0은 품절(판매 중)입니다.
+                  </p>
+
+                  {formData.sizes.length === 0 || formData.colors.length === 0 ? (
+                    <p style={{ fontSize: '0.8125rem', color: '#a1a1aa', margin: 0 }}>사이즈와 색상을 먼저 선택하세요.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: '100%' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...cellHeadStyle, textAlign: 'left' }}>색상 \\ 사이즈</th>
+                            {formData.sizes.map((sz) => (
+                              <th key={sz} style={cellHeadStyle}>{sz}</th>
+                            ))}
+                            <th style={{ ...cellHeadStyle, backgroundColor: '#f4f4f5' }}>합계</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {formData.colors.map((c) => {
+                            const rowTotals = formData.sizes.map((sz) => {
+                              const raw = formData.variant_stock[comboKey(c, sz)];
+                              return cellFilled(raw) ? Math.max(0, Math.round(Number(raw)) || 0) : null;
+                            });
+                            const rowSum = rowTotals.reduce((s, v) => s + (v || 0), 0);
+                            const hasAny = rowTotals.some((v) => v !== null);
+                            return (
+                              <tr key={colorKey(c)}>
+                                <th scope="row" style={{ ...cellHeadStyle, textAlign: 'left', whiteSpace: 'nowrap' }}>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: c.hex || '#d4d4d8', border: '1px solid rgba(0,0,0,0.2)', flexShrink: 0 }} />
+                                    {c.name_ko} ({colorKey(c)})
+                                  </span>
+                                </th>
+                                {formData.sizes.map((sz) => {
+                                  const key = comboKey(c, sz);
+                                  const val = formData.variant_stock[key] ?? '';
+                                  const filled = cellFilled(val);
+                                  return (
+                                    <td key={sz} style={{ border: '1px solid #e4e4e7', padding: '4px', textAlign: 'center' }}>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="99999"
+                                        value={val}
+                                        onChange={(e) => setComboCell(c, sz, e.target.value)}
+                                        placeholder="–"
+                                        aria-label={`${colorKey(c)} ${sz} 재고`}
+                                        style={{
+                                          width: '58px',
+                                          padding: '6px 4px',
+                                          fontSize: '0.8125rem',
+                                          textAlign: 'center',
+                                          border: filled ? '1px solid #d4d4d8' : '1px dashed #d4d4d8',
+                                          borderRadius: '4px',
+                                          backgroundColor: filled ? '#ffffff' : '#f4f4f5',
+                                          color: filled && Number(val) === 0 ? '#a1a1aa' : '#18181b',
+                                          font: 'inherit',
+                                          outline: 'none',
+                                        }}
+                                      />
+                                    </td>
+                                  );
+                                })}
+                                <td style={{ border: '1px solid #e4e4e7', padding: '4px 8px', textAlign: 'center', fontWeight: 700, backgroundColor: '#fafafa', color: hasAny ? '#18181b' : '#a1a1aa' }}>
+                                  {hasAny ? rowSum : '–'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          <tr>
+                            <th style={{ ...cellHeadStyle, textAlign: 'left', backgroundColor: '#f4f4f5' }}>사이즈 합계</th>
+                            {formData.sizes.map((sz) => {
+                              const colSum = formData.colors.reduce((s, c) => {
+                                const raw = formData.variant_stock[comboKey(c, sz)];
+                                return s + (cellFilled(raw) ? Math.max(0, Math.round(Number(raw)) || 0) : 0);
+                              }, 0);
+                              const any = formData.colors.some((c) => cellFilled(formData.variant_stock[comboKey(c, sz)]));
+                              return (
+                                <td key={sz} style={{ ...cellHeadStyle, backgroundColor: '#f4f4f5', textAlign: 'center' }}>
+                                  {any ? colSum : '–'}
+                                </td>
+                              );
+                            })}
+                            <td style={{ ...cellHeadStyle, backgroundColor: '#ececec', textAlign: 'center' }}>
+                              {formData.colors.reduce((s, c) => s + formData.sizes.reduce((ss, sz) => {
+                                const raw = formData.variant_stock[comboKey(c, sz)];
+                                return ss + (cellFilled(raw) ? Math.max(0, Math.round(Number(raw)) || 0) : 0);
+                              }, 0), 0)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* 7. Product Image Manager — reorder plan: each image can be linked to a color (e.g., 2 blue, 3 green). On storefront, selecting blue reorders that color's images first, still shows all 5. */}
                 <ImageUploader
                   images={formData.images}
                   onChange={(imgs) => setFormData({ ...formData, images: imgs })}
@@ -885,7 +1141,7 @@ export function AdminProductsPage() {
                   availableColors={formData.colors}
                 />
 
-                {/* 7. Badges & Visibility Status Flags */}
+                {/* 8. Badges & Visibility Status Flags */}
                 <div style={{ display: 'flex', gap: '20px', padding: '16px', backgroundColor: '#f4f4f6', borderRadius: '8px', flexWrap: 'wrap' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
                     <input

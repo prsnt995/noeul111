@@ -40,14 +40,9 @@ export function CartProvider({ children }) {
   const resolveVariant = (product, sizeVal, colorNameKo, colorNameEn) => {
     const variants = Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : [];
     if (variants.length > 0) {
-      // Prefer exact match on size+color
-      let v = variants.find(x => x.size === sizeVal && (x.color === colorNameKo || x.color === colorNameEn));
-      if (v) return v;
-      v = variants.find(x => x.size === sizeVal);
-      if (v) return v;
-      v = variants.find(x => x.color === colorNameKo || x.color === colorNameEn);
-      if (v) return v;
-      return variants[0];
+      // Exact size+color match only: a loose fallback would add a variant of
+      // a different color/size, overselling a combo the store never offered.
+      return variants.find(x => x.size === sizeVal && (x.color === colorNameKo || x.color === colorNameEn)) || null;
     }
     return null;
   };
