@@ -20,7 +20,7 @@ export function ProductCard({ product }) {
   }, [baseImages, swatchColor, product]);
   const name = lang === 'ko' ? (product?.name_ko || product?.name_en) : (product?.name_en || product?.name_ko);
   useEffect(() => { const el=cardRef.current; if (!el) return; const observer=new IntersectionObserver(([entry])=>setVisible(entry.isIntersecting && entry.intersectionRatio >= .6),{threshold:[0,.6,1]}); observer.observe(el); return ()=>observer.disconnect(); }, []);
-  useEffect(() => { if (images.length<2 || !visible || paused || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined; const timer=setInterval(()=>setIndex(i=>(i+1)%images.length),200); return ()=>clearInterval(timer); }, [images.length,visible,paused]);
+  useEffect(() => { if (images.length<2 || !visible || paused || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined; const timer=setInterval(()=>setIndex(i=>(i+1)%images.length),850); return ()=>clearInterval(timer); }, [images.length,visible,paused]);
   useEffect(() => { setIndex(0); }, [swatchColor]);
   if (!product) return null;
   const open = e => { e?.preventDefault?.(); setLocation(`/product/${product.slug || product.id}`); };
