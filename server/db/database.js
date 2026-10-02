@@ -289,6 +289,15 @@ export function initDatabase() {
     db.exec('ALTER TABLE orders ADD COLUMN payment_admin_notes TEXT');
   } catch { /* eslint-disable-line no-empty */ }
   try {
+    db.exec("ALTER TABLE orders ADD COLUMN order_source TEXT DEFAULT 'website'");
+  } catch { /* eslint-disable-line no-empty */ }
+  try {
+    db.exec('ALTER TABLE orders ADD COLUMN source_detail TEXT');
+  } catch { /* eslint-disable-line no-empty */ }
+  try {
+    db.exec('ALTER TABLE orders ADD COLUMN created_by_admin TEXT');
+  } catch { /* eslint-disable-line no-empty */ }
+  try {
     db.exec('ALTER TABLE orders ADD COLUMN coupon_code TEXT');
   } catch { /* eslint-disable-line no-empty */ }
   try {

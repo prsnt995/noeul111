@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
-import { ProductPreviewModal } from '../components/common/ProductPreviewModal.jsx';
 import { CategorySidebar } from '../components/common/CategorySidebar.jsx';
 import { CATEGORIES_BY_GENDER } from '../data/products.js';
 import { api } from '../utils/api.js';
@@ -19,7 +18,6 @@ export function ShopPage() {
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [previewProduct, setPreviewProduct] = useState(null);
 
   // Fetch products via canonical api wrapper (credentials + CSRF handled)
   useEffect(() => {
@@ -279,19 +277,11 @@ export function ShopPage() {
               <ProductCard
                 key={prod.id}
                 product={prod}
-                onSelect={(p) => setPreviewProduct(p)}
               />
             ))}
           </div>
         )}
       </main>
-
-      {/* STEP 2: First Click Preview Modal */}
-      <ProductPreviewModal
-        product={previewProduct}
-        isOpen={!!previewProduct}
-        onClose={() => setPreviewProduct(null)}
-      />
     </div>
   );
 }

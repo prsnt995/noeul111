@@ -3,7 +3,9 @@ import { Link } from 'wouter';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { api, adminApi } from '../../utils/api.js';
 import { formatKRW, ORDER_STATUS_MAP } from '../../utils/formatters.js';
+import { sourceLabel } from '../../utils/orderSources.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import { DashboardSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import {
   DollarSign,
@@ -91,6 +93,8 @@ export function AdminDashboardPage() {
   const lowStockItems = data?.lowStockItems || [];
   const hasError = !!errorMsg && !data;
   const salesTrend = data?.salesTrend || [];
+  const salesBySource = data?.salesBySource || [];
+  const { lang } = useLanguage();
 
   return (
     <AdminLayout activePage="dashboard">
@@ -306,6 +310,48 @@ export function AdminDashboardPage() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* 2b. Sales by Channel (채널별 매출) */}
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '10px',
+            padding: '24px',
+            border: '1px solid #e4e4e7',
+            marginBottom: '32px',
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>
+              {lang === 'en' ? 'Sales by Channel' : '채널별 매출 (Sales by Channel)'}
+            </h3>
+            <Link href="/admin/reports" style={{ fontSize: '0.8125rem', color: 'var(--accent-sunset)', fontWeight: 600 }}>
+              {lang === 'en' ? 'Full reports →' : '전체 리포트 →'}
+            </Link>
+          </div>
+          {salesBySource.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', color: '#71717a' }}>
+              {lang === 'en' ? 'No channel data yet.' : '아직 채널별 데이터가 없습니다.'}
+            </p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+              {salesBySource.map((row) => (
+                <div key={row.source} style={{ backgroundColor: '#fafafa', border: '1px solid #f0f0f2', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#52525b', display: 'block', marginBottom: '4px' }}>
+                    {sourceLabel(row.source, 'ko')} ({sourceLabel(row.source, 'en')})
+                  </span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#18181b', display: 'block' }}>
+                    {formatKRW(row.revenue_paid)}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#71717a', display: 'block', marginTop: '4px' }}>
+                    {row.order_count}{lang === 'en' ? ' orders' : '건'} · {row.paid_count}{lang === 'en' ? ' paid' : '건 결제'} · {row.unpaid_count}{lang === 'en' ? ' unpaid' : '건 미결제'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 3. Grid: Recent Orders & Low Stock Alerts */}

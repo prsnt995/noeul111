@@ -1,15 +1,19 @@
 import AdminPaymentActions from '../../components/admin/AdminPaymentActions.jsx';
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
+import { ManualOrderModal } from '../../components/admin/ManualOrderModal.jsx';
 import { adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
+import { ORDER_SOURCES, sourceLabel } from '../../utils/orderSources.js';
 import {
   Search,
   Truck,
   Eye,
   X,
-  ImageIcon
+  ImageIcon,
+  Plus
 } from 'lucide-react';
 
 const ORDER_STATUS_MAP = {
@@ -41,8 +45,11 @@ export function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('all');
+  const [selectedSource, setSelectedSource] = useState('all');
   const [search, setSearch] = useState('');
+  const [showManual, setShowManual] = useState(false);
   const { showToast } = useToast();
+  const { lang } = useLanguage();
 
   // Order Details Modal
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -55,7 +62,7 @@ export function AdminOrdersPage() {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      let queryParams = `?status=${selectedStatus}&payment_status=${selectedPaymentStatus}`;
+      let queryParams = `?status=${selectedStatus}&payment_status=${selectedPaymentStatus}&source=${selectedSource}`;
       if (search.trim()) queryParams += `&search=${encodeURIComponent(search.trim())}`;
 
       const res = await adminApi.get(`/admin/orders${queryParams}`);
@@ -72,7 +79,7 @@ export function AdminOrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, [selectedStatus, selectedPaymentStatus]);
+  }, [selectedStatus, selectedPaymentStatus, selectedSource]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -145,6 +152,14 @@ export function AdminOrdersPage() {
               고객 무통장 입금 영수증 검수, 주문 확정, 배송 처리 및 운송장 등록
             </p>
           </div>
+          <button
+            onClick={() => setShowManual(true)}
+            className="btn-primary"
+            style={{ backgroundColor: 'var(--accent-sunset)', padding: '10px 18px', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '6px', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+          >
+            <Plus size={16} />
+            <span>{lang === 'en' ? 'New Manual Order' : '외부 주문 등록'}</span>
+          </button>
         </div>
 
         {/* Filter & Search Bar */}
@@ -163,6 +178,19 @@ export function AdminOrdersPage() {
           }}
         >
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {/* Channel / Source Filter */}
+            <select
+              value={selectedSource}
+              onChange={(e) => setSelectedSource(e.target.value)}
+              className="form-select"
+              style={{ width: 'auto', padding: '8px 12px', fontSize: '0.875rem' }}
+            >
+              <option value="all">{lang === 'en' ? 'All channels' : '전체 채널'}</option>
+              {ORDER_SOURCES.map(s => (
+                <option key={s} value={s}>{sourceLabel(s, 'ko')} ({sourceLabel(s, 'en')})</option>
+              ))}
+            </select>
+
             {/* Payment Status Filter */}
             <select
               value={selectedPaymentStatus}
@@ -260,6 +288,12 @@ export function AdminOrdersPage() {
                           <span style={{ fontSize: '0.75rem', color: '#71717a', display: 'block', marginTop: '2px' }}>
                             {ord.created_at?.replace('T', ' ')?.slice(0, 16)}
                           </span>
+                          <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '0.6875rem', fontWeight: 700, padding: '2px 7px', borderRadius: '10px', backgroundColor: (ord.order_source && ord.order_source !== 'website') ? '#ede9fe' : '#f4f4f5', color: (ord.order_source && ord.order_source !== 'website') ? '#5b21b6' : '#52525b' }}>
+                            {sourceLabel(ord.order_source || 'website', 'ko')} · {sourceLabel(ord.order_source || 'website', 'en')}
+                          </span>
+                          {ord.source_detail && (
+                            <span style={{ fontSize: '0.6875rem', color: '#71717a', display: 'block', marginTop: '2px' }}>{ord.source_detail}</span>
+                          )}
                         </td>
 
                         <td style={{ padding: '14px 16px' }}>
@@ -528,6 +562,13 @@ export function AdminOrdersPage() {
               </form>
             </div>
           </div>
+        )}
+
+        {showManual && (
+          <ManualOrderModal
+            onClose={() => setShowManual(false)}
+            onCreated={() => fetchOrders()}
+          />
         )}
       </div>
     </AdminLayout>

@@ -1,8 +1,14 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  normalizeOrderSource,
+  isValidOrderSource,
+  buildSalesBySource,
+  salesBySourceToCsv,
+} from './orderSources.js';
 
 // Wave 3: Supabase-backed /api/v1/admin/* surface. The storefront frontend
 // speaks legacy payload shapes; this module translates them onto the
@@ -17,12 +23,12 @@ import { fileURLToPath } from 'node:url';
 
 const R = {
   catalog: ['super_admin', 'admin'],
-  orders: ['super_admin', 'admin'],
-  money: ['super_admin', 'admin'],
+  orders: ['super_admin', 'admin', 'order_manager'],
+  money: ['super_admin', 'admin', 'order_manager'],
   cms: ['super_admin', 'admin'],
   settings: ['super_admin', 'admin'],
-  customers: ['super_admin', 'admin'],
-  dashboard: ['super_admin', 'admin'],
+  customers: ['super_admin', 'admin', 'order_manager'],
+  dashboard: ['super_admin', 'admin', 'order_manager'],
 };
 
 const random = () => randomBytes(6).toString('base64url');
@@ -91,7 +97,7 @@ export function registerAdminRoutes(app, ctx) {
   app.get('/api/v1/admin/dashboard/stats', ...need(R.dashboard), async (req, res) => {
     try {
       const [ordersRes, productsRes, variantsRes, profilesRes] = await Promise.all([
-        database().from('orders').select('id,order_number,status,amount,created_at,user_id').order('created_at', { ascending: false }).limit(500).then(r => r, e => { console.error('dashboard orders error', e); return { data: [] }; }),
+        database().from('orders').select('id,order_number,status,amount,created_at,user_id,order_source').order('created_at', { ascending: false }).limit(500).then(r => r, e => { console.error('dashboard orders error', e); return { data: [] }; }),
         database().from('products').select('id,gender,is_active,is_new').then(r => r, e => { console.error('dashboard products error', e); return { data: [] }; }),
         database().from('product_variants').select('id,product_id,stock').then(r => r, e => { console.error('dashboard variants error', e); return { data: [] }; }),
         database().from('profiles').select('id').then(r => r, e => { console.error('dashboard profiles error', e); return { data: [] }; }),
@@ -144,6 +150,10 @@ export function registerAdminRoutes(app, ctx) {
       for (const it of (items || [])) itemCounts[it.order_id] = (itemCounts[it.order_id] || 0) + 1;
       let staff = [];
       try { staff = await staffIds(database); } catch { staff = []; }
+      let salesBySource = [];
+      try {
+        salesBySource = buildSalesBySource(list);
+      } catch { salesBySource = []; }
       res.json({
         success: true,
         stats: {
@@ -163,6 +173,7 @@ export function registerAdminRoutes(app, ctx) {
         lowStockItems,
         recentOrders: list.slice(0, 8).map(o => ({ ...o, item_count: itemCounts[o.id] || 0 })),
         salesTrend: [],
+        salesBySource,
       });
     } catch (e) {
       console.error('dashboard unexpected error', e);
@@ -177,7 +188,7 @@ export function registerAdminRoutes(app, ctx) {
           orderStatuses: { pending:0, pending_verification:0, confirmed:0, processing:0, shipped:0, delivered:0, cancelled:0, refunded:0 },
           lowStockCount: 0,
         },
-        lowStockItems: [], recentOrders: [], salesTrend: [],
+        lowStockItems: [], recentOrders: [], salesTrend: [], salesBySource: [],
         warning: 'Dashboard data temporarily unavailable — showing empty stats. Check server logs.',
       });
     }
@@ -784,6 +795,8 @@ export function registerAdminRoutes(app, ctx) {
     const derivedPay = o.status === 'paid' ? 'paid' : o.status === 'pending_payment' ? 'pending_payment' : o.status;
     return {
       id: o.id, order_number: o.order_number, created_at: o.created_at,
+      order_source: normalizeOrderSource(o.order_source),
+      source_detail: o.source_detail || '',
       customer_name: addr.recipient || '', customer_email: '', customer_phone: addr.phone || '',
       postal_code: addr.postal_code || '', address: addr.address || '',
       detail_address: addr.detail_address || '', shipping_memo: addr.shipping_memo || '',
@@ -818,7 +831,7 @@ export function registerAdminRoutes(app, ctx) {
 
   app.get('/api/v1/admin/orders', ...need(R.orders), async (req, res) => {
     try {
-      const { status, payment_status, search, limit = 100, offset = 0 } = req.query;
+      const { status, payment_status, source, search, limit = 100, offset = 0 } = req.query;
       let q = database().from('orders').select('*').order('created_at', { ascending: false })
         .range(Number(offset) || 0, (Number(offset) || 0) + Math.min(Number(limit) || 100, 200) - 1);
       if (status && status !== 'all') q = q.eq('status', status === 'cancelled' ? 'canceled' : status);
@@ -826,16 +839,249 @@ export function registerAdminRoutes(app, ctx) {
         if (payment_status === 'paid') q = q.eq('status', 'paid');
         else if (payment_status === 'pending_payment' || payment_status === 'under_review') q = q.eq('status', 'pending_payment');
       }
+      if (source && source !== 'all') {
+        if (isValidOrderSource(source)) q = q.eq('order_source', String(source).toLowerCase());
+        else return error(res, 400, 'INVALID_SOURCE');
+      }
       if (search && String(search).trim()) {
         const term = String(search).trim();
         q = q.or(`order_number.ilike.%${term}%,id.eq.${term}`);
       }
       const { data, error: e } = await q;
-      if (e) throw e;
+      if (e) {
+        // Pre-migration DBs lack order_source — retry without the source filter.
+        if (source && source !== 'all' && String(e.message || '').includes('order_source')) {
+          let fallback = database().from('orders').select('*').order('created_at', { ascending: false })
+            .range(Number(offset) || 0, (Number(offset) || 0) + Math.min(Number(limit) || 100, 200) - 1);
+          if (status && status !== 'all') fallback = fallback.eq('status', status === 'cancelled' ? 'canceled' : status);
+          const { data: fb, error: fbErr } = await fallback;
+          if (fbErr) throw fbErr;
+          const out = [];
+          for (const o of (fb || []).filter(o => normalizeOrderSource(o.order_source) === String(source).toLowerCase())) out.push(await adminOrderDetail(o.id));
+          res.json({ success: true, data: out });
+          return;
+        }
+        throw e;
+      }
       const out = [];
       for (const o of (data || [])) out.push(await adminOrderDetail(o.id));
       res.json({ success: true, data: out });
     } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); }
+  });
+
+  // Manual / external order creation (Instagram, WhatsApp, phone, other).
+  // Bank-transfer verify flow only: always starts pending_payment so stock is
+  // reserved and payment is confirmed via the existing verify-payment path.
+  // Stock handling mirrors the storefront JS fallback (reserve + compensate).
+  app.post('/api/v1/admin/orders/manual', ...need(R.orders), async (req, res) => {
+    try {
+      const s = req.locals.session;
+      const b = req.body || {};
+      const orderSource = normalizeOrderSource(b.order_source);
+      if (b.order_source !== undefined && !isValidOrderSource(b.order_source)) {
+        return error(res, 400, 'INVALID_SOURCE');
+      }
+      const sourceDetail = String(b.source_detail || '').slice(0, 200);
+      const customerName = String(b.customer_name || '').trim().slice(0, 60);
+      const customerPhone = String(b.customer_phone || '').trim().slice(0, 30);
+      const customerEmail = String(b.customer_email || '').trim().slice(0, 120);
+      if (!customerName || !customerPhone) return error(res, 400, 'CUSTOMER_REQUIRED');
+      const addr = b.address || {};
+      const postal = String(addr.postal_code || b.postal_code || '').trim().slice(0, 20);
+      const road = String(addr.address || b.address || '').trim().slice(0, 200);
+      const detail = String(addr.detail_address || b.detail_address || '').trim().slice(0, 200);
+      const memo = String(addr.shipping_memo || b.shipping_memo || '').trim().slice(0, 300);
+      if (!postal || !road) return error(res, 400, 'ADDRESS_REQUIRED');
+      const items = b.items;
+      if (!items || !Array.isArray(items) || items.length === 0 || items.length > 50) {
+        return error(res, 400, 'INVALID_ITEMS');
+      }
+      for (const it of items) {
+        if (!it || typeof it.variant_id !== 'string' || !it.variant_id) return error(res, 400, 'INVALID_ITEM');
+        if (!Number.isInteger(it.quantity) || it.quantity < 1 || it.quantity > 99) return error(res, 400, 'INVALID_ITEM');
+      }
+      const demand = new Map();
+      for (const it of items) demand.set(it.variant_id, (demand.get(it.variant_id) || 0) + it.quantity);
+      const ids = [...demand.keys()];
+      const { data: variants } = await database().from('product_variants').select('*,products(*)').in('id', ids);
+      if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE');
+      for (const [vid, qty] of demand) {
+        const v = variants.find(x => x.id === vid);
+        if (!v || v.active === false) return error(res, 400, 'VARIANT_UNAVAILABLE');
+        if ((v.stock || 0) - (v.reserved || 0) < qty) return error(res, 409, 'INSUFFICIENT_STOCK');
+      }
+      let subtotal = 0;
+      const lines = [];
+      for (const it of items) {
+        const v = variants.find(x => x.id === it.variant_id);
+        const base = v.products || {};
+        const unit = Math.max(1, (base.discount_price || base.price || 0) + (v.price_delta || 0));
+        subtotal += unit * it.quantity;
+        lines.push({ variant_id: v.id, quantity: it.quantity, unit_price: unit, snapshot: { sku: v.sku, color: v.color, size: v.size } });
+      }
+      let discount = 0;
+      let couponCode = null;
+      if (b.coupon_code) {
+        const code = String(b.coupon_code).toUpperCase().trim();
+        const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle();
+        const today = new Date().toISOString();
+        if (!coupon || coupon.starts_at > today || coupon.ends_at < today ||
+            ((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count ||
+            subtotal < (coupon.minimum || 0)) {
+          return error(res, 400, 'COUPON_INVALID');
+        }
+        discount = Math.min(subtotal, coupon.amount || 0);
+        couponCode = coupon.code;
+      }
+      let threshold = 70000;
+      let fee = 3000;
+      try {
+        const { data: shipRow } = await database().from('content').select('value').eq('key', 'shipping').eq('published', true).maybeSingle();
+        const policy = shipRow?.value || {};
+        const t = Number(policy.free_threshold ?? policy.threshold ?? 70000);
+        const f = Number(policy.fee ?? 3000);
+        if (Number.isFinite(t) && Number.isFinite(f) && t >= 0 && f >= 0) { threshold = t; fee = f; }
+      } catch {}
+      const shippingFee = subtotal - discount >= threshold ? 0 : fee;
+      const amount = subtotal - discount + shippingFee;
+      if (amount < 1) return error(res, 400, 'MINIMUM_AMOUNT');
+      // Link to an existing member when possible; otherwise the admin owns
+      // the row and guest contact lives in address (user_id is NOT NULL).
+      let ownerId = s.user_id;
+      if (b.customer_id) {
+        const { data: linked } = await database().from('profiles').select('id').eq('id', b.customer_id).maybeSingle();
+        if (!linked) return error(res, 404, 'CUSTOMER_NOT_FOUND');
+        ownerId = linked.id;
+      }
+      const address = {
+        recipient: customerName, phone: customerPhone, email: customerEmail,
+        postal_code: postal, address: road, detail_address: detail, shipping_memo: memo,
+      };
+      const number = `NE${Date.now().toString(36).toUpperCase()}${random().slice(2, 8).toUpperCase()}`;
+      const idempotencyKey = `manual-${uid()}`;
+      const requestHash = createHash('sha256').update(JSON.stringify({ items, coupon_code: couponCode, address, orderSource })).digest('hex');
+      const baseRow = {
+        user_id: ownerId, order_number: number, subtotal, discount, shipping: shippingFee,
+        amount, coupon_code: couponCode, address, status: 'pending_payment',
+        idempotency_key: idempotencyKey, request_hash: requestHash,
+        order_source: orderSource, source_detail: sourceDetail || null,
+      };
+      let order = null;
+      {
+        const { data, error: oErr } = await database().from('orders').insert(baseRow).select().maybeSingle();
+        if (oErr) {
+          if (String(oErr.message || '').includes('order_source')) {
+            const legacyRow = { ...baseRow };
+            delete legacyRow.order_source;
+            delete legacyRow.source_detail;
+            const retry = await database().from('orders').insert(legacyRow).select().maybeSingle();
+            if (retry.error || !retry.data) throw retry.error || new Error('ORDER_CREATE_FAILED');
+            order = retry.data;
+          } else {
+            throw oErr;
+          }
+        } else {
+          order = data;
+        }
+      }
+      if (!order) throw new Error('ORDER_CREATE_FAILED');
+      try {
+        for (const [vid, qty] of demand) {
+          const { data: cur } = await database().from('product_variants').select('stock,reserved').eq('id', vid).maybeSingle();
+          if (!cur || (cur.stock || 0) - (cur.reserved || 0) < qty) throw Object.assign(new Error('INSUFFICIENT_STOCK'), { status: 409 });
+          await database().from('product_variants').update({ reserved: (cur.reserved || 0) + qty }).eq('id', vid);
+        }
+        if (couponCode) {
+          const { data: cRow } = await database().from('coupons').select('reserved').eq('code', couponCode).maybeSingle();
+          await database().from('coupons').update({ reserved: (cRow?.reserved || 0) + 1 }).eq('code', couponCode);
+        }
+        const grouped = new Map();
+        for (const l of lines) {
+          const g = grouped.get(l.variant_id) || { variant_id: l.variant_id, quantity: 0, unit_price: l.unit_price, snapshot: l.snapshot || {} };
+          g.quantity += l.quantity;
+          grouped.set(l.variant_id, g);
+        }
+        await database().from('order_items').insert([...grouped.values()].map(l => ({
+          order_id: order.id, variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, snapshot: l.snapshot || {},
+        })));
+        await database().from('outbox').insert({
+          effect_key: `order:${order.id}`, kind: 'ORDER_CREATED', payload: { order_id: order.id },
+        });
+        await database().from('order_status_history').insert({
+          order_id: order.id, status: 'pending_payment',
+          note: `Manual order (${orderSource}) by admin`, actor_id: s.user_id,
+        });
+      } catch (stepErr) {
+        try {
+          for (const [vid, qty] of demand) {
+            const { data: cur } = await database().from('product_variants').select('reserved').eq('id', vid).maybeSingle();
+            if (cur && (cur.reserved || 0) >= qty) {
+              await database().from('product_variants').update({ reserved: cur.reserved - qty }).eq('id', vid);
+            }
+          }
+          await database().from('orders').delete().eq('id', order.id);
+        } catch {}
+        if (stepErr && stepErr.message === 'INSUFFICIENT_STOCK') return error(res, 409, 'INSUFFICIENT_STOCK');
+        throw stepErr;
+      }
+      await auditLog(req, 'MANUAL_ORDER_CREATE', { table: 'orders', id: order.id, after: { order_source: orderSource, amount } });
+      res.status(201).json({ success: true, data: await adminOrderDetail(order.id) });
+    } catch (e) {
+      console.error('manual order create error', e);
+      error(res, 503, 'ORDER_CREATE_FAILED');
+    }
+  });
+
+  // Sales report by source: totals, unpaid, receipts pending, refunds + CSV.
+  app.get('/api/v1/admin/reports/sales', ...need(R.dashboard), async (req, res) => {
+    try {
+      const { from, to, source, format } = req.query;
+      let q = database().from('orders').select('id,order_number,status,amount,created_at,order_source').order('created_at', { ascending: false }).limit(1000);
+      if (from) q = q.gte('created_at', String(from));
+      if (to) q = q.lte('created_at', String(to));
+      if (source && source !== 'all') {
+        if (!isValidOrderSource(source)) return error(res, 400, 'INVALID_SOURCE');
+        q = q.eq('order_source', String(source).toLowerCase());
+      }
+      let { data: orders, error: e } = await q;
+      if (e) {
+        if (String(e.message || '').includes('order_source')) {
+          const retry = await database().from('orders').select('id,order_number,status,amount,created_at').order('created_at', { ascending: false }).limit(1000);
+          if (retry.error) throw retry.error;
+          orders = retry.data;
+        } else {
+          throw e;
+        }
+      }
+      const rows = buildSalesBySource(orders || []);
+      const filtered = (source && source !== 'all')
+        ? rows.filter(r => r.source === String(source).toLowerCase())
+        : rows;
+      const unpaidCount = (orders || []).filter(o => ['pending_payment', 'confirming'].includes(o.status)).length;
+      const receiptPending = (orders || []).filter(o => o.status === 'confirming').length;
+      if (format === 'csv') {
+        const csv = salesBySourceToCsv(filtered);
+        res.set('Content-Type', 'text/csv; charset=utf-8');
+        res.set('Content-Disposition', 'attachment; filename="sales-by-source.csv"');
+        res.send(csv);
+        return;
+      }
+      res.json({
+        success: true,
+        data: {
+          bySource: filtered,
+          totals: {
+            orders: (orders || []).length,
+            revenue: filtered.reduce((s, r) => s + r.revenue_paid, 0),
+            unpaid: unpaidCount,
+            receiptPending,
+          },
+        },
+      });
+    } catch (err) {
+      console.error('sales report error', err);
+      error(res, 503, 'REPORT_UNAVAILABLE');
+    }
   });
 
   app.get('/api/v1/admin/orders/:id', ...need(R.orders), async (req, res) => {

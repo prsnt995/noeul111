@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
-import { ProductPreviewModal } from '../components/common/ProductPreviewModal.jsx';
 import { api } from '../utils/api.js';
 
 export function HomePage() {
@@ -11,7 +10,6 @@ export function HomePage() {
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [previewProduct, setPreviewProduct] = useState(null);
 
   // Active filter state from URL
   const [selectedGender, setSelectedGender] = useState('all');
@@ -204,19 +202,11 @@ export function HomePage() {
               <ProductCard
                 key={prod.id}
                 product={prod}
-                onSelect={(p) => setPreviewProduct(p)}
               />
             ))}
           </div>
         )}
       </main>
-
-      {/* STEP 2: First Click Preview Modal */}
-      <ProductPreviewModal
-        product={previewProduct}
-        isOpen={!!previewProduct}
-        onClose={() => setPreviewProduct(null)}
-      />
     </div>
   );
 }

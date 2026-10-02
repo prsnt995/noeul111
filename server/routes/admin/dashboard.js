@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../../db/database.js';
 import { verifyAdmin } from '../../middleware/auth.js';
+import { normalizeOrderSource, ORDER_SOURCES } from '../../lib/orderSources.js';
 
 const router = express.Router();
 router.use(verifyAdmin);
@@ -91,6 +92,38 @@ router.get('/dashboard/stats', (req, res) => {
       LIMIT 14
     `);
 
+    // 8. Sales by source (website, instagram, whatsapp, phone, other)
+    let salesBySource = ORDER_SOURCES.map(s => ({
+      source: s, order_count: 0, paid_count: 0, unpaid_count: 0, revenue_paid: 0, refunded_amount: 0,
+    }));
+    try {
+      let hasSource = true;
+      try {
+        query.all('SELECT order_source FROM orders LIMIT 1');
+      } catch {
+        hasSource = false;
+      }
+      const sourceRows = hasSource
+        ? query.all(`SELECT order_source, payment_status, order_status, total_amount FROM orders LIMIT 1000`)
+        : query.all(`SELECT payment_status, order_status, total_amount FROM orders LIMIT 1000`);
+      const byMap = Object.fromEntries(salesBySource.map(r => [r.source, r]));
+      const paidSet = new Set(['paid', 'confirmed', 'processing', 'shipped', 'delivered']);
+      for (const o of sourceRows) {
+        const row = byMap[normalizeOrderSource(o.order_source)];
+        row.order_count += 1;
+        if (paidSet.has(o.payment_status) || paidSet.has(o.order_status)) {
+          row.paid_count += 1;
+          row.revenue_paid += Number(o.total_amount || 0);
+        } else if (o.order_status === 'refunded') {
+          row.refunded_amount += Number(o.total_amount || 0);
+        } else {
+          row.unpaid_count += 1;
+        }
+      }
+    } catch {
+      // salesBySource stays zeroed rather than failing the dashboard
+    }
+
     res.json({
       success: true,
       stats: {
@@ -109,7 +142,8 @@ router.get('/dashboard/stats', (req, res) => {
       },
       lowStockItems,
       recentOrders,
-      salesTrend
+      salesTrend,
+      salesBySource
     });
   } catch (error) {
     console.error('Admin dashboard stats error:', error);

@@ -251,7 +251,18 @@
     "add_product": "새 상품 등록",
     "edit_product": "상품 수정",
     "delete_product": "상품 삭제",
-    "stock_adjust": "재고 변경"
+    "stock_adjust": "재고 변경",
+    "reports": "매출 리포트",
+    "manual_order": "외부 주문 등록",
+    "manual_order_title": "외부 주문 등록 (Instagram / WhatsApp / 전화)",
+    "channel": "주문 채널",
+    "channel_website": "웹사이트",
+    "channel_instagram": "인스타그램",
+    "channel_whatsapp": "왓츠앱",
+    "channel_phone": "전화",
+    "channel_other": "기타",
+    "sales_by_channel": "채널별 매출",
+    "all_channels": "전체 채널"
   },
   "lang": {
     "switch": "English",
