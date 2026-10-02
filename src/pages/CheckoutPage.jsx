@@ -8,12 +8,27 @@ import { POLICY_VERSION, business } from '../config/business.js';
 import { CommercePolicyNotice } from '../components/common/CommercePolicyNotice.jsx';
 import { api } from '../utils/api.js';
 
+const emptyForm = { recipient: '', phone: '', postal_code: '', address: '', detail_address: '' };
+const toForm = addr => addr ? ({
+  recipient: addr.recipient || '',
+  phone: addr.phone || '',
+  postal_code: addr.postal_code || '',
+  address: addr.address || '',
+  detail_address: addr.detail_address || '',
+}) : { ...emptyForm };
+
 export function CheckoutPage() {
   const { items } = useCart();
   const { user, isLoggedIn } = useAuth();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
-  const [form, setForm] = useState({ recipient: user?.name || '', phone: user?.phone || '', postal_code: user?.postal_code || '', address: user?.address || '', detail_address: user?.detail_address || '' });
+  const [form, setForm] = useState({ ...emptyForm });
+  const [addresses, setAddresses] = useState([]);
+  const [selectedId, setSelectedId] = useState('new');
+  const [saveAddress, setSaveAddress] = useState(true);
+  const [addressLabel, setAddressLabel] = useState('');
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+  const [formTouched, setFormTouched] = useState(false);
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -23,7 +38,18 @@ export function CheckoutPage() {
   const [quoteRetry, setQuoteRetry] = useState(0);
   const submission = useRef(false);
   const orderKey = useRef(crypto.randomUUID());
-  const update = e => setForm({ ...form, [e.target.name]: e.target.value });
+  const update = e => { setForm({ ...form, [e.target.name]: e.target.value }); setFormTouched(true); };
+
+  const pickAddress = id => {
+    setSelectedId(id);
+    setFormTouched(false);
+    if (id === 'new') {
+      setForm({ ...emptyForm, recipient: user?.name || form.recipient || '' });
+      return;
+    }
+    const found = addresses.find(a => String(a.id) === String(id));
+    if (found) setForm(toForm(found));
+  };
 
   useEffect(() => {
     async function checkPayments() {
@@ -35,6 +61,34 @@ export function CheckoutPage() {
     }
     checkPayments();
   }, []);
+
+  // Load saved addresses once logged in; prefill from default/latest.
+  useEffect(() => {
+    let active = true;
+    if (!isLoggedIn) { setAddresses([]); setSelectedId('new'); return () => { active = false; }; }
+    setLoadingAddresses(true);
+    api.get('/me/addresses')
+      .then(res => {
+        if (!active) return;
+        const list = Array.isArray(res.data) ? res.data : [];
+        setAddresses(list);
+        if (list.length > 0 && !formTouched) {
+          const preferred = list.find(a => a.is_default) || list[0];
+          setSelectedId(String(preferred.id));
+          setForm(toForm(preferred));
+        } else if (list.length === 0 && !formTouched) {
+          setForm(f => ({ ...f, recipient: f.recipient || user?.name || '' }));
+        }
+      })
+      .catch(() => { if (active) setAddresses([]); })
+      .finally(() => { if (active) setLoadingAddresses(false); });
+    return () => { active = false; };
+  }, [isLoggedIn]);
+
+  // Keep recipient in sync with profile name until user edits the form.
+  useEffect(() => {
+    if (!formTouched && user?.name) setForm(f => (f.recipient ? f : { ...f, recipient: user.name }));
+  }, [user, formTouched]);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +115,19 @@ export function CheckoutPage() {
     if (items.length === 0) { showToast('장바구니가 비어 있습니다.', 'error'); return; }
     submission.current = true; setSubmitting(true);
     try {
+      // Persist to address book when requested: new entry, or edited saved entry saved as new.
+      let addressId = selectedId !== 'new' ? selectedId : null;
+      const selected = addressId ? addresses.find(a => String(a.id) === String(addressId)) : null;
+      const differs = !selected || ['recipient', 'phone', 'postal_code', 'address', 'detail_address'].some(k => (selected[k] || '') !== (form[k] || ''));
+      if (saveAddress && (selectedId === 'new' || differs)) {
+        try {
+          const saved = await api.post('/me/addresses', { ...form, label: addressLabel, is_default: addresses.length === 0 });
+          if (saved?.data?.id) addressId = saved.data.id;
+        } catch (err) {
+          // Saving is convenience only; a full address form still creates the order snapshot.
+          console.error('Save address failed:', err);
+        }
+      }
       const quoteRes = await api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })), address: form });
       if (!quoteRes.success) throw new Error('Quote failed');
       if (!quote || quote.amount !== quoteRes.data.amount) { setQuote(quoteRes.data); showToast('주문금액이 변경되었습니다. 확인 후 다시 진행해주세요.', 'error'); return; }
@@ -92,6 +159,23 @@ export function CheckoutPage() {
         {quoteError && <button type="button" onClick={() => setQuoteRetry(n => n + 1)}>주문금액 다시 확인</button>}
       </section>
       <section className="checkout-panel"><h2>배송지</h2>
+        {isLoggedIn && (loadingAddresses ? <p role="status">저장된 배송지 불러오는 중…</p> : addresses.length > 0 && (
+          <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+            {addresses.map(a => (
+              <label key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid var(--border-light)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}>
+                <input type="radio" name="savedAddress" checked={String(selectedId) === String(a.id)} onChange={() => pickAddress(String(a.id))} />
+                <span style={{ fontSize: 13 }}>
+                  <strong>{a.label ? `${a.label} · ` : ''}{a.recipient}</strong> ({a.phone}){a.is_default && ' · 기본'}
+                  <br />[{a.postal_code}] {a.address} {a.detail_address}
+                </span>
+              </label>
+            ))}
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+              <input type="radio" name="savedAddress" checked={selectedId === 'new'} onChange={() => pickAddress('new')} />
+              새 주소 입력
+            </label>
+          </div>
+        ))}
         {[
           ['recipient', '받는 분'],
           ['phone', '연락처'],
@@ -100,6 +184,15 @@ export function CheckoutPage() {
           ['detail_address', '상세주소'],
         ].map(([name, label]) =>
           <label key={name} style={{ display: 'grid', gap: 4 }}>{label}<input required={name !== 'detail_address'} name={name} value={form[name] || ''} onChange={update} className="form-input" /></label>
+        )}
+        {isLoggedIn && (
+          <>
+            <label style={{ display: 'grid', gap: 4 }}>주소 별칭 (선택)<input name="addressLabel" value={addressLabel} onChange={e => setAddressLabel(e.target.value)} placeholder="예: 집, 회사" className="form-input" maxLength={40} /></label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+              <input type="checkbox" checked={saveAddress} onChange={e => setSaveAddress(e.target.checked)} />
+              이 주소를 주소록에 저장
+            </label>
+          </>
         )}
       </section>
       <section className="checkout-panel checkout-card-panel">

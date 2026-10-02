@@ -49,7 +49,7 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' }, contentSecurityPolicy: false }));
-app.use(cors({ origin: isOriginAllowed, credentials: true, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Idempotency-Key'] }));
+app.use(cors({ origin: isOriginAllowed, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Idempotency-Key'] }));
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') }));
 const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 50, standardHeaders: true, legacyHeaders: false });
 const paymentLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
@@ -264,9 +264,41 @@ app.get('/api/v1/debug/cookies', async (req, res) => { res.json({ success: true,
 app.post('/api/v1/auth/logout', authenticate, async (req, res) => { const s = req.locals.session; if (s) await database().from('sessions').delete().eq('id_hash', s.id_hash); clearCookie(res); res.json({ success: true }); });
 app.post('/api/v1/auth/logout-all', authenticate, async (req, res) => { const s = req.locals.session; if (s) await database().from('sessions').delete().eq('user_id', s.user_id); clearCookie(res); res.json({ success: true }); });
 app.patch('/api/v1/me', authenticate, async (req, res) => { try { const s = req.locals.session; const name = String(req.body?.name || '').trim().slice(0, 60); if (!name) return error(res, 400, 'NAME_REQUIRED'); const { data, error: e } = await database().from('profiles').update({ name }).eq('id', s.user_id).select('id,email,name').maybeSingle(); if (e || !data) return error(res, 404, 'PROFILE_NOT_FOUND'); res.json({ success: true, user: { id: data.id, uid: data.id, name: data.name, email: data.email, role: s.role } }); } catch { error(res, 503, 'PROFILE_UNAVAILABLE'); } });
-app.get('/api/v1/me/addresses', authenticate, async (req, res) => { try { const { data, error: e } = await database().from('addresses').select('*').eq('user_id', req.locals.session.user_id).order('created_at', { ascending: false }); if (e) throw e; res.json({ success: true, data: data || [] }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
-app.post('/api/v1/me/addresses', authenticate, async (req, res) => { try { const s = req.locals.session; const b = req.body || {}; const recipient = String(b.recipient || '').trim().slice(0, 60); const phone = String(b.phone || '').trim().slice(0, 30); const postal_code = String(b.postal_code || '').trim().slice(0, 20); const address = String(b.address || '').trim().slice(0, 200); const detail_address = String(b.detail_address || '').trim().slice(0, 200); if (!recipient || !phone || !postal_code || !address) return error(res, 400, 'ADDRESS_REQUIRED'); const { data, error: e } = await database().from('addresses').insert({ user_id: s.user_id, recipient, phone, postal_code, address, detail_address }).select().maybeSingle(); if (e || !data) throw e || new Error('ADDRESS_CREATE_FAILED'); res.status(201).json({ success: true, data }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
-app.delete('/api/v1/me/addresses/:id', authenticate, async (req, res) => { try { await database().from('addresses').delete().eq('id', req.params.id).eq('user_id', req.locals.session.user_id); res.json({ success: true }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
+// ADDRESS BOOK — saved shipping addresses, reused at checkout.
+// Orders keep a per-order address jsonb snapshot; this book is for reuse only.
+function sanitizeAddressInput(b = {}) {
+  const recipient = String(b.recipient || '').trim().slice(0, 60);
+  const phone = String(b.phone || '').trim().slice(0, 30);
+  const postal_code = String(b.postal_code || '').trim().slice(0, 20);
+  const address = String(b.address || '').trim().slice(0, 200);
+  const detail_address = String(b.detail_address || '').trim().slice(0, 200);
+  const label = String(b.label || '').trim().slice(0, 40);
+  const is_default = b.is_default === true;
+  if (!recipient || !phone || !postal_code || !address) return { error: 'ADDRESS_REQUIRED' };
+  return { value: { recipient, phone, postal_code, address, detail_address, label, is_default } };
+}
+async function fetchAddressesOrdered(userId) {
+  // New schema orders default-first; fall back for DBs where the migration
+  // 202610030001_address_book.sql has not been applied yet.
+  try {
+    const { data, error: e } = await database().from('addresses').select('*').eq('user_id', userId).order('is_default', { ascending: false }).order('created_at', { ascending: false });
+    if (e) throw e;
+    return data || [];
+  } catch {
+    const { data, error: e } = await database().from('addresses').select('*').eq('user_id', userId);
+    if (e) throw e;
+    return data || [];
+  }
+}
+app.get('/api/v1/me/addresses', authenticate, async (req, res) => { try { const data = await fetchAddressesOrdered(req.locals.session.user_id); res.json({ success: true, data }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
+app.post('/api/v1/me/addresses', authenticate, async (req, res) => { try { const s = req.locals.session; const parsed = sanitizeAddressInput(req.body || {}); if (parsed.error) return error(res, 400, parsed.error); let row = { user_id: s.user_id, ...parsed.value }; // First address is always default; explicit default clears others.
+    const currentList = await fetchAddressesOrdered(s.user_id);
+    if (currentList.length === 0) row.is_default = true;
+    if (row.is_default) await database().from('addresses').update({ is_default: false }).eq('user_id', s.user_id);
+    const { data, error: e } = await database().from('addresses').insert(row).select().maybeSingle(); if (e || !data) throw e || new Error('ADDRESS_CREATE_FAILED'); res.status(201).json({ success: true, data }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
+app.put('/api/v1/me/addresses/:id', authenticate, async (req, res) => { try { const s = req.locals.session; const parsed = sanitizeAddressInput(req.body || {}); if (parsed.error) return error(res, 400, parsed.error); if (parsed.value.is_default) await database().from('addresses').update({ is_default: false }).eq('user_id', s.user_id); const { data, error: e } = await database().from('addresses').update(parsed.value).eq('id', req.params.id).eq('user_id', s.user_id).select().maybeSingle(); if (e || !data) return error(res, 404, 'ADDRESS_NOT_FOUND'); res.json({ success: true, data }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
+app.post('/api/v1/me/addresses/:id/default', authenticate, async (req, res) => { try { const s = req.locals.session; const { data: found } = await database().from('addresses').select('id').eq('id', req.params.id).eq('user_id', s.user_id).maybeSingle(); if (!found) return error(res, 404, 'ADDRESS_NOT_FOUND'); await database().from('addresses').update({ is_default: false }).eq('user_id', s.user_id); const { data, error: e } = await database().from('addresses').update({ is_default: true }).eq('id', req.params.id).eq('user_id', s.user_id).select().maybeSingle(); if (e || !data) return error(res, 404, 'ADDRESS_NOT_FOUND'); res.json({ success: true, data }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
+app.delete('/api/v1/me/addresses/:id', authenticate, async (req, res) => { try { const s = req.locals.session; const { data: removed } = await database().from('addresses').delete().eq('id', req.params.id).eq('user_id', s.user_id).select('id,is_default,user_id').maybeSingle(); if (removed?.is_default) { const rest = await fetchAddressesOrdered(s.user_id); if (rest.length > 0) await database().from('addresses').update({ is_default: true }).eq('id', rest[0].id); } res.json({ success: true }); } catch { error(res, 503, 'ADDRESSES_UNAVAILABLE'); } });
 
 // USER COUPONS
 app.get('/api/v1/me/coupons', authenticate, async (req, res) => { try { const s = req.locals.session; const { data, error: e } = await database().from('user_coupons').select('*,coupons(*)').eq('user_id', s.user_id).eq('status', 'active').order('claimed_at', { ascending: false }); if (e) throw e; const now = new Date().toISOString(); const coupons = (data || []).filter(uc => { const c = uc.coupons; return c && c.starts_at <= now && c.ends_at >= now && (c.used + (c.reserved || 0)) < c.limit_count; }).map(uc => ({ id: uc.id, code: uc.coupon_code, claimed_at: uc.claimed_at, ...uc.coupons })); res.json({ success: true, data: coupons }); } catch { error(res, 503, 'COUPONS_UNAVAILABLE'); } });

@@ -41,13 +41,28 @@ export function CustomerAccountPage() {
   const [rewardPoints, setRewardPoints] = useState(null);
   const [loadingRewards, setLoadingRewards] = useState(true);
 
-  // Profile Form State
+  // Profile Form State (name lives on profiles; addresses live in address book)
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [address, setAddress] = useState('');
-  const [detailAddress, setDetailAddress] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Address book state
+  const [addresses, setAddresses] = useState([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(true);
+  const [addressForm, setAddressForm] = useState({ recipient: '', phone: '', postal_code: '', address: '', detail_address: '', label: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  const fetchAddresses = useCallback(async () => {
+    setLoadingAddresses(true);
+    try {
+      const res = await api.get('/me/addresses');
+      if (res.success) setAddresses(res.data || []);
+    } catch (err) {
+      console.error('Fetch addresses failed:', err);
+    } finally {
+      setLoadingAddresses(false);
+    }
+  }, []);
 
   const fetchCoupons = useCallback(async () => {
     setLoadingCoupons(true);
@@ -76,7 +91,8 @@ export function CustomerAccountPage() {
   useEffect(() => {
     fetchCoupons();
     fetchRewardPoints();
-  }, [fetchCoupons, fetchRewardPoints, user]);
+    fetchAddresses();
+  }, [fetchCoupons, fetchRewardPoints, fetchAddresses, user]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -86,10 +102,6 @@ export function CustomerAccountPage() {
 
     if (user) {
       setName(user.name || '');
-      setPhone(user.phone || '');
-      setPostalCode(user.postal_code || '');
-      setAddress(user.address || '');
-      setDetailAddress(user.detail_address || '');
     }
 
     const searchParams = new URLSearchParams(window.location.search);
@@ -104,18 +116,71 @@ export function CustomerAccountPage() {
     e.preventDefault();
     setSavingProfile(true);
     try {
-      await updateProfile({
-        name,
-        phone,
-        postal_code: postalCode,
-        address,
-        detail_address: detailAddress,
-      });
+      await updateProfile({ name });
       showToast(lang === 'ko' ? '회원 정보가 수정되었습니다.' : 'Profile updated successfully.', 'success');
     } catch (err) {
       showToast(err.message || '수정 실패', 'error');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const defaultAddress = addresses.find(a => a.is_default) || addresses[0] || null;
+
+  const startEditAddress = (addr) => {
+    setEditingId(String(addr.id));
+    setAddressForm({
+      recipient: addr.recipient || '',
+      phone: addr.phone || '',
+      postal_code: addr.postal_code || '',
+      address: addr.address || '',
+      detail_address: addr.detail_address || '',
+      label: addr.label || '',
+    });
+  };
+
+  const resetAddressForm = () => {
+    setEditingId(null);
+    setAddressForm({ recipient: '', phone: '', postal_code: '', address: '', detail_address: '', label: '' });
+  };
+
+  const handleSaveAddress = async (e) => {
+    e.preventDefault();
+    setSavingAddress(true);
+    try {
+      if (editingId) {
+        const res = await api.put(`/me/addresses/${editingId}`, addressForm);
+        if (res.success) setAddresses(list => list.map(a => String(a.id) === String(editingId) ? res.data : a));
+      } else {
+        const res = await api.post('/me/addresses', { ...addressForm, is_default: addresses.length === 0 });
+        if (res.success) setAddresses(list => [res.data, ...list]);
+      }
+      resetAddressForm();
+      showToast(lang === 'ko' ? '배송지가 저장되었습니다.' : 'Address saved.', 'success');
+    } catch (err) {
+      showToast(err.message || '배송지 저장 실패', 'error');
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
+  const handleDeleteAddress = async (id) => {
+    try {
+      await api.delete(`/me/addresses/${id}`);
+      setAddresses(list => list.filter(a => String(a.id) !== String(id)));
+      if (String(editingId) === String(id)) resetAddressForm();
+      fetchAddresses();
+    } catch (err) {
+      showToast(err.message || '삭제 실패', 'error');
+    }
+  };
+
+  const handleSetDefault = async (id) => {
+    try {
+      const res = await api.post(`/me/addresses/${id}/default`, {});
+      if (res.success) setAddresses(list => list.map(a => ({ ...a, is_default: String(a.id) === String(id) })));
+    } catch (err) {
+      showToast(err.message || '기본 배송지 설정 실패', 'error');
     }
   };
 
@@ -205,7 +270,7 @@ export function CustomerAccountPage() {
                 </span>
               </div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                {user?.email} • {user?.phone || '연락처 미등록'}
+                {user?.email} • {user?.phone || defaultAddress?.phone || '연락처 미등록'}
               </p>
             </div>
           </div>
@@ -598,84 +663,86 @@ export function CustomerAccountPage() {
 
         {/* 3. PROFILE & KOREAN ADDRESS TAB */}
         {activeTab === 'profile' && (
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '32px', border: '1px solid var(--border-light)', maxWidth: '640px' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '24px' }}>
-              {t('account.profile_update')}
-            </h3>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '32px', border: '1px solid var(--border-light)', maxWidth: '640px', display: 'grid', gap: 28 }}>
+            <div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '24px' }}>
+                {t('account.profile_update')}
+              </h3>
 
-            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">{t('auth.name')}</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="form-input"
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">{t('auth.phone')}</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(formatKoreanPhone(e.target.value))}
-                  placeholder="010-0000-0000"
-                  className="form-input"
-                />
-              </div>
-
-              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '20px' }}>
-                <h4 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '14px' }}>
-                  {t('account.default_address')}
-                </h4>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', marginBottom: '14px' }}>
-                  <div>
-                    <label className="form-label">{t('checkout.postal_code')}</label>
-                    <input
-                      type="text"
-                      maxLength={5}
-                      value={postalCode}
-                      onChange={(e) => setPostalCode(e.target.value)}
-                      placeholder="06001"
-                      className="form-input"
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">{t('checkout.address')}</label>
-                    <input
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="서울특별시 강남구..."
-                      className="form-input"
-                    />
-                  </div>
-                </div>
-
+              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">{t('checkout.detail_address')}</label>
+                  <label className="form-label">{t('auth.name')}</label>
                   <input
                     type="text"
-                    value={detailAddress}
-                    onChange={(e) => setDetailAddress(e.target.value)}
-                    placeholder="102동 1405호"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     className="form-input"
                   />
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={savingProfile}
-                className="btn-primary"
-                style={{ padding: '14px', fontSize: '0.9375rem', width: '100%', marginTop: '12px' }}
-              >
-                {savingProfile ? '...' : t('account.save_changes')}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  className="btn-primary"
+                  style={{ padding: '14px', fontSize: '0.9375rem', width: '100%', marginTop: '12px' }}
+                >
+                  {savingProfile ? '...' : t('account.save_changes')}
+                </button>
+              </form>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
+              <h4 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '6px' }}>
+                {t('account.default_address')} · 주소록
+              </h4>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                저장된 주소는 주문서에서 바로 선택할 수 있습니다.
+              </p>
+
+              {loadingAddresses ? <p>불러오는 중…</p> : addresses.length === 0 ? (
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>저장된 배송지가 없습니다. 아래에서 추가해주세요.</p>
+              ) : (
+                <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
+                  {addresses.map(a => (
+                    <div key={a.id} style={{ border: '1px solid var(--border-light)', borderRadius: 8, padding: '12px 14px', fontSize: '0.875rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                        <strong>{a.label ? `${a.label} · ` : ''}{a.recipient}</strong>
+                        {a.is_default && <span style={{ fontSize: '0.75rem', background: '#18181b', color: '#fff', padding: '2px 8px', borderRadius: 999 }}>기본</span>}
+                      </div>
+                      <p style={{ margin: '6px 0', color: 'var(--text-secondary)' }}>
+                        ({formatKoreanPhone(a.phone)})<br />[{a.postal_code}] {a.address} {a.detail_address}
+                      </p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {!a.is_default && <button type="button" className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.75rem' }} onClick={() => handleSetDefault(a.id)}>기본으로 설정</button>}
+                        <button type="button" className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.75rem' }} onClick={() => startEditAddress(a)}>수정</button>
+                        <button type="button" className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.75rem' }} onClick={() => handleDeleteAddress(a.id)}>삭제</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveAddress} style={{ display: 'grid', gap: '12px', background: '#fafafa', borderRadius: 8, padding: 16 }}>
+                <h5 style={{ fontSize: '0.875rem', fontWeight: 600 }}>{editingId ? '배송지 수정' : '새 배송지 추가'}</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <label className="form-label">받는 분<input required value={addressForm.recipient} onChange={e => setAddressForm({ ...addressForm, recipient: e.target.value })} className="form-input" maxLength={60} /></label>
+                  <label className="form-label">연락처<input required value={addressForm.phone} onChange={e => setAddressForm({ ...addressForm, phone: formatKoreanPhone(e.target.value) })} placeholder="010-0000-0000" className="form-input" /></label>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 10 }}>
+                  <label className="form-label">{t('checkout.postal_code')}<input required value={addressForm.postal_code} onChange={e => setAddressForm({ ...addressForm, postal_code: e.target.value })} placeholder="06001" className="form-input" maxLength={20} /></label>
+                  <label className="form-label">{t('checkout.address')}<input required value={addressForm.address} onChange={e => setAddressForm({ ...addressForm, address: e.target.value })} placeholder="서울특별시 강남구..." className="form-input" /></label>
+                </div>
+                <label className="form-label">{t('checkout.detail_address')}<input value={addressForm.detail_address} onChange={e => setAddressForm({ ...addressForm, detail_address: e.target.value })} placeholder="102동 1405호" className="form-input" /></label>
+                <label className="form-label">주소 별칭 (선택)<input value={addressForm.label} onChange={e => setAddressForm({ ...addressForm, label: e.target.value })} placeholder="집, 회사" className="form-input" maxLength={40} /></label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="submit" disabled={savingAddress} className="btn-primary" style={{ padding: '10px 16px', fontSize: '0.875rem' }}>
+                    {savingAddress ? '저장 중…' : editingId ? '수정 저장' : '배송지 저장'}
+                  </button>
+                  {editingId && <button type="button" className="btn-secondary" style={{ padding: '10px 16px', fontSize: '0.875rem' }} onClick={resetAddressForm}>취소</button>}
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>
