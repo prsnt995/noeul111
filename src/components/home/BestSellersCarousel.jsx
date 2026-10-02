@@ -76,8 +76,11 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
   if (!total) return null;
 
   const showControls = total > visibleCount;
-  const slideBasis =
-    visibleCount === 3 ? 'calc(33.333% - 8px)' : visibleCount === 2 ? 'calc(50% - 6px)' : 'calc(85% - 6px)';
+  // Static mode (fewer items than slots): fill the row, no sliding, no empty gap.
+  // Sliding mode (more items than slots): shift-by-1 track as before.
+  const slideBasis = !showControls
+    ? `calc(${100 / total}% - ${((total - 1) * 12) / total}px)`
+    : visibleCount === 3 ? 'calc(33.333% - 8px)' : visibleCount === 2 ? 'calc(50% - 6px)' : 'calc(85% - 6px)';
   const offsetPct = total > 0 ? (index * 100) / total : 0;
 
   return (
@@ -110,10 +113,12 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
       <div
         className="best-carousel-viewport"
         onTouchStart={(e) => {
+          if (!showControls) return;
           setTouchX(e.touches[0].clientX);
           setPaused(true);
         }}
         onTouchEnd={(e) => {
+          if (!showControls) return;
           if (touchX === null) {
             setPaused(false);
             return;
@@ -129,10 +134,14 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
       >
         <div
           className="best-carousel-track"
-          style={{
-            width: `${(total / visibleCount) * 100}%`,
-            transform: `translateX(-${offsetPct}%)`,
-          }}
+          style={
+            showControls
+              ? {
+                  width: `${(total / visibleCount) * 100}%`,
+                  transform: `translateX(-${offsetPct}%)`,
+                }
+              : { width: '100%', transform: 'none' }
+          }
         >
           {items.map((prod) => (
             <div
@@ -142,7 +151,7 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
               aria-roledescription="slide"
               aria-label={`Best item ${index + 1} of ${total}`}
             >
-              <ProductCard product={prod} />
+              <ProductCard product={prod} variant="classic" />
             </div>
           ))}
         </div>

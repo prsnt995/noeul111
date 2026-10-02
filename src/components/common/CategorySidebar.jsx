@@ -7,7 +7,12 @@ export function CategorySidebar({ categories, selectedCategory, onSelect }) {
 
   const items = [
     { key: 'all', label: '전체', labelEn: 'All' },
-    ...categories.map((c) => ({ key: c.slug, label: c.name_ko, labelEn: c.name_en })),
+    ...categories.map((c) => ({
+      // Accept both DB shape {slug,name_ko,name_en} and homepage shape {key,label,label_ko}
+      key: (c.key || c.slug || '').toLowerCase(),
+      label: c.label_ko || c.name_ko || c.label || c.slug,
+      labelEn: c.label || c.name_en || c.labelEn || '',
+    })),
   ];
 
   return (

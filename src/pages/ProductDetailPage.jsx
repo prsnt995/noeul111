@@ -789,7 +789,7 @@ export function ProductDetailPage() {
             </div>
             <div className="noeul-product-grid">
               {related.map((rel) => (
-                <ProductCard key={rel.id} product={rel} />
+                <ProductCard key={rel.id} product={rel} variant="overlay" />
               ))}
             </div>
           </div>

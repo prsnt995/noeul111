@@ -76,7 +76,8 @@ export function HomePage() {
     return [...seen.values()];
   }, [selectedGender, liveCategories]);
 
-  // 3. Fetch BEST items (top 6, follows gender filter)
+  // 3. Fetch BEST items (top 6, follows gender + category so each
+  // category has its own strip — fully controlled by admin is_best flag)
   useEffect(() => {
     let cancelled = false;
     async function loadBest() {
@@ -84,6 +85,7 @@ export function HomePage() {
       try {
         const params = new URLSearchParams();
         if (selectedGender !== 'all') params.append('gender', selectedGender);
+        if (selectedCategory !== 'all') params.append('category', selectedCategory);
         params.append('isBest', 'true');
         const json = await api.get(`/catalog/products?${params.toString()}`);
         if (!cancelled) {
@@ -101,7 +103,7 @@ export function HomePage() {
     }
     loadBest();
     return () => { cancelled = true; };
-  }, [selectedGender]);
+  }, [selectedGender, selectedCategory]);
 
   // 4. Fetch grid products dynamically
   useEffect(() => {
@@ -158,8 +160,37 @@ export function HomePage() {
     setLocation(target);
   };
 
+  const handleFilterSelect = (f) => {
+    const params = new URLSearchParams(window.location.search);
+    if (!f || f === '' || f === 'all') {
+      params.delete('filter');
+    } else {
+      params.set('filter', f);
+    }
+    const qs = params.toString();
+    const target = qs ? `/?${qs}` : '/';
+    setLocation(target);
+  };
+
   const handleReset = () => {
     setLocation('/');
+  };
+
+  const activeContextLabel = () => {
+    const parts = [];
+    if (selectedGender !== 'all') {
+      parts.push(selectedGender === 'men' ? t('nav.men') : t('nav.women'));
+    }
+    if (selectedCategory !== 'all') {
+      const c = availableCategories.find((x) => x.key === selectedCategory);
+      parts.push(c ? categoryLabel(c) : selectedCategory);
+    }
+    if (activeFilter) {
+      if (activeFilter === 'new') parts.push(t('nav.new_arrivals'));
+      else if (activeFilter === 'best') parts.push(t('nav.best_sellers'));
+      else if (activeFilter === 'sale') parts.push(t('nav.sale'));
+    }
+    return parts.join(' • ');
   };
 
   const categoryLabel = (c) => (lang === 'ko' ? (c.label_ko || c.label) : (c.label || c.label_ko));
@@ -189,6 +220,7 @@ export function HomePage() {
           STICKY SELECTION BAR:
           Row 1 = gender (ALL / MEN / WOMEN) + item count
           Row 2 = category pills (shirts / jeans ...)
+          Row 3 = quick filters (All / New / Best / Sale) + context
           ========================================================= */}
       <div
         className="noeul-category-bar home-filter-bar"
@@ -285,6 +317,40 @@ export function HomePage() {
             );
           })}
         </div>
+
+        {/* Row 3: quick filters (same-page, mirrors drawer) + context */}
+        <div className="home-quick-row">
+          <div className="home-category-pills home-quick-pills" role="tablist" aria-label={t('shop.filters')}>
+            {[
+              { key: '', label: t('home.view_all') },
+              { key: 'new', label: t('nav.new_arrivals') },
+              { key: 'best', label: t('nav.best_sellers') },
+              { key: 'sale', label: t('nav.sale') },
+            ].map((f) => {
+              const isSelected = (activeFilter || '') === f.key;
+              return (
+                <button
+                  key={f.key || 'all'}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={() => handleFilterSelect(f.key)}
+                  className={`home-pill home-chip${isSelected ? ' active' : ''}${f.key === 'sale' ? ' sale' : ''}`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+          {activeContextLabel() && (
+            <div className="home-context">
+              <span>{activeContextLabel()}</span>
+              <button type="button" onClick={handleReset} aria-label={t('shop.reset_filters')}>
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* =========================================================
@@ -295,7 +361,7 @@ export function HomePage() {
           width: '100%',
           maxWidth: '100%',
           boxSizing: 'border-box',
-          padding: '4px 4px 40px',
+          padding: '0 0 40px',
           margin: 0,
           overflowX: 'hidden',
         }}
@@ -305,8 +371,6 @@ export function HomePage() {
             {[0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
               <div key={k} className="best-skeleton-card" aria-hidden="true">
                 <div className="best-skeleton-media" />
-                <div className="best-skeleton-line" />
-                <div className="best-skeleton-line short" />
               </div>
             ))}
           </div>
@@ -334,11 +398,12 @@ export function HomePage() {
             </button>
           </div>
         ) : (
-          <div key={`${selectedGender}-${selectedCategory}`} className="product-grid noeul-product-grid home-grid-animated">
+          <div key={`${selectedGender}-${selectedCategory}-${activeFilter}`} className="product-grid noeul-product-grid home-grid-animated">
             {products.map((prod) => (
               <ProductCard
                 key={prod.id}
                 product={prod}
+                variant="overlay"
               />
             ))}
           </div>

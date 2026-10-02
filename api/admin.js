@@ -656,17 +656,28 @@ export function registerAdminRoutes(app, ctx) {
       const ids = (variants || []).map(v => v.id);
       if (ids.length) {
         const { data: refs } = await database().from('order_items').select('variant_id').in('variant_id', ids).limit(1);
-        if ((refs || []).length) return error(res, 409, 'PRODUCT_ORDERED');
+        if ((refs || []).length) {
+          return res.status(409).json({ success: false, code: 'PRODUCT_ORDERED', message: '주문 내역이 있는 상품은 삭제할 수 없습니다. 먼저 상품을 숨김 처리하세요.' });
+        }
+      }
+      // FK-safe order: delete referencing rows before the rows they reference.
+      await database().from('product_media').delete().eq('product_id', req.params.id);
+      await database().from('recently_viewed').delete().eq('product_id', req.params.id);
+      if (ids.length) {
+        await database().from('cart_items').delete().in('variant_id', ids);
+        await database().from('inventory_ledger').delete().in('variant_id', ids);
         await database().from('product_variants').delete().in('id', ids);
       }
-      await database().from('product_media').delete().eq('product_id', req.params.id);
       await database().from('reviews').delete().eq('product_id', req.params.id);
       await database().from('wishlists').delete().eq('product_id', req.params.id);
       const { error: e } = await database().from('products').delete().eq('id', req.params.id);
       if (e) throw e;
       await auditLog(req, 'PRODUCT_DELETE', { table: 'products', id: req.params.id });
       res.json({ success: true, message: '상품이 삭제되었습니다.' });
-    } catch { error(res, 503, 'PRODUCT_DELETE_FAILED'); }
+    } catch (e) {
+      console.error('PRODUCT_DELETE error:', e);
+      error(res, 503, 'PRODUCT_DELETE_FAILED');
+    }
   });
 
   // ---------- Categories ----------

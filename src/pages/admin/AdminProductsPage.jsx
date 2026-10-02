@@ -127,7 +127,10 @@ export function AdminProductsPage() {
       ]);
 
       if (prodRes.success) {
-        const list = prodRes.data || [];
+        let list = prodRes.data || [];
+        // Backend has no filterType=best — filter client-side so admin can
+        // review exactly what the homepage BEST strip will show.
+        if (specialFilter === 'best') list = list.filter((p) => p.is_best);
         setProducts(prev => reset ? list : [...prev, ...list]);
         setTotal(prodRes.total ?? list.length);
         setHasMore(list.length === LIMIT && (prodRes.total ?? 0) > (targetPage + 1) * LIMIT);
@@ -286,7 +289,13 @@ export function AdminProductsPage() {
       fetchProducts();
     } catch (err) {
       console.error('Delete product error:', err);
-      showToast(err.message || '상품 삭제 실패', 'error');
+      const code = err.message || '';
+      const friendly = code === 'PRODUCT_ORDERED'
+        ? '주문 내역이 있는 상품은 삭제할 수 없습니다. 먼저 상품을 숨김 처리하세요.'
+        : code === 'PRODUCT_DELETE_FAILED'
+          ? '상품 삭제에 실패했습니다. 연결된 데이터(주문·리뷰·장바구니)를 확인한 후 다시 시도해 주세요.'
+          : null;
+      showToast(friendly || code || '상품 삭제 실패', 'error');
     }
   };
 
@@ -297,6 +306,23 @@ export function AdminProductsPage() {
       fetchProducts();
     } catch (err) {
       showToast('재고 변경 실패', 'error');
+    }
+  };
+
+  // One-click BEST toggle — controls homepage top strip (no backend change:
+  // PUT already accepts partial { is_best }).
+  const handleToggleBest = async (p) => {
+    try {
+      await adminApi.put(`/admin/products/${p.id}`, { is_best: !p.is_best });
+      showToast(
+        !p.is_best
+          ? `BEST로 지정됨 — 홈페이지 상단에 노출됩니다: ${p.name_ko || p.name_en}`
+          : `BEST 해제됨: ${p.name_ko || p.name_en}`,
+        'success'
+      );
+      fetchProducts();
+    } catch (err) {
+      showToast(err.message || 'BEST 변경 실패', 'error');
     }
   };
 
@@ -429,6 +455,7 @@ export function AdminProductsPage() {
             >
               <option value="all">전체 필터 (All Items)</option>
               <option value="new">⭐ New Arrivals (신상품)</option>
+              <option value="best">🔥 Best (베스트 — 홈페이지 상단 노출)</option>
               <option value="sale">🏷️ Sale (세일/할인 상품)</option>
               <option value="in_stock">✅ In Stock (재고 있음)</option>
               <option value="out_of_stock">❌ Out of Stock (품절 상품)</option>
@@ -581,12 +608,28 @@ export function AdminProductsPage() {
                         </div>
                       </td>
 
-                      {/* Badges */}
+                      {/* Badges — BEST is clickable for one-click toggle */}
                       <td style={{ padding: '14px 16px' }}>
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                           {p.is_new ? <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: '#18181b', color: '#fff', borderRadius: '2px', fontWeight: 700 }}>NEW</span> : null}
                           {p.is_sale ? <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: '#dc2626', color: '#fff', borderRadius: '2px', fontWeight: 700 }}>SALE</span> : null}
-                          {p.is_best ? <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: 'var(--accent-sunset)', color: '#fff', borderRadius: '2px', fontWeight: 700 }}>BEST</span> : null}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBest(p)}
+                            title={p.is_best ? 'BEST 해제 (홈페이지 상단에서 제거)' : 'BEST 지정 (홈페이지 상단에 노출)'}
+                            style={{
+                              fontSize: '0.625rem',
+                              padding: '2px 6px',
+                              backgroundColor: p.is_best ? 'var(--accent-sunset)' : '#f4f4f5',
+                              color: p.is_best ? '#fff' : '#a1a1aa',
+                              border: p.is_best ? 'none' : '1px dashed #d4d4d8',
+                              borderRadius: '2px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {p.is_best ? 'BEST ✓' : 'BEST +'}
+                          </button>
                         </div>
                       </td>
 
@@ -1159,6 +1202,15 @@ export function AdminProductsPage() {
                       onChange={(e) => setFormData({ ...formData, is_sale: e.target.checked })}
                     />
                     <span>🏷️ Sale (세일/할인 뱃지)</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.is_best}
+                      onChange={(e) => setFormData({ ...formData, is_best: e.target.checked })}
+                    />
+                    <span>🔥 Best (홈페이지 상단 노출)</span>
                   </label>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>

@@ -3,8 +3,7 @@ import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { CardGridSkeleton } from '../../components/admin/AdminSkeleton.jsx';
-import { Plus, Edit2, Trash2, FolderTree, X, AlertCircle, Search, Eye, EyeOff, ArrowUp, ArrowDown, Image as ImageIcon, Package, Users, Filter, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
-import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
+import { Plus, Edit2, Trash2, FolderTree, X, AlertCircle, Search, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, Filter, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 
 export function AdminCategoriesPage() {
   const [categories, setCategories] = useState([]);
@@ -25,7 +24,6 @@ export function AdminCategoriesPage() {
     name_en: '',
     description_ko: '',
     description_en: '',
-    image_url: '',
     gender: 'unisex',
     sort_order: 0,
     is_active: true,
@@ -33,8 +31,6 @@ export function AdminCategoriesPage() {
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [sampleProducts, setSampleProducts] = useState({});
   const [sampleLoading, setSampleLoading] = useState({});
-  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -88,12 +84,10 @@ export function AdminCategoriesPage() {
       name_en: '',
       description_ko: '',
       description_en: '',
-      image_url: '',
       gender: 'unisex',
       sort_order: categories.length + 1,
       is_active: true,
     });
-    setShowAdvanced(false);
     setIsModalOpen(true);
   };
 
@@ -106,12 +100,10 @@ export function AdminCategoriesPage() {
       name_en: cat.name_en,
       description_ko: cat.description_ko || '',
       description_en: cat.description_en || '',
-      image_url: cat.image_url || '',
       gender: cat.gender || 'unisex',
       sort_order: cat.sort_order || 0,
       is_active: Boolean(cat.is_active),
     });
-    setShowAdvanced(Boolean(cat.image_url));
     setIsModalOpen(true);
   };
 
@@ -273,18 +265,17 @@ export function AdminCategoriesPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
             {filtered.map((cat) => (
               <div key={cat.id} style={{ backgroundColor: '#ffffff', borderRadius: '12px', overflow: 'hidden', border: cat.is_active ? '1px solid #e4e4e7' : '1px dashed #fca5a5', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', opacity: cat.is_active ? 1 : 0.85 }}>
-                <div style={{ position: 'relative', height: '160px', backgroundColor: '#f4f4f5' }}>
-                  <img src={cat.image_url || '/products/men/tshirts/classic-tshirt/1.jpg'} alt={cat.name_ko} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
-                  <span style={{ position: 'absolute', top: '10px', left: '10px', backgroundColor: 'rgba(0,0,0,0.7)', color: '#ffffff', fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '12px 16px', backgroundColor: '#f4f4f5', borderBottom: '1px solid #e4e4e7' }}>
+                  <span style={{ backgroundColor: '#18181b', color: '#ffffff', fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}>
                     slug: {cat.slug}
                   </span>
-                  <span style={{ position: 'absolute', top: '10px', right: '10px', backgroundColor: cat.is_active ? '#16a34a' : '#fee2e2', color: cat.is_active ? '#fff' : '#dc2626', fontSize: '0.6875rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>
+                  <span style={{ backgroundColor: cat.is_active ? '#16a34a' : '#fee2e2', color: cat.is_active ? '#fff' : '#dc2626', fontSize: '0.6875rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>
                     {cat.is_active ? '활성' : '숨김'}
                   </span>
-                  <span style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: '#ffffff', color: '#18181b', fontSize: '0.6875rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ marginLeft: 'auto', backgroundColor: '#ffffff', color: '#18181b', fontSize: '0.6875rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', border: '1px solid #e4e4e7', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Package size={12} /> {cat.product_count || 0}개
                   </span>
-                  <span style={{ position: 'absolute', bottom: '10px', left: '10px', backgroundColor: cat.gender === 'women' ? '#fce7f3' : cat.gender === 'men' ? '#dbeafe' : '#f3f4f6', color: cat.gender === 'women' ? '#be185d' : cat.gender === 'men' ? '#1e40af' : '#374151', fontSize: '0.625rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                  <span style={{ backgroundColor: cat.gender === 'women' ? '#fce7f3' : cat.gender === 'men' ? '#dbeafe' : '#f3f4f6', color: cat.gender === 'women' ? '#be185d' : cat.gender === 'men' ? '#1e40af' : '#374151', fontSize: '0.625rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>
                     {cat.gender || 'unisex'}
                   </span>
                 </div>
@@ -419,27 +410,6 @@ export function AdminCategoriesPage() {
                   </div>
                 </div>
 
-                <details open={showAdvanced} onToggle={(e) => setShowAdvanced(e.target.open)} style={{ border: '1px dashed #d4d4d8', borderRadius: 8, padding: '10px 12px', backgroundColor: '#fafafa' }}>
-                  <summary style={{ cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700, color: '#52525b' }}>
-                    고급 (선택): 배너 이미지 {formData.image_url ? '• 설정됨' : '• 미사용 (기본 이미지)'}
-                  </summary>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <input type="url" value={formData.image_url} onChange={(e) => setFormData({ ...formData, image_url: e.target.value })} placeholder="선택 안 하면 기본 이미지 사용" className="form-input" style={{ flex: 1 }} />
-                    <button type="button" onClick={() => setIsMediaPickerOpen(true)} className="btn-secondary" style={{ whiteSpace: 'nowrap' }}>미디어에서 선택</button>
-                    {formData.image_url && <button type="button" onClick={() => setFormData({ ...formData, image_url: '' })} className="btn-secondary">지우기</button>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
-                    {formData.image_url ? (
-                      <img src={formData.image_url} alt="preview" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid #e4e4e7' }} onError={(e) => (e.currentTarget.style.display = 'none')} />
-                    ) : (
-                      <img src="/products/men/tshirts/classic-tshirt/1.jpg" alt="default preview" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px dashed #d4d4d8', opacity: 0.7 }} />
-                    )}
-                    <span style={{ fontSize: '0.6875rem', color: '#71717a', lineHeight: 1.5 }}>
-                      비워두면 기본 이미지 사용. 미디어 라이브러리에서 Supabase `product-media` 업로드본을 고르면 URL을 몰라도 됩니다.
-                    </span>
-                  </div>
-                </details>
-
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">한글 설명</label>
                   <input type="text" value={formData.description_ko} onChange={(e) => setFormData({ ...formData, description_ko: e.target.value })} placeholder="카테고리 설명 (한글)" className="form-input" />
@@ -464,16 +434,6 @@ export function AdminCategoriesPage() {
             </div>
           </div>
         )}
-
-        <MediaPickerModal
-          isOpen={isMediaPickerOpen}
-          onClose={() => setIsMediaPickerOpen(false)}
-          onSelect={(url) => {
-            setFormData(prev => ({ ...prev, image_url: url }));
-            setIsMediaPickerOpen(false);
-            setShowAdvanced(true);
-          }}
-        />
       </div>
     </AdminLayout>
   );

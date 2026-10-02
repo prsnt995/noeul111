@@ -102,6 +102,7 @@ export function ShopPage() {
 
     let prefix = '';
     if (selectedGender === 'women') prefix = lang === 'ko' ? '여성' : 'Women';
+    else if (selectedGender === 'men') prefix = lang === 'ko' ? '남성' : 'Men';
     else prefix = t('nav.all');
 
     if (selectedCategory !== 'all') {
@@ -115,7 +116,7 @@ export function ShopPage() {
 
   return (
     <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
-      {/* Category Sub-Bar — fixed at top */}
+      {/* Category Sub-Bar — sticky below header, same pattern as homepage */}
       <div
         className="noeul-category-bar"
         style={{
@@ -125,10 +126,8 @@ export function ShopPage() {
           justifyContent: 'space-between',
           alignItems: 'center',
           backgroundColor: '#ffffff',
-          position: 'fixed',
+          position: 'sticky',
           top: 0,
-          left: 0,
-          right: 0,
           zIndex: 95,
           width: '100%',
           maxWidth: '100%',
@@ -139,9 +138,9 @@ export function ShopPage() {
           scrollbarWidth: 'none',
         }}
       >
-        {/* Left: Category Navigation Bar (전체 / 여성) */}
+        {/* Left: Category Navigation Bar (ALL / MEN / WOMEN — mirrors homepage) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          {['all', 'women'].map((g) => {
+          {['all', 'men', 'women'].map((g) => {
             const isSelected = selectedGender === g;
             return (
               <button
@@ -161,7 +160,7 @@ export function ShopPage() {
                   transition: 'all 0.15s ease',
                 }}
               >
-                {g === 'all' ? t('nav.all') : t('nav.women')}
+                {g === 'all' ? t('nav.all') : g === 'men' ? t('nav.men') : t('nav.women')}
               </button>
             );
           })}
@@ -231,7 +230,7 @@ export function ShopPage() {
           width: '100%',
           maxWidth: '100%',
           boxSizing: 'border-box',
-          padding: '4px 4px 40px',
+          padding: '0 0 40px',
           margin: 0,
           overflowX: 'hidden',
         }}
@@ -277,6 +276,7 @@ export function ShopPage() {
               <ProductCard
                 key={prod.id}
                 product={prod}
+                variant="overlay"
               />
             ))}
           </div>

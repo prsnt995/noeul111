@@ -103,7 +103,8 @@
     "tab_shipping": "배송 및 교환/반품",
     "related_products": "함께 어울리는 추천 상품",
     "share": "공유하기",
-    "view_product": "상품 보기"
+    "view_product": "상품 보기",
+    "color_count": "({count}색)"
   },
   "cart": {
     "title": "장바구니",

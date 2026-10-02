@@ -327,7 +327,7 @@ export function SectionRenderer({ section }) {
             ) : (
               <div className="noeul-product-grid">
                 {products.map((p) => (
-                  <ProductCard key={p.id} product={p} />
+                  <ProductCard key={p.id} product={p} variant="overlay" />
                 ))}
               </div>
             )}
@@ -363,34 +363,23 @@ export function SectionRenderer({ section }) {
                   key={cat.id}
                   href={`/shop?category=${cat.slug}`}
                   style={{
-                    position: 'relative',
-                    height: '220px',
+                    height: '140px',
                     borderRadius: '6px',
-                    overflow: 'hidden',
-                    display: 'block',
+                    border: '1px solid #e4e4e7',
+                    backgroundColor: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '6px',
+                    textAlign: 'center',
+                    padding: '14px',
+                    color: '#18181b',
+                    transition: 'border-color 0.2s ease',
                   }}
                 >
-                  <img
-                    src={cat.image_url || '/products/men/tshirts/classic-tshirt/1.jpg'}
-                    alt=""
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 60%)',
-                      display: 'flex',
-                      alignItems: 'flex-end',
-                      padding: '14px',
-                      color: '#ffffff',
-                    }}
-                  >
-                    <div>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 800 }}>{lang === 'ko' ? cat.name_ko : cat.name_en}</h3>
-                      <span style={{ fontSize: '0.6875rem', opacity: 0.9 }}>{cat.product_count || 0} ITEMS</span>
-                    </div>
-                  </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800 }}>{lang === 'ko' ? cat.name_ko : cat.name_en}</h3>
+                  <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>{cat.product_count || 0} ITEMS</span>
                 </Link>
               ))}
             </div>

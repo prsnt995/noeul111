@@ -103,7 +103,8 @@
     "tab_shipping": "Shipping & Returns",
     "related_products": "Recommended Pairings",
     "share": "Share",
-    "view_product": "View Product"
+    "view_product": "View Product",
+    "color_count": "({count} colors)"
   },
   "cart": {
     "title": "Shopping Cart",

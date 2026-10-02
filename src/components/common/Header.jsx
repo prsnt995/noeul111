@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useCart } from '../../context/CartContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { CATEGORIES_BY_GENDER } from '../../data/products.js';
-import { Menu, X, Search, ShoppingBag, ChevronDown, ChevronRight, User } from 'lucide-react';
+import { api } from '../../utils/api.js';
+import { Menu, X, Search, ShoppingBag, ChevronDown, User } from 'lucide-react';
 
 export function Header({ onOpenSearch }) {
   const { lang, setLang, t } = useLanguage();
@@ -13,29 +14,128 @@ export function Header({ onOpenSearch }) {
   const [location, setLocation] = useLocation();
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [expandedSection, setExpandedSection] = useState(null); // 'women' | null
+  const [expandedSection, setExpandedSection] = useState(null); // 'men' | 'women' | null
+  const [liveCategories, setLiveCategories] = useState([]);
 
-  // Close menu on route change
-  useEffect(() => {
-    setMenuOpen(false);
+  // Current filters from URL — single source of truth, homepage owns filtering
+  const currentParams = useMemo(() => {
+    const sp = new URLSearchParams(window.location.search);
+    return {
+      gender: (sp.get('gender') || 'all').toLowerCase(),
+      category: (sp.get('category') || 'all').toLowerCase(),
+      filter: (sp.get('filter') || '').toLowerCase(),
+    };
   }, [location]);
 
-  // Navigate with query params — category/filter routes to /shop so product grid filters to that cat only
+  // Live categories (frontend-only, same source as homepage pills)
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/catalog/categories').then((res) => {
+      if (!cancelled && res.success && Array.isArray(res.data) && res.data.length) {
+        setLiveCategories(
+          res.data.map((c) => ({
+            key: (c.slug || '').toLowerCase(),
+            label: c.name_en || c.slug,
+            label_ko: c.name_ko || c.slug,
+          }))
+        );
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const catsFor = (gender) => {
+    if (liveCategories.length) {
+      const allowMen = ['tshirts', 'shirts', 'jeans', 'pants', 'underwear', 'socks', 'jackets', 'hoodies', 'accessories', 'bags'];
+      const allowWomen = ['tshirts', 'shirts', 'jeans', 'pants', 'underwear', 'socks', 'dresses', 'skirts', 'jackets', 'hoodies', 'accessories', 'bags'];
+      const allow = gender === 'men' ? allowMen : allowWomen;
+      const filtered = liveCategories.filter((c) => allow.includes(c.key));
+      return filtered.length ? filtered : liveCategories;
+    }
+    return CATEGORIES_BY_GENDER[gender] || [];
+  };
+
+  const menCats = useMemo(() => catsFor('men'), [liveCategories]);
+  const womenCats = useMemo(() => catsFor('women'), [liveCategories]);
+
+  const catLabel = (c) => (lang === 'ko' ? (c.label_ko || c.label) : (c.label || c.label_ko));
+
+  // Close menu on route change + auto-expand section matching gender
+  useEffect(() => {
+    setMenuOpen(false);
+    if (currentParams.gender === 'men' || currentParams.gender === 'women') {
+      setExpandedSection(currentParams.gender);
+    }
+  }, [location]);
+
+  // Unified navigation — everything stays on / homepage (same-page filtering)
   const navigateWithFilter = (paramsObj) => {
     setMenuOpen(false);
     const sp = new URLSearchParams();
     Object.entries(paramsObj).forEach(([k, v]) => {
-      if (v && v !== 'all') sp.set(k, v);
+      if (v && v !== 'all' && v !== '') sp.set(k, v);
     });
     const qs = sp.toString();
-    const hasCategory = paramsObj.category && paramsObj.category !== 'all';
-    const hasFilter = paramsObj.filter && paramsObj.filter !== 'all' && paramsObj.filter !== '';
-    const base = hasCategory || hasFilter ? '/shop' : (paramsObj.gender && paramsObj.gender !== 'all' ? '/' : '/');
-    // Keep current page if already on /shop and navigating to a category
-    const isOnShop = location.startsWith('/shop');
-    const finalBase = isOnShop && (hasCategory || hasFilter) ? '/shop' : base;
-    const target = qs ? `${finalBase}?${qs}` : finalBase;
+    const target = qs ? `/?${qs}` : '/';
     setLocation(target);
+  };
+
+  const renderGenderSection = (gender, cats) => {
+    const isExpanded = expandedSection === gender;
+    const isActiveGender = currentParams.gender === gender;
+    const title = gender === 'men' ? t('nav.men') : t('nav.women');
+    return (
+      <div className={`drawer-section${isActiveGender ? ' active-gender' : ''}`}>
+        <div
+          className="drawer-section-head"
+          onClick={() => setExpandedSection(isExpanded ? null : gender)}
+          aria-expanded={isExpanded}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedSection(isExpanded ? null : gender); } }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigateWithFilter({ gender });
+            }}
+            className={isActiveGender ? 'drawer-section-title active' : 'drawer-section-title'}
+          >
+            {title.toUpperCase()}
+          </button>
+          <ChevronDown
+            size={16}
+            className={isExpanded ? 'chev open' : 'chev'}
+          />
+        </div>
+
+        {isExpanded && (
+          <div className="drawer-subcats">
+            <button
+              type="button"
+              onClick={() => navigateWithFilter({ gender })}
+              className={isActiveGender && currentParams.category === 'all' ? 'drawer-subcat active' : 'drawer-subcat all-link'}
+            >
+              {lang === 'ko' ? (gender === 'men' ? '남성 전체' : '여성 전체') : (gender === 'men' ? "All Men's" : "All Women's")}
+            </button>
+            {cats.map((c) => {
+              const isActive = isActiveGender && currentParams.category === c.key;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => navigateWithFilter({ gender, category: c.key })}
+                  className={isActive ? 'drawer-subcat active' : 'drawer-subcat'}
+                >
+                  {catLabel(c)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -178,8 +278,9 @@ export function Header({ onOpenSearch }) {
       </header>
 
       {/* =========================================================
-          2. CLEAN SLIDE-OUT SIDE MENU (FROM LEFT)
-          Includes: HOME, WOMEN, NEW ARRIVALS, SALE, CART
+          2. UNIFIED SLIDE-OUT MENU — mirrors homepage filters
+          ALL / MEN (expand) / WOMEN (expand) / NEW / BEST / SALE
+          All stay on / (same-page filtering)
           ========================================================= */}
       {menuOpen && (
         <div
@@ -248,180 +349,57 @@ export function Header({ onOpenSearch }) {
             </div>
 
             {/* Menu Items List */}
-            <div style={{ flex: 1, padding: '20px 0', overflowY: 'auto' }}>
+            <div style={{ flex: 1, padding: '12px 0 20px', overflowY: 'auto' }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {/* 1. HOME */}
+                {/* ALL */}
                 <button
                   type="button"
                   onClick={() => navigateWithFilter({})}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 24px',
-                    fontSize: '0.9375rem',
-                    fontWeight: 600,
-                    letterSpacing: '0.08em',
-                    color: '#000000',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    width: '100%',
-                  }}
+                  className={currentParams.gender === 'all' && !currentParams.category?.length ? 'drawer-link active' : 'drawer-link'}
                 >
-                  <span>{t('nav.home').toUpperCase()}</span>
+                  <span>{t('nav.all')}</span>
+                  {currentParams.gender === 'all' && <span className="drawer-active-dot" />}
                 </button>
 
-                {/* 2. WOMEN (with subcategory expander) */}
-                <div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 24px',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => setExpandedSection(expandedSection === 'women' ? null : 'women')}
-                  >
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigateWithFilter({ gender: 'women' });
-                      }}
-                      style={{
-                        fontSize: '0.9375rem',
-                        fontWeight: 600,
-                        letterSpacing: '0.08em',
-                        color: '#000000',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
-                    >
-                      {t('nav.women').toUpperCase()}
-                    </button>
-                    <ChevronDown
-                      size={16}
-                      style={{
-                        transform: expandedSection === 'women' ? 'rotate(180deg)' : 'rotate(0deg)',
-                        transition: 'transform 0.2s',
-                        color: '#71717a',
-                      }}
-                    />
-                  </div>
+                {/* MEN expandable */}
+                {renderGenderSection('men', menCats)}
 
-                  {expandedSection === 'women' && (
-                    <div style={{ padding: '4px 24px 12px 36px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <button
-                        type="button"
-                        onClick={() => navigateWithFilter({ gender: 'women' })}
-                        style={{
-                          fontSize: '0.8125rem',
-                          color: '#000000',
-                          fontWeight: 600,
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          padding: '3px 0',
-                        }}
-                      >
-                        {lang === 'ko' ? '여성 전체' : 'All Women\'s'}
-                      </button>
-                      {CATEGORIES_BY_GENDER.women.map((c) => (
-                        <button
-                          key={c.key}
-                          type="button"
-                          onClick={() => navigateWithFilter({ gender: 'women', category: c.key })}
-                          style={{
-                            fontSize: '0.8125rem',
-                            color: '#52525b',
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            padding: '3px 0',
-                          }}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {/* WOMEN expandable */}
+                {renderGenderSection('women', womenCats)}
 
-                {/* 4. NEW ARRIVALS */}
+                {/* Quick filters — same-page */}
+                <div className="drawer-divider" />
                 <button
                   type="button"
                   onClick={() => navigateWithFilter({ filter: 'new' })}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 24px',
-                    fontSize: '0.9375rem',
-                    fontWeight: 600,
-                    letterSpacing: '0.08em',
-                    color: '#000000',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    width: '100%',
-                  }}
+                  className={currentParams.filter === 'new' ? 'drawer-link active' : 'drawer-link'}
                 >
                   <span>{t('nav.new_arrivals')}</span>
                 </button>
-
-                {/* 5. SALE */}
+                <button
+                  type="button"
+                  onClick={() => navigateWithFilter({ filter: 'best' })}
+                  className={currentParams.filter === 'best' ? 'drawer-link active' : 'drawer-link'}
+                >
+                  <span>{t('nav.best_sellers')}</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => navigateWithFilter({ filter: 'sale' })}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 24px',
-                    fontSize: '0.9375rem',
-                    fontWeight: 600,
-                    letterSpacing: '0.08em',
-                    color: '#e11d48',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    width: '100%',
-                  }}
+                  className="drawer-link sale"
                 >
                   <span>{t('nav.sale')}</span>
                 </button>
 
-                {/* 6. CART */}
+                {/* CART */}
+                <div className="drawer-divider" />
                 <button
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
                     openCart();
                   }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 24px',
-                    fontSize: '0.9375rem',
-                    fontWeight: 600,
-                    letterSpacing: '0.08em',
-                    color: '#000000',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    width: '100%',
-                  }}
+                  className="drawer-link"
                 >
                   <span>{t('nav.cart')}</span>
                   {totalCount > 0 && (
@@ -481,12 +459,43 @@ export function Header({ onOpenSearch }) {
         </div>
       )}
 
-      {/* Slide in animation from left */}
+      {/* Slide in animation from left + drawer styles */}
       <style>{`
         @keyframes slideInLeft {
           from { transform: translateX(-100%); }
           to { transform: translateX(0); }
         }
+        .drawer-link {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 12px 24px; font-size: 0.9375rem; font-weight: 600;
+          letter-spacing: 0.08em; color: #000000; background: none;
+          border: none; border-left: 2px solid transparent;
+          cursor: pointer; text-align: left; width: 100%;
+        }
+        .drawer-link.active { border-left-color: #000000; background: #fafafa; }
+        .drawer-link.sale { color: #e11d48; }
+        .drawer-active-dot { width: 6px; height: 6px; border-radius: 50%; background: #000; }
+        .drawer-section-head {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 12px 24px; cursor: pointer;
+        }
+        .drawer-section-title {
+          font-size: 0.9375rem; font-weight: 600; letter-spacing: 0.08em;
+          color: #000000; background: none; border: none; border-left: 2px solid transparent;
+          cursor: pointer; padding: 0 0 0 2px;
+        }
+        .drawer-section-title.active { font-weight: 800; }
+        .drawer-section.active-gender .drawer-section-head { background: #fafafa; }
+        .drawer-section .chev { transition: transform 0.2s; color: #71717a; }
+        .drawer-section .chev.open { transform: rotate(180deg); }
+        .drawer-subcats { padding: 4px 24px 12px 38px; display: flex; flex-direction: column; gap: 4px; }
+        .drawer-subcat {
+          font-size: 0.8125rem; color: #52525b; background: none; border: none;
+          border-left: 2px solid transparent; cursor: pointer; text-align: left; padding: 5px 0 5px 8px;
+        }
+        .drawer-subcat.all-link { color: #000; font-weight: 600; }
+        .drawer-subcat.active { color: #000; font-weight: 700; border-left-color: #000; background: #fafafa; }
+        .drawer-divider { height: 1px; background: #f0f0f0; margin: 8px 24px; }
       `}</style>
     </>
   );
