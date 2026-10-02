@@ -16,6 +16,31 @@ router.get('/coupons', (req, res) => {
   }
 });
 
+// Coupon pre-check for the manual-order modal (dev parity with /api/v1).
+router.get('/coupons/validate', (req, res) => {
+  try {
+    const code = String(req.query.code || '').toUpperCase().trim();
+    const subtotal = Number(req.query.subtotal || 0);
+    if (!code) return res.status(400).json({ success: false, message: 'COUPON_CODE_REQUIRED' });
+    if (!Number.isFinite(subtotal) || subtotal < 0) return res.status(400).json({ success: false, message: 'INVALID_SUBTOTAL' });
+    const coupon = query.get('SELECT * FROM coupons WHERE code = ? AND is_active = 1', code);
+    if (!coupon) return res.status(404).json({ success: false, message: 'COUPON_INVALID' });
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (coupon.start_date && coupon.start_date > todayStr) return res.status(400).json({ success: false, message: 'COUPON_EXPIRED' });
+    if (coupon.end_date && coupon.end_date < todayStr) return res.status(400).json({ success: false, message: 'COUPON_EXPIRED' });
+    if (coupon.usage_limit > 0 && coupon.times_used >= coupon.usage_limit) return res.status(400).json({ success: false, message: 'COUPON_LIMIT_REACHED' });
+    if (coupon.min_order_amount && subtotal < coupon.min_order_amount) return res.status(400).json({ success: false, message: 'COUPON_MINIMUM_NOT_MET' });
+    let discount = coupon.discount_type === 'percentage'
+      ? Math.round((subtotal * coupon.discount_value) / 100)
+      : coupon.discount_value;
+    if (coupon.max_discount_amount && discount > coupon.max_discount_amount) discount = coupon.max_discount_amount;
+    discount = Math.min(subtotal, discount);
+    res.json({ success: true, data: { code: coupon.code, discount } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '쿠폰 확인 실패' });
+  }
+});
+
 // Create coupon
 router.post('/coupons', (req, res) => {
   try {

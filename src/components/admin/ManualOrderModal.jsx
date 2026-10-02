@@ -6,7 +6,7 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ORDER_SOURCES, sourceLabel } from '../../utils/orderSources.js';
 import { X, Search, Plus, Trash2 } from 'lucide-react';
 
-// Manual / external order modal: Instagram, WhatsApp, phone, other.
+// Manual / external order modal: Instagram, TikTok, other.
 // Bank-transfer flow only — created as pending_payment so stock is reserved
 // and payment is confirmed via the existing verify-payment path.
 export function ManualOrderModal({ onClose, onCreated }) {
@@ -24,7 +24,10 @@ export function ManualOrderModal({ onClose, onCreated }) {
   const [address, setAddress] = useState('');
   const [detailAddress, setDetailAddress] = useState('');
   const [shippingMemo, setShippingMemo] = useState('');
-  const [couponCode, setCouponCode] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState('');
   const [items, setItems] = useState([]);
 
   // Customer search (link if exists)
@@ -32,12 +35,13 @@ export function ManualOrderModal({ onClose, onCreated }) {
   const [customerResults, setCustomerResults] = useState([]);
   const [searchingCustomers, setSearchingCustomers] = useState(false);
 
-  // Product / variant picker
+  // Product / variant picker — color and size are two separate selects.
   const [productQuery, setProductQuery] = useState('');
   const [productResults, setProductResults] = useState([]);
   const [searchingProducts, setSearchingProducts] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [selectedVariant, setSelectedVariant] = useState('');
+  const [selectedColor, setSelectedColor] = useState('');
+  const [selectedSize, setSelectedSize] = useState('');
   const [pickQty, setPickQty] = useState(1);
 
   useEffect(() => {
@@ -68,7 +72,8 @@ export function ManualOrderModal({ onClose, onCreated }) {
       setSearchingProducts(true);
       try {
         const res = await adminApi.get(`/admin/products?search=${encodeURIComponent(productQuery.trim())}&limit=8`);
-        setProductResults(res.data || []);
+        // Hide fully sold-out products from the picker.
+        setProductResults((res.data || []).filter(p => totalAvailable(p) > 0));
       } catch {
         setProductResults([]);
       } finally {
@@ -92,63 +97,143 @@ export function ManualOrderModal({ onClose, onCreated }) {
 
   const clearLinkedCustomer = () => setCustomerId(null);
 
-  // Variants come from the Supabase shape (product_variants via composeAdminProduct)
-  // or legacy shape (sizes/colors arrays). Support both.
-  const variantOptions = (p) => {
+  // Normalize to per-variant rows { id, color, size, available }.
+  // Supabase shape uses p.variants (stock − reserved per variant);
+  // legacy shape falls back to product-level stock for every combo.
+  const allVariants = (p) => {
     if (!p) return [];
     if (Array.isArray(p.variants) && p.variants.length) {
-      return p.variants.map(v => ({
-        id: v.id,
-        label: `${v.color || ''} / ${v.size || ''} (재고 ${Math.max(0, (v.stock || 0) - (v.reserved || 0))})`,
-        available: Math.max(0, (v.stock || 0) - (v.reserved || 0)),
-      }));
+      return p.variants
+        .filter(v => v.active !== false)
+        .map(v => ({
+          id: v.id,
+          color: v.color || 'DEFAULT',
+          size: v.size || 'FREE',
+          available: Math.max(0, (v.stock || 0) - (v.reserved || 0)),
+        }));
     }
     const sizes = p.sizes && p.sizes.length ? p.sizes : ['FREE'];
     const colors = p.colors && p.colors.length ? p.colors : ['DEFAULT'];
     const stock = Number(p.stock ?? 0);
-    const opts = [];
+    const rows = [];
     for (const color of colors) {
       for (const size of sizes) {
         const c = typeof color === 'string' ? color : (color.name_ko || color.name_en || 'DEFAULT');
         const s = typeof size === 'string' ? size : 'FREE';
-        opts.push({ id: null, productId: p.id, color: c, size: s, label: `${c} / ${s} (재고 ${stock})`, available: stock });
+        rows.push({ id: null, productId: p.id, color: c, size: s, available: stock });
       }
     }
-    return opts;
+    return rows;
   };
 
-  const variantKey = (o) => (o.id ? `id:${o.id}` : `combo:${o.color}|||${o.size}`);
+  const totalAvailable = (p) => allVariants(p).reduce((s, v) => s + v.available, 0);
+
+  // Colors with at least one available size — fully sold-out colors hidden.
+  const colorOptions = (p) => {
+    const seen = [];
+    for (const v of allVariants(p)) {
+      if (v.available > 0 && !seen.includes(v.color)) seen.push(v.color);
+    }
+    return seen;
+  };
+
+  // Available sizes of one color — sold-out sizes (e.g. Black/L) hidden.
+  const sizeOptions = (p, color) =>
+    allVariants(p).filter(v => v.color === color && v.available > 0);
+
+  const findVariant = (p, color, size) =>
+    allVariants(p).find(v => v.color === color && v.size === size) || null;
+
+  const pickProduct = (p) => {
+    setSelectedProduct(p);
+    const colors = colorOptions(p);
+    const firstColor = colors[0] || '';
+    setSelectedColor(firstColor);
+    const sizes = sizeOptions(p, firstColor);
+    setSelectedSize(sizes[0]?.size || '');
+    setPickQty(1);
+  };
+
+  // Quantity already in the draft for the same variant.
+  const draftQty = (productId, variantId, color, size) =>
+    items
+      .filter(i => i.product_id === productId && (variantId ? i.variant_id === variantId : (i.color === color && i.size === size)))
+      .reduce((s, i) => s + i.quantity, 0);
+
+  const currentVariant = selectedProduct ? findVariant(selectedProduct, selectedColor, selectedSize) : null;
+  const currentAvailable = currentVariant
+    ? Math.max(0, currentVariant.available - draftQty(selectedProduct.id, currentVariant.id, selectedColor, selectedSize))
+    : 0;
 
   const addItem = () => {
-    if (!selectedProduct) return;
-    const opts = variantOptions(selectedProduct);
-    const opt = opts.find(o => variantKey(o) === String(selectedVariant)) || opts[0];
-    if (!opt) return;
-    const qty = Math.max(1, Math.min(99, Number(pickQty) || 1));
+    if (!selectedProduct || !currentVariant || currentAvailable < 1) return;
+    const qty = Math.max(1, Math.min(currentAvailable, Number(pickQty) || 1));
     const unit = Number(selectedProduct.discount_price || selectedProduct.price || 0);
     setItems(prev => [...prev, {
-      key: `${selectedProduct.id}-${opt.id || `${opt.color}-${opt.size}`}-${Date.now()}`,
+      key: `${selectedProduct.id}-${currentVariant.id || `${selectedColor}-${selectedSize}`}-${Date.now()}`,
       product_id: selectedProduct.id,
-      variant_id: opt.id || null,
-      variant_label: opt.label,
-      color: opt.color || '',
-      size: opt.size || '',
+      variant_id: currentVariant.id || null,
+      variant_label: `${selectedColor} / ${selectedSize}`,
+      color: selectedColor,
+      size: selectedSize,
       product_name: selectedProduct.name_ko || selectedProduct.name_en || '',
       unit_price: unit,
       quantity: qty,
     }]);
-    setSelectedProduct(null);
-    setSelectedVariant('');
     setPickQty(1);
-    setProductQuery('');
-    setProductResults([]);
+    // Draft subtotal changed — validated coupon may no longer apply.
+    setAppliedCoupon(null);
+    setCouponError('');
   };
 
-  const removeItem = (key) => setItems(prev => prev.filter(i => i.key !== key));
+  const removeItem = (key) => {
+    setItems(prev => prev.filter(i => i.key !== key));
+    // Draft subtotal changed — validated coupon may no longer apply.
+    setAppliedCoupon(null);
+    setCouponError('');
+  };
+
+  const couponErrorText = (code) => {
+    const map = {
+      COUPON_CODE_REQUIRED: { ko: '쿠폰 코드를 입력해주세요.', en: 'Enter a coupon code.' },
+      COUPON_INVALID: { ko: '유효하지 않은 쿠폰 코드입니다.', en: 'Invalid coupon code.' },
+      COUPON_EXPIRED: { ko: '사용 기간이 아닌 쿠폰입니다.', en: 'Coupon is not valid at this time.' },
+      COUPON_LIMIT_REACHED: { ko: '쿠폰 사용 수량이 모두 소진되었습니다.', en: 'Coupon usage limit reached.' },
+      COUPON_MINIMUM_NOT_MET: { ko: '최소 주문 금액을 충족하지 않아 사용할 수 없습니다.', en: 'Minimum order amount not met.' },
+    };
+    const entry = map[code] || { ko: '쿠폰을 확인할 수 없습니다.', en: 'Could not validate coupon.' };
+    return lang === 'en' ? entry.en : entry.ko;
+  };
+
+  const handleCouponCheck = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code || items.length === 0) return;
+    setCheckingCoupon(true);
+    setCouponError('');
+    try {
+      const res = await adminApi.get(`/admin/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}`);
+      if (res.success) {
+        setAppliedCoupon(res.data);
+        showToast(lang === 'en' ? `Coupon applied: -${formatKRW(res.data.discount)}` : `쿠폰 적용됨: -${formatKRW(res.data.discount)}`, 'success');
+      }
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(couponErrorText(err?.message));
+    } finally {
+      setCheckingCoupon(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError('');
+  };
 
   const subtotal = items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
-  const shipping = items.length === 0 ? 0 : (subtotal >= 70000 ? 0 : 3000);
-  const total = subtotal + shipping;
+  const couponDiscount = appliedCoupon?.discount || 0;
+  const shipping = items.length === 0 ? 0 : (subtotal - couponDiscount >= 70000 ? 0 : 3000);
+  const total = Math.max(0, subtotal - couponDiscount + shipping);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -177,7 +262,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
         address: address.trim(),
         detail_address: detailAddress.trim() || undefined,
         shipping_memo: shippingMemo.trim() || undefined,
-        coupon_code: couponCode.trim() || undefined,
+        coupon_code: appliedCoupon?.code || undefined,
         payment_sender_name: customerName.trim(),
         items: payloadItems,
       });
@@ -202,7 +287,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>
-              {lang === 'en' ? 'New Manual Order' : '외부 주문 등록'} <span style={{ fontSize: '0.8rem', color: '#71717a' }}>(Instagram / WhatsApp / Phone)</span>
+              {lang === 'en' ? 'New Manual Order' : '외부 주문 등록'} <span style={{ fontSize: '0.8rem', color: '#71717a' }}>(Instagram / TikTok)</span>
             </h3>
             <p style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '4px' }}>
               {lang === 'en'
@@ -270,22 +355,65 @@ export function ManualOrderModal({ onClose, onCreated }) {
             {productResults.length > 0 && !selectedProduct && (
               <div style={{ border: '1px solid #e4e4e7', borderRadius: '6px', marginTop: '8px', maxHeight: '180px', overflowY: 'auto' }}>
                 {productResults.map(p => (
-                  <button key={p.id} type="button" onClick={() => { setSelectedProduct(p); const first = variantOptions(p)[0]; setSelectedVariant(first ? (first.id ? `id:${first.id}` : `combo:${first.color}|||${first.size}`) : ''); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', borderBottom: '1px solid #f0f0f2', cursor: 'pointer', fontSize: '0.85rem' }}>
-                    <strong>{p.name_ko}</strong> <span style={{ color: '#71717a' }}>{formatKRW(p.discount_price || p.price)}</span>
+                  <button key={p.id} type="button" onClick={() => pickProduct(p)} style={{ display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', borderBottom: '1px solid #f0f0f2', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <strong>{p.name_ko}</strong>
+                    <span style={{ color: '#71717a' }}>{formatKRW(p.discount_price || p.price)} · 재고 {totalAvailable(p)}개</span>
                   </button>
                 ))}
               </div>
             )}
             {selectedProduct && (
-              <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{selectedProduct.name_ko}</span>
-                <select value={selectedVariant} onChange={(e) => setSelectedVariant(e.target.value)} className="form-select" style={{ flex: 1, minWidth: '200px' }}>
-                  {variantOptions(selectedProduct).map(o => (
-                    <option key={variantKey(o)} value={variantKey(o)}>{o.label}</option>
-                  ))}
-                </select>
-                <input type="number" min={1} max={99} value={pickQty} onChange={(e) => setPickQty(e.target.value)} className="form-input" style={{ width: '80px' }} />
-                <button type="button" className="btn-secondary" onClick={addItem}><Plus size={14} /> 추가</button>
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#fafafa', border: '1px solid #f0f0f2', borderRadius: '6px', padding: '10px 12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{selectedProduct.name_ko}</span>
+                  <button type="button" onClick={() => { setSelectedProduct(null); setProductQuery(''); setProductResults([]); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: '#71717a' }}>다른 상품 검색</button>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '130px' }}>
+                    <label className="form-label">{lang === 'en' ? 'Color' : '색상'}</label>
+                    <select
+                      value={selectedColor}
+                      onChange={(e) => {
+                        const c = e.target.value;
+                        setSelectedColor(c);
+                        const sizes = sizeOptions(selectedProduct, c);
+                        setSelectedSize(sizes[0]?.size || '');
+                        setPickQty(1);
+                      }}
+                      className="form-select"
+                    >
+                      {colorOptions(selectedProduct).map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ flex: 1, minWidth: '130px' }}>
+                    <label className="form-label">{lang === 'en' ? 'Size' : '사이즈'}</label>
+                    <select
+                      value={selectedSize}
+                      onChange={(e) => { setSelectedSize(e.target.value); setPickQty(1); }}
+                      className="form-select"
+                    >
+                      {sizeOptions(selectedProduct, selectedColor).map(v => (
+                        <option key={v.size} value={v.size}>{v.size} ({v.available}개 가능)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ width: '90px' }}>
+                    <label className="form-label">{lang === 'en' ? 'Qty' : '수량'}</label>
+                    <input
+                      type="number" min={1} max={Math.max(1, currentAvailable)}
+                      value={pickQty}
+                      onChange={(e) => setPickQty(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'end' }}>
+                    <button type="button" className="btn-secondary" onClick={addItem} disabled={currentAvailable < 1}>
+                      <Plus size={14} /> 추가{currentAvailable > 0 ? ` (${currentAvailable}개 가능)` : ''}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' }}>
@@ -303,6 +431,11 @@ export function ManualOrderModal({ onClose, onCreated }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: '10px' }}>
               <span>상품 합계</span><span>{formatKRW(subtotal)}</span>
             </div>
+            {couponDiscount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#15803d' }}>
+                <span>쿠폰 할인 ({appliedCoupon.code})</span><span>−{formatKRW(couponDiscount)}</span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
               <span>배송비</span><span>{formatKRW(shipping)}</span>
             </div>
@@ -310,8 +443,35 @@ export function ManualOrderModal({ onClose, onCreated }) {
               <span>{lang === 'en' ? 'Total' : '합계'}</span><span>{formatKRW(total)}</span>
             </div>
             <div style={{ marginTop: '8px' }}>
-              <label className="form-label">쿠폰 코드 (선택)</label>
-              <input value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} className="form-input" placeholder="SAVE10" maxLength={40} />
+              <label className="form-label">{lang === 'en' ? 'Coupon (optional)' : '쿠폰 코드 (선택)'}</label>
+              {appliedCoupon ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '8px 12px', fontSize: '0.85rem' }}>
+                  <span><strong style={{ color: '#15803d' }}>✓ {appliedCoupon.code}</strong> <span style={{ color: '#15803d' }}>−{formatKRW(appliedCoupon.discount)}</span></span>
+                  <button type="button" onClick={clearCoupon} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#71717a' }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    value={couponInput}
+                    onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(''); }}
+                    className="form-input"
+                    placeholder="SAVE10"
+                    maxLength={40}
+                    disabled={checkingCoupon}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCouponCheck}
+                    disabled={checkingCoupon || !couponInput.trim() || items.length === 0}
+                    className="btn-secondary"
+                    style={{ padding: '8px 16px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                  >
+                    {checkingCoupon ? (lang === 'en' ? 'Checking...' : '확인 중...') : (lang === 'en' ? 'Check' : '확인')}
+                  </button>
+                </div>
+              )}
+              {couponError && <p style={{ fontSize: '0.78rem', color: '#dc2626', marginTop: '6px' }}>{couponError}</p>}
             </div>
           </div>
 

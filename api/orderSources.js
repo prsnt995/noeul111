@@ -1,15 +1,14 @@
 // Shared order-source definitions for manual / external orders.
-// Single source of truth for allowed channels (website + SNS/phone).
+// Single source of truth for allowed channels (website + Instagram/TikTok).
 // Used by api/admin.js (Supabase) and tested in test/manual-orders.test.js.
 // Keep in sync with server/lib/orderSources.js and src/utils/orderSources.js.
 
-export const ORDER_SOURCES = ['website', 'instagram', 'whatsapp', 'phone', 'other'];
+export const ORDER_SOURCES = ['website', 'instagram', 'tiktok', 'other'];
 
 export const ORDER_SOURCE_LABELS = {
   website: { ko: '웹사이트', en: 'Website' },
   instagram: { ko: '인스타그램', en: 'Instagram' },
-  whatsapp: { ko: '왓츠앱', en: 'WhatsApp' },
-  phone: { ko: '전화', en: 'Phone' },
+  tiktok: { ko: '틱톡', en: 'TikTok' },
   other: { ko: '기타', en: 'Other' },
 };
 

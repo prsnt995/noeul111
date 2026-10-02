@@ -366,6 +366,12 @@ export function registerAdminRoutes(app, ctx) {
       colors: [...new Map(list.map(v => [v.color, { name_ko: v.color, name_en: v.color, hex: v.swatch || '' }])).values()],
       images: (media || []).map(m => m.url),
       media: media || [],
+      // Raw variants (id/color/size/stock/reserved) for the manual-order
+      // picker, which hides out-of-stock color/size combos per variant.
+      variants: list.map(v => ({
+        id: v.id, color: v.color, size: v.size, stock: v.stock || 0,
+        reserved: v.reserved || 0, active: v.active !== false, sku: v.sku,
+      })),
       stock: list.reduce((s, v) => s + (v.stock || 0), 0),
       status: p.is_active ? 'active' : 'hidden',
       is_new: !!p.is_new,
@@ -756,6 +762,25 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPONS_UNAVAILABLE'); }
   });
 
+  // Coupon pre-check for the manual-order modal: validates the code against
+  // the current draft subtotal and returns the discount, so the admin sees
+  // the result before saving. Same rules as the manual-create path.
+  app.get('/api/v1/admin/coupons/validate', ...need(R.orders), async (req, res) => {
+    try {
+      const code = String(req.query.code || '').toUpperCase().trim();
+      const subtotal = Number(req.query.subtotal || 0);
+      if (!code) return error(res, 400, 'COUPON_CODE_REQUIRED');
+      if (!Number.isFinite(subtotal) || subtotal < 0) return error(res, 400, 'INVALID_SUBTOTAL');
+      const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle();
+      if (!coupon) return error(res, 404, 'COUPON_INVALID');
+      const today = new Date().toISOString();
+      if (coupon.starts_at > today || coupon.ends_at < today) return error(res, 400, 'COUPON_EXPIRED');
+      if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) return error(res, 400, 'COUPON_LIMIT_REACHED');
+      if (subtotal < (coupon.minimum || 0)) return error(res, 400, 'COUPON_MINIMUM_NOT_MET');
+      res.json({ success: true, data: { code: coupon.code, discount: Math.min(subtotal, coupon.amount || 0) } });
+    } catch { error(res, 503, 'COUPONS_UNAVAILABLE'); }
+  });
+
   app.post('/api/v1/admin/coupons', ...need(R.catalog), async (req, res) => {
     try {
       const { row, error: err } = couponFromLegacy(req.body || {}, true);
@@ -869,7 +894,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); }
   });
 
-  // Manual / external order creation (Instagram, WhatsApp, phone, other).
+  // Manual / external order creation (Instagram, TikTok, other).
   // Bank-transfer verify flow only: always starts pending_payment so stock is
   // reserved and payment is confirmed via the existing verify-payment path.
   // Stock handling mirrors the storefront JS fallback (reserve + compensate).
