@@ -12,18 +12,22 @@ import {
   buildListParams,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Star, Trash2, Sparkles } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
 export function AdminReviewsPage() {
+  // List state lives in the URL (?page=&search=&sort=&order=&status=).
+  const listParams = useListParams({ keys: ['page', 'search', 'sort', 'order', 'status'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
+  const sort = { key: pv.sort || 'created_at', dir: pv.order === 'asc' ? 'asc' : 'desc' };
+  const status = pv.status || 'all';
   const [reviews, setReviews] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
-  const [status, setStatus] = useState('all');
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [deleteId, setDeleteId] = useState(null);
@@ -49,11 +53,11 @@ export function AdminReviewsPage() {
 
   useEffect(() => {
     fetchReviews();
-  }, [page, sort, status, search]);
+  }, [pv]);
 
   const handleSort = (key) => {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
-    setPage(1);
+    const dir = sort.key === key ? (sort.dir === 'asc' ? 'desc' : 'asc') : 'desc';
+    listParams.set({ sort: key, order: dir });
   };
 
   const handleToggleStatus = async (id, currentStatus) => {
@@ -209,11 +213,12 @@ export function AdminReviewsPage() {
 
       <Filters
         searchValue={search}
-        onSearch={(v) => { setSearch(v); setPage(1); }}
+        onSearch={(v) => listParams.set({ search: v })}
+        onReset={listParams.reset}
         searchPlaceholder="리뷰 내용 검색 Search reviews…"
         selects={[
           {
-            name: 'status', value: status, onChange: (v) => { setStatus(v); setPage(1); }, ariaLabel: '리뷰 상태 Review status',
+            name: 'status', value: status, onChange: (v) => listParams.set({ status: v }), ariaLabel: '리뷰 상태 Review status', label: '상태 Status',
             options: [
               { value: 'all', label: '전체 상태 All' },
               { value: 'approved', label: '노출 승인 Approved' },
@@ -236,7 +241,7 @@ export function AdminReviewsPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <ConfirmModal

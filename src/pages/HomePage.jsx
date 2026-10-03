@@ -3,6 +3,8 @@ import { useLocation, useSearch } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { BestSellersCarousel } from '../components/home/BestSellersCarousel.jsx';
+import { GenderSegmented } from '../components/common/GenderSegmented.jsx';
+import { FilterChips } from '../components/common/FilterChips.jsx';
 import { CATEGORIES_BY_GENDER } from '../data/products.js';
 import { api } from '../utils/api.js';
 
@@ -182,6 +184,13 @@ export function HomePage() {
     setLocation('/');
   };
 
+  const handleSearchClear = () => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('search');
+    const qs = params.toString();
+    setLocation(qs ? `/?${qs}` : '/');
+  };
+
   const activeContextLabel = () => {
     const parts = [];
     if (selectedGender !== 'all') {
@@ -247,38 +256,17 @@ export function HomePage() {
       >
         {/* Row 1: gender segmented + count */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', overflowX: 'auto', scrollbarWidth: 'none' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-            {[
-              { key: 'all', label: t('nav.all') },
-              { key: 'men', label: t('nav.men') },
-              { key: 'women', label: t('nav.women') },
-            ].map((item) => {
-              const isSelected = selectedGender === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => handleGenderSwitch(item.key)}
-                  aria-pressed={isSelected}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '0.75rem',
-                    fontWeight: isSelected ? 700 : 500,
-                    letterSpacing: '0.08em',
-                    color: isSelected ? '#000000' : '#888888',
-                    borderBottom: isSelected ? '1.5px solid #000000' : '1.5px solid transparent',
-                    paddingBottom: '2px',
-                    paddingLeft: '2px',
-                    paddingRight: '2px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
+          <div style={{ flexShrink: 0 }}>
+            <GenderSegmented
+              value={selectedGender}
+              ariaLabel={t('nav.all')}
+              options={[
+                { key: 'all', label: t('nav.all') },
+                { key: 'men', label: t('nav.men') },
+                { key: 'women', label: t('nav.women') },
+              ]}
+              onChange={handleGenderSwitch}
+            />
           </div>
 
           <div
@@ -302,7 +290,7 @@ export function HomePage() {
         </div>
 
         {/* Row 2: category pills */}
-        <div className="home-category-pills" role="tablist" aria-label={t('home.shop_by_category')}>
+        <div className="home-category-pills edge-fade" role="tablist" aria-label={t('home.shop_by_category')}>
           <button
             type="button"
             role="tab"
@@ -329,7 +317,7 @@ export function HomePage() {
           })}
         </div>
 
-        {/* Row 3: quick filters (same-page, mirrors drawer) + context */}
+        {/* Row 3: quick filters (same-page, mirrors drawer) + active chips */}
         <div className="home-quick-row">
           <div className="home-category-pills home-quick-pills" role="tablist" aria-label={t('shop.filters')}>
             {[
@@ -362,6 +350,39 @@ export function HomePage() {
             </div>
           )}
         </div>
+
+        {/* Row 4: active-filter chips with per-filter clear */}
+        {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
+          <FilterChips
+            chips={[
+              ...(selectedGender !== 'all' ? [{
+                key: 'gender',
+                label: selectedGender === 'men' ? t('nav.men') : t('nav.women'),
+                onClear: () => handleGenderSwitch('all'),
+              }] : []),
+              ...(selectedCategory !== 'all' ? [{
+                key: 'category',
+                label: (() => {
+                  const c = availableCategories.find((x) => x.key === selectedCategory);
+                  return c ? categoryLabel(c) : selectedCategory;
+                })(),
+                onClear: () => handleCategorySelect('all'),
+              }] : []),
+              ...(activeFilter ? [{
+                key: 'filter',
+                label: activeFilter === 'new' ? t('nav.new_arrivals') : activeFilter === 'best' ? t('nav.best_sellers') : t('nav.sale'),
+                onClear: () => handleFilterSelect(''),
+              }] : []),
+              ...(searchQuery ? [{
+                key: 'search',
+                label: `“${searchQuery}”`,
+                onClear: handleSearchClear,
+              }] : []),
+            ]}
+            onResetAll={handleReset}
+            resetLabel={t('shop.reset_filters')}
+          />
+        )}
       </div>
 
       {/* =========================================================

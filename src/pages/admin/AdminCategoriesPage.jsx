@@ -7,20 +7,25 @@ import {
   ConfirmModal,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { CardGridSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import { Plus, Edit2, Trash2, FolderTree, X, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 
 export function AdminCategoriesPage() {
+  // Filter state lives in the URL (?search=&gender=&status=) — client-side
+  // filtering over the full category list.
+  const listParams = useListParams({ keys: ['search', 'gender', 'status'] });
+  const pv = listParams.values;
+  const search = pv.search || '';
+  const genderFilter = pv.gender || 'all';
+  const statusFilter = pv.status || 'all';
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-  const [search, setSearch] = useState('');
-  const [genderFilter, setGenderFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [errorMsg, setErrorMsg] = useState('');
   const { showToast } = useToast();
 
@@ -232,11 +237,12 @@ export function AdminCategoriesPage() {
         {/* Filters */}
         <Filters
           searchValue={search}
-          onSearch={setSearch}
+          onSearch={(v) => listParams.set({ search: v })}
+          onReset={listParams.reset}
           searchPlaceholder="슬러그, 한글/영문명 검색 Search…"
           selects={[
             {
-              name: 'gender', value: genderFilter, onChange: setGenderFilter, ariaLabel: '성별 Gender',
+              name: 'gender', value: genderFilter, onChange: (v) => listParams.set({ gender: v }), ariaLabel: '성별 Gender', label: '성별 Gender',
               options: [
                 { value: 'all', label: '전체 성별 All' },
                 { value: 'unisex', label: 'Unisex' },
@@ -245,7 +251,7 @@ export function AdminCategoriesPage() {
               ],
             },
             {
-              name: 'status', value: statusFilter, onChange: setStatusFilter, ariaLabel: '상태 Status',
+              name: 'status', value: statusFilter, onChange: (v) => listParams.set({ status: v }), ariaLabel: '상태 Status', label: '상태 Status',
               options: [
                 { value: 'all', label: '전체 상태 All' },
                 { value: 'active', label: '활성만 Active' },

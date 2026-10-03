@@ -9,6 +9,7 @@ import {
   Drawer,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Eye } from 'lucide-react';
 
@@ -17,12 +18,16 @@ const PAGE_SIZE = 20;
 // Read-only audit trail (GET /api/v1/admin/audit-logs, latest 200).
 // The backend keeps this insert-only and best-effort by design.
 export function AdminAuditPage() {
+  // Filter state lives in the URL (?page=&search=&action=) — client-side
+  // filtering over the latest 200 log rows.
+  const listParams = useListParams({ keys: ['page', 'search', 'action'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
+  const actionFilter = pv.action || 'all';
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [search, setSearch] = useState('');
-  const [actionFilter, setActionFilter] = useState('all');
-  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const { showToast } = useToast();
 
@@ -118,11 +123,12 @@ export function AdminAuditPage() {
 
       <Filters
         searchValue={search}
-        onSearch={(v) => { setSearch(v); setPage(1); }}
+        onSearch={(v) => listParams.set({ search: v })}
+        onReset={listParams.reset}
         searchPlaceholder="작업·대상·수행자 검색 Search…"
         selects={[
           {
-            name: 'action', value: actionFilter, onChange: (v) => { setActionFilter(v); setPage(1); }, ariaLabel: '작업 종류 Action',
+            name: 'action', value: actionFilter, onChange: (v) => listParams.set({ action: v }), ariaLabel: '작업 종류 Action', label: '작업 Action',
             options: [{ value: 'all', label: '전체 작업 All actions' }, ...actions.map((a) => ({ value: a, label: a }))],
           },
         ]}
@@ -142,7 +148,7 @@ export function AdminAuditPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <Drawer

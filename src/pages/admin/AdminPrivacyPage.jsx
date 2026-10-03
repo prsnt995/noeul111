@@ -11,6 +11,7 @@ import {
   ConfirmModal,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Eye } from 'lucide-react';
 
@@ -29,15 +30,19 @@ const STATUS_PILL = {
   rejected: { label: '반려 Rejected', status: 'cancelled' },
 };
 
-// Read-only privacy request inbox (GET /api/v1/admin/privacy-requests).
-// There is no status-update endpoint yet — processing happens out of band.
+// Privacy request inbox (GET list + PATCH resolve via
+// /api/v1/admin/privacy-requests/:id).
 export function AdminPrivacyPage() {
+  // Filter state lives in the URL (?page=&search=&status=) — client-side
+  // filtering over the latest 100 requests.
+  const listParams = useListParams({ keys: ['page', 'search', 'status'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
+  const statusFilter = pv.status || 'all';
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [resolveAction, setResolveAction] = useState(null);
   const [resolving, setResolving] = useState(false);
@@ -153,11 +158,12 @@ export function AdminPrivacyPage() {
 
       <Filters
         searchValue={search}
-        onSearch={(v) => { setSearch(v); setPage(1); }}
+        onSearch={(v) => listParams.set({ search: v })}
+        onReset={listParams.reset}
         searchPlaceholder="요청자·종류 검색 Search…"
         selects={[
           {
-            name: 'status', value: statusFilter, onChange: (v) => { setStatusFilter(v); setPage(1); }, ariaLabel: '처리 상태 Status',
+            name: 'status', value: statusFilter, onChange: (v) => listParams.set({ status: v }), ariaLabel: '처리 상태 Status', label: '상태 Status',
             options: [
               { value: 'all', label: '전체 상태 All' },
               { value: 'pending', label: '대기중 Pending' },
@@ -183,7 +189,7 @@ export function AdminPrivacyPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <Drawer

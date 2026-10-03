@@ -19,7 +19,7 @@ export function CategorySidebar({ categories, selectedCategory, onSelect, sticky
 
   return (
     <div
-      className="noeul-category-bar"
+      className="noeul-category-bar edge-fade"
       style={{
         borderBottom: '1px solid #f0f0f0',
         padding: '8px 12px',

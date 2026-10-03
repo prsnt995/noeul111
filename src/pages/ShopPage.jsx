@@ -3,6 +3,9 @@ import { useSearchParams } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { CategorySidebar } from '../components/common/CategorySidebar.jsx';
+import { GenderSegmented } from '../components/common/GenderSegmented.jsx';
+import { Dropdown } from '../components/common/Dropdown.jsx';
+import { FilterChips } from '../components/common/FilterChips.jsx';
 import { CATEGORIES_BY_GENDER } from '../data/products.js';
 import { api } from '../utils/api.js';
 import { SlidersHorizontal, X, ChevronRight } from 'lucide-react';
@@ -141,32 +144,18 @@ export function ShopPage() {
           scrollbarWidth: 'none',
         }}
       >
-        {/* Left: Category Navigation Bar (ALL / MEN / WOMEN — mirrors homepage) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          {['all', 'men', 'women'].map((g) => {
-            const isSelected = selectedGender === g;
-            return (
-              <button
-                key={g}
-                type="button"
-                onClick={() => updateUrl(g, 'all', undefined, undefined, undefined)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '0.75rem',
-                  fontWeight: isSelected ? 700 : 500,
-                  letterSpacing: '0.08em',
-                  color: isSelected ? '#000000' : '#888888',
-                  borderBottom: isSelected ? '1.5px solid #000000' : '1.5px solid transparent',
-                  paddingBottom: '2px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {g === 'all' ? t('nav.all') : g === 'men' ? t('nav.men') : t('nav.women')}
-              </button>
-            );
-          })}
+        {/* Left: Gender segmented control (mirrors homepage) */}
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          <GenderSegmented
+            value={selectedGender}
+            ariaLabel={t('shop.filters')}
+            options={[
+              { key: 'all', label: t('nav.all') },
+              { key: 'men', label: t('nav.men') },
+              { key: 'women', label: t('nav.women') },
+            ]}
+            onChange={(g) => updateUrl(g, 'all', undefined, undefined, undefined)}
+          />
         </div>
 
         {/* Selected Subcategory Indicator */}
@@ -188,33 +177,55 @@ export function ShopPage() {
           );
         })()}
 
-        {/* Right: Item Count & Sort Selector — pinned so it never
+        {/* Right: Item Count & Sort Dropdown — pinned so it never
             scrolls off-canvas when the category chip is present */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, marginLeft: 'auto', position: 'sticky', right: 0, backgroundColor: '#ffffff', paddingLeft: '12px', zIndex: 1 }}>
-          <span style={{ fontSize: '0.6875rem', color: '#888888', fontWeight: 500 }}>
+          <span style={{ fontSize: '0.6875rem', color: '#888888', fontWeight: 500 }} aria-live="polite">
             {loading ? '...' : `${products.length} ${t('home.items')}`}
           </span>
-          <select
+          <Dropdown
             value={sortBy}
-            onChange={(e) => updateUrl(undefined, undefined, undefined, undefined, e.target.value)}
-            style={{
-              padding: '2px 6px',
-              fontSize: '0.75rem',
-              border: '1px solid #e4e4e7',
-              borderRadius: '2px',
-              backgroundColor: '#ffffff',
-              color: '#18181b',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="newest">{t('shop.sort_newest')}</option>
-            <option value="best">{t('shop.sort_best')}</option>
-            <option value="price_asc">{t('shop.sort_price_low')}</option>
-            <option value="price_desc">{t('shop.sort_price_high')}</option>
-          </select>
+            ariaLabel={t('shop.filters')}
+            options={[
+              { value: 'newest', label: t('shop.sort_newest') },
+              { value: 'best', label: t('shop.sort_best') },
+              { value: 'price_asc', label: t('shop.sort_price_low') },
+              { value: 'price_desc', label: t('shop.sort_price_high') },
+            ]}
+            onChange={(v) => updateUrl(undefined, undefined, undefined, undefined, v)}
+          />
         </div>
       </div>
+
+      {/* Active-filter chips (only when something is applied) */}
+      {(selectedCategory !== 'all' || activeFilter || searchQuery) && (
+        <div style={{ padding: '8px 12px 0', backgroundColor: '#ffffff' }}>
+          <FilterChips
+            chips={[
+              ...(selectedCategory !== 'all' ? [{
+                key: 'category',
+                label: (() => {
+                  const catObj = availableCategories.find((c) => c.key === selectedCategory);
+                  return catObj ? (lang === 'ko' ? catObj.label_ko : catObj.label) : selectedCategory;
+                })(),
+                onClear: () => updateUrl(undefined, 'all', undefined, undefined, undefined),
+              }] : []),
+              ...(activeFilter ? [{
+                key: 'filter',
+                label: activeFilter === 'new' ? t('nav.new_arrivals') : activeFilter === 'best' ? t('nav.best_sellers') : t('nav.sale'),
+                onClear: () => updateUrl(undefined, undefined, '', undefined, undefined),
+              }] : []),
+              ...(searchQuery ? [{
+                key: 'search',
+                label: `“${searchQuery}”`,
+                onClear: () => updateUrl(undefined, undefined, undefined, '', undefined),
+              }] : []),
+            ]}
+            onResetAll={() => updateUrl('all', 'all', '', '', 'newest')}
+            resetLabel={t('shop.reset_filters')}
+          />
+        </div>
+      )}
 
       {/* Horizontal Category Bar (static: the gender sub-bar above stays sticky) */}
       <CategorySidebar

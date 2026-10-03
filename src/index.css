@@ -721,6 +721,195 @@ img {
 @media (max-width: 768px) {
   .best-carousel-section { padding: 14px 8px 4px; }
   .best-carousel-title { font-size: 1.25rem; }
-  .best-carousel-track { gap: 8px; }
   .best-carousel-arrow { width: 28px; height: 28px; }
+}
+
+/* ============================================================
+   Premium filter system — segmented pills, custom dropdown, chips
+   ============================================================ */
+
+/* Segmented pill group with sliding indicator */
+.pill-group {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: #f4f4f5;
+  border: 1px solid #e9e9ec;
+  border-radius: 9999px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pill-group::-webkit-scrollbar { display: none; }
+.pill-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 0;
+  background: #18181b;
+  border-radius: 9999px;
+  box-shadow: 0 2px 8px rgba(24, 24, 27, 0.25);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+.pill-group button {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 7px 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: #71717a;
+  cursor: pointer;
+  transition: color 0.2s ease, transform 0.12s ease;
+}
+.pill-group button:hover { color: #18181b; }
+.pill-group button.active { color: #ffffff; }
+.pill-group button:active { transform: scale(0.96); }
+.pill-group button:focus-visible { outline: 2px solid #18181b; outline-offset: 2px; }
+
+/* Category pills: elevated active state + edge fades */
+.edge-fade {
+  mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+}
+.home-pill { transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease; }
+.home-pill:active { transform: scale(0.95); }
+.home-pill.active { box-shadow: 0 3px 10px rgba(24, 24, 27, 0.28); }
+.home-pill:focus-visible { outline: 2px solid #18181b; outline-offset: 2px; }
+.home-pill .pill-count {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: inherit;
+}
+.home-pill.active .pill-count { background: rgba(255, 255, 255, 0.22); }
+.home-chip.sale.active { box-shadow: 0 3px 10px rgba(225, 29, 72, 0.35); }
+
+/* Custom dropdown (storefront light theme) */
+.fancy-select { position: relative; display: inline-block; }
+.fancy-select-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #71717a;
+  margin-bottom: 4px;
+}
+.fancy-select-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #18181b;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 9999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.fancy-select-btn:hover { border-color: #18181b; }
+.fancy-select-btn:focus-visible { outline: 2px solid #18181b; outline-offset: 2px; }
+.fancy-select-chevron { transition: transform 0.18s ease; color: #71717a; }
+.fancy-select-chevron.open { transform: rotate(180deg); }
+.fancy-select-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  max-width: min(280px, calc(100vw - 32px));
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
+  z-index: 120;
+  animation: fancyPop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes fancyPop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.fancy-select-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #27272a;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.fancy-select-opt small { margin-left: auto; font-size: 0.7rem; color: #a1a1aa; }
+.fancy-select-opt.focused { background: #f4f4f5; }
+.fancy-select-opt.selected { font-weight: 700; color: #18181b; }
+.fancy-select-check { margin-left: auto; color: #18181b; }
+.fancy-select-opt.selected small + .fancy-select-check,
+.fancy-select-opt.selected .fancy-select-check { margin-left: 4px; }
+
+/* Active-filter chips */
+.filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 2px 0 0;
+  animation: chipIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes chipIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #18181b;
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.filter-chip:hover { border-color: #18181b; background: #ececee; }
+.filter-chip svg { color: #71717a; }
+.filter-chip:focus-visible { outline: 2px solid #18181b; outline-offset: 2px; }
+.filter-chips-reset {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #71717a;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 4px;
+}
+.filter-chips-reset:hover { color: #18181b; }
+.filter-count { font-size: 0.72rem; color: #71717a; margin-left: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill-indicator, .fancy-select-pop, .filter-chips, .home-pill, .pill-group button { transition: none; animation: none; }
 }

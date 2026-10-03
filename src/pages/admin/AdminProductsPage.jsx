@@ -12,6 +12,7 @@ import {
   buildListParams,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
@@ -63,17 +64,20 @@ const cellHeadStyle = {
 };
 
 export function AdminProductsPage() {
+  // List state lives in the URL (?page=&search=&sort=&order=&category=&…).
+  const listParams = useListParams({ keys: ['page', 'search', 'sort', 'order', 'category', 'stockStatus', 'filterType'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
+  const sort = { key: pv.sort || 'id', dir: pv.order === 'asc' ? 'asc' : 'desc' };
+  const selectedCategory = pv.category || 'all';
+  const stockFilter = pv.stockStatus || 'all';
+  const specialFilter = pv.filterType || 'all';
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [stockFilter, setStockFilter] = useState('all');
-  const [specialFilter, setSpecialFilter] = useState('all');
   const [errorMsg, setErrorMsg] = useState('');
-  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [sort, setSort] = useState({ key: 'id', dir: 'desc' });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -159,13 +163,11 @@ export function AdminProductsPage() {
 
   useEffect(() => {
     fetchProducts();
-  }, [selectedCategory, stockFilter, specialFilter, page, sort, search]);
-
-  const resetPage = (fn) => (v) => { fn(v); setPage(1); };
+  }, [pv]);
 
   const handleSort = (key) => {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
-    setPage(1);
+    const dir = sort.key === key ? (sort.dir === 'asc' ? 'desc' : 'asc') : 'desc';
+    listParams.set({ sort: key, order: dir });
   };
 
   const openAddModal = () => {
@@ -647,18 +649,19 @@ export function AdminProductsPage() {
 
         <Filters
           searchValue={search}
-          onSearch={(v) => { setSearch(v); setPage(1); }}
+          onSearch={(v) => listParams.set({ search: v })}
+          onReset={listParams.reset}
           searchPlaceholder="상품명, SKU, ID 검색 Search…"
           selects={[
             {
-              name: 'category', value: selectedCategory, onChange: resetPage(setSelectedCategory), ariaLabel: '카테고리 Category',
+              name: 'category', value: selectedCategory, onChange: (v) => listParams.set({ category: v }), ariaLabel: '카테고리 Category', label: '카테고리 Category',
               options: [
                 { value: 'all', label: '전체 카테고리 (All Categories)' },
                 ...categories.map((c) => ({ value: String(c.id), label: `${c.name_ko} (${c.name_en})` })),
               ],
             },
             {
-              name: 'special', value: specialFilter, onChange: resetPage(setSpecialFilter), ariaLabel: '특별 필터 Special filter',
+              name: 'special', value: specialFilter, onChange: (v) => listParams.set({ filterType: v }), ariaLabel: '특별 필터 Special filter', label: '필터 Filter',
               options: [
                 { value: 'all', label: '전체 필터 (All Items)' },
                 { value: 'new', label: '⭐ New Arrivals (신상품)' },
@@ -669,7 +672,7 @@ export function AdminProductsPage() {
               ],
             },
             {
-              name: 'stock', value: stockFilter, onChange: resetPage(setStockFilter), ariaLabel: '재고 수량 Stock level',
+              name: 'stock', value: stockFilter, onChange: (v) => listParams.set({ stockStatus: v }), ariaLabel: '재고 수량 Stock level', label: '재고 Stock',
               options: [
                 { value: 'all', label: '전체 수량 필터 All' },
                 { value: 'in', label: '재고 원활 (> 15개)' },
@@ -711,7 +714,7 @@ export function AdminProductsPage() {
         />
 
         <div style={{ marginTop: 12 }}>
-          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
         </div>
 
         <ConfirmModal

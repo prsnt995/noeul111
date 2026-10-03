@@ -104,6 +104,46 @@
 .adm-card { background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: var(--adm-radius); box-shadow: var(--adm-shadow); }
 .adm-filter-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 12px; }
 .adm-filter-bar .adm-search { position: relative; flex: 1; min-width: 200px; max-width: 340px; }
+
+/* Premium admin filters: custom dropdowns + chips */
+.adm-filter-group { display: flex; flex-direction: column; gap: 0; }
+.adm-filter-group .fancy-select-label { margin-bottom: 5px; }
+.adm-filter-bar .fancy-select-btn {
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--adm-border);
+  color: var(--adm-text);
+}
+.adm-filter-bar .fancy-select-btn:hover { border-color: var(--adm-text); }
+.adm-filter-bar .fancy-select-btn:focus-visible { outline: 2px solid var(--adm-text); outline-offset: 2px; }
+.adm-filter-bar .fancy-select-pop { right: auto; left: 0; }
+.adm-filter-bar .fancy-select-opt { color: var(--adm-text-2); }
+.adm-filter-bar .fancy-select-opt.focused { background: var(--adm-bg); }
+.adm-filter-bar .fancy-select-opt.selected { color: var(--adm-text); }
+.adm-filter-bar .fancy-select-check { color: var(--adm-accent); }
+.adm-filter-chips { flex-basis: 100%; padding-top: 2px; }
+.adm-filter-chips .filter-chip { background: #fff; }
+.adm-filter-chips .filter-chip:hover { border-color: var(--adm-text); background: var(--adm-bg); }
+.adm-filter-total { margin-left: auto; font-size: 0.78rem; color: var(--adm-text-3); }
+.adm-filter-total strong { color: var(--adm-text); }
+
+/* Bottom-sheet dropdowns on small screens */
+@media (max-width: 767px) {
+  .fancy-select-pop {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: 12px;
+    min-width: 0;
+    max-width: none;
+    max-height: 55vh;
+    border-radius: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adm-filter-chips .filter-chips { animation: none; }
+}
 .adm-input, .adm-select {
   width: 100%; padding: 9px 12px; font-size: 0.875rem; border: 1px solid var(--adm-border);
   border-radius: 8px; background: #fff; color: var(--adm-text);

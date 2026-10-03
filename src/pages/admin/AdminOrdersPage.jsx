@@ -15,6 +15,7 @@ import {
   buildListParams,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { toCsv, downloadCsv, csvFilename } from '../../utils/csv.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -63,16 +64,20 @@ const PAGE_SIZE = 20;
 const updateFirestoreOrderStatus = async () => {};
 
 export function AdminOrdersPage() {
+  // List state lives in the URL (?page=&search=&sort=&order=&status=&…):
+  // back-nav, reload, and shared links restore the exact view.
+  const listParams = useListParams({ keys: ['page', 'search', 'sort', 'order', 'status', 'payment_status', 'source'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
+  const sort = { key: pv.sort || 'created_at', dir: pv.order === 'asc' ? 'asc' : 'desc' };
+  const selectedStatus = pv.status || 'all';
+  const selectedPaymentStatus = pv.payment_status || 'all';
+  const selectedSource = pv.source || 'all';
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('all');
-  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('all');
-  const [selectedSource, setSelectedSource] = useState('all');
-  const [search, setSearch] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState(null);
@@ -119,13 +124,11 @@ export function AdminOrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, [selectedStatus, selectedPaymentStatus, selectedSource, page, sort, search]);
-
-  const resetPage = (fn) => (v) => { fn(v); setPage(1); };
+  }, [pv]);
 
   const handleSort = (key) => {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'amount' ? 'desc' : 'desc' }));
-    setPage(1);
+    const dir = sort.key === key ? (sort.dir === 'asc' ? 'desc' : 'asc') : 'desc';
+    listParams.set({ sort: key, order: dir });
   };
 
   const handleUpdateStatus = async (id, nextStatus) => {
@@ -414,16 +417,17 @@ export function AdminOrdersPage() {
 
       <Filters
         searchValue={search}
-        onSearch={(v) => { setSearch(v); setPage(1); }}
+        onSearch={(v) => listParams.set({ search: v })}
+        onReset={listParams.reset}
         searchPlaceholder="주문번호, 고객명, 입금자명, 연락처 Search…"
         selects={[
           {
-            name: 'source', value: selectedSource, onChange: resetPage(setSelectedSource), ariaLabel: '주문 채널 Channel',
+            name: 'source', value: selectedSource, onChange: (v) => listParams.set({ source: v }), ariaLabel: '주문 채널 Channel', label: '채널 Channel',
             options: [{ value: 'all', label: lang === 'en' ? 'All channels' : '전체 채널' },
               ...ORDER_SOURCES.map((s) => ({ value: s, label: `${sourceLabel(s, 'ko')} (${sourceLabel(s, 'en')})` }))],
           },
           {
-            name: 'payment_status', value: selectedPaymentStatus, onChange: resetPage(setSelectedPaymentStatus), ariaLabel: '결제 상태 Payment status',
+            name: 'payment_status', value: selectedPaymentStatus, onChange: (v) => listParams.set({ payment_status: v }), ariaLabel: '결제 상태 Payment status', label: '결제 상태 Payment',
             options: [
               { value: 'all', label: '전체 결제 상태 All' },
               { value: 'under_review', label: '⭐ 입금 확인 요청 (검수 대기중)' },
@@ -432,7 +436,7 @@ export function AdminOrdersPage() {
             ],
           },
           {
-            name: 'status', value: selectedStatus, onChange: resetPage(setSelectedStatus), ariaLabel: '주문 상태 Order status',
+            name: 'status', value: selectedStatus, onChange: (v) => listParams.set({ status: v }), ariaLabel: '주문 상태 Order status', label: '주문 상태 Status',
             options: [
               { value: 'all', label: '전체 주문 상태 All' },
               { value: 'pending_verification', label: '검수 대기' },
@@ -475,7 +479,7 @@ export function AdminOrdersPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <ConfirmModal

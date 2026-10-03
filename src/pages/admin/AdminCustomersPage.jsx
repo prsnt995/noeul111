@@ -11,6 +11,7 @@ import {
   buildListParams,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { toCsv, downloadCsv, csvFilename } from '../../utils/csv.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -19,12 +20,15 @@ import { Eye, MapPin, Phone, Mail, Calendar, Ban, Download } from 'lucide-react'
 const PAGE_SIZE = 20;
 
 export function AdminCustomersPage() {
+  // List state lives in the URL (?page=&search=&sort=&order=).
+  const listParams = useListParams({ keys: ['page', 'search', 'sort', 'order'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
+  const sort = { key: pv.sort || 'created_at', dir: pv.order === 'asc' ? 'asc' : 'desc' };
   const [customers, setCustomers] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
@@ -58,11 +62,11 @@ export function AdminCustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
-  }, [page, sort, search]);
+  }, [pv]);
 
   const handleSort = (key) => {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
-    setPage(1);
+    const dir = sort.key === key ? (sort.dir === 'asc' ? 'desc' : 'asc') : 'desc';
+    listParams.set({ sort: key, order: dir });
   };
 
   // CSV export of the current search (all pages, capped at 1000 rows).
@@ -198,7 +202,8 @@ export function AdminCustomersPage() {
 
       <Filters
         searchValue={search}
-        onSearch={(v) => { setSearch(v); setPage(1); }}
+        onSearch={(v) => listParams.set({ search: v })}
+        onReset={listParams.reset}
         searchPlaceholder="이름, 이메일 검색 Search…"
       >
         <span style={{ fontSize: '0.8125rem', color: '#71717a', marginLeft: 'auto' }}>
@@ -218,7 +223,7 @@ export function AdminCustomersPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       {/* Customer Detail Drawer */}

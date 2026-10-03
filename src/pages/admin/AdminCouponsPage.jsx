@@ -12,6 +12,7 @@ import {
   buildListParams,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Plus, Edit2, Trash2, X } from 'lucide-react';
@@ -19,11 +20,14 @@ import { Plus, Edit2, Trash2, X } from 'lucide-react';
 const PAGE_SIZE = 20;
 
 export function AdminCouponsPage() {
+  // List state lives in the URL (?page=&search=&sort=&order=).
+  const listParams = useListParams({ keys: ['page', 'search', 'sort', 'order'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
+  const sort = { key: pv.sort || 'code', dir: pv.order === 'desc' ? 'desc' : 'asc' };
   const [coupons, setCoupons] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState({ key: 'code', dir: 'asc' });
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [deleteId, setDeleteId] = useState(null);
@@ -67,11 +71,11 @@ export function AdminCouponsPage() {
 
   useEffect(() => {
     fetchCoupons();
-  }, [page, sort, search]);
+  }, [pv]);
 
   const handleSort = (key) => {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
-    setPage(1);
+    const dir = sort.key === key ? (sort.dir === 'asc' ? 'desc' : 'asc') : 'asc';
+    listParams.set({ sort: key, order: dir });
   };
 
   const openAddModal = () => {
@@ -261,7 +265,8 @@ export function AdminCouponsPage() {
 
       <Filters
         searchValue={search}
-        onSearch={(v) => { setSearch(v); setPage(1); }}
+        onSearch={(v) => listParams.set({ search: v })}
+        onReset={listParams.reset}
         searchPlaceholder="쿠폰 코드 검색 Search code…"
       />
 
@@ -277,7 +282,7 @@ export function AdminCouponsPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <ConfirmModal

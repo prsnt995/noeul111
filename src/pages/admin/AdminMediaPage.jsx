@@ -11,17 +11,21 @@ import {
   buildListParams,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
+import { useListParams } from '../../hooks/useListParams.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Plus, Copy, Trash2, X, Upload, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 24;
 
 export function AdminMediaPage() {
+  // List state lives in the URL (?page=&search=).
+  const listParams = useListParams({ keys: ['page', 'search'] });
+  const pv = listParams.values;
+  const page = Number(pv.page) || 1;
+  const search = pv.search || '';
   const [mediaList, setMediaList] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [deleteId, setDeleteId] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -55,7 +59,7 @@ export function AdminMediaPage() {
 
   useEffect(() => {
     fetchMedia();
-  }, [page, search]);
+  }, [pv]);
 
   const handleDirectFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -164,7 +168,8 @@ export function AdminMediaPage() {
 
       <Filters
         searchValue={search}
-        onSearch={(v) => { setSearch(v); setPage(1); }}
+        onSearch={(v) => listParams.set({ search: v })}
+        onReset={listParams.reset}
         searchPlaceholder="미디어 이름, 태그 검색 Search…"
       >
         <span style={{ fontSize: '0.8125rem', color: '#71717a', marginLeft: 'auto' }}>
@@ -238,7 +243,7 @@ export function AdminMediaPage() {
       )}
 
       <div style={{ marginTop: 16 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <ConfirmModal

@@ -1,11 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
+import { Dropdown } from '../../common/Dropdown.jsx';
+import { FilterChips } from '../../common/FilterChips.jsx';
 
 /**
- * Unified filter bar: debounced search + selects + reset.
- * selects: [{ name, value, onChange, options: [{value,label}], ariaLabel }]
+ * Unified premium filter bar: debounced search + custom dropdowns +
+ * active-filter chips + reset. Same `selects` prop shape as before, plus
+ * optional per-select `label` (visible bilingual mini-label) and
+ * `clearValue` (defaults to 'all').
+ * selects: [{ name, value, onChange, options: [{value,label,hint?}], ariaLabel, label, clearValue }]
  */
-export function Filters({ searchValue = '', onSearch, searchPlaceholder = '검색 Search…', selects = [], onReset, children }) {
+export function Filters({
+  searchValue = '',
+  onSearch,
+  searchPlaceholder = '검색 Search…',
+  selects = [],
+  onReset,
+  resetLabel = '초기화 Reset',
+  children,
+  ariaLabel = 'List filters',
+}) {
   const [draft, setDraft] = useState(searchValue);
   useEffect(() => setDraft(searchValue), [searchValue]);
   useEffect(() => {
@@ -16,8 +30,19 @@ export function Filters({ searchValue = '', onSearch, searchPlaceholder = '검�
     return () => clearTimeout(t);
   }, [draft, onSearch, searchValue]);
 
+  const chips = (selects || [])
+    .filter((s) => s.value !== undefined && s.value !== null && s.value !== '' && s.value !== (s.clearValue ?? 'all'))
+    .map((s) => {
+      const opt = (s.options || []).find((o) => String(o.value) === String(s.value));
+      return {
+        key: s.name,
+        label: opt ? opt.label : String(s.value),
+        onClear: () => s.onChange?.(s.clearValue ?? 'all'),
+      };
+    });
+
   return (
-    <div className="adm-card adm-filter-bar" role="search">
+    <div className="adm-card adm-filter-bar" role="search" aria-label={ariaLabel}>
       <div className="adm-search">
         <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#a1a1aa' }} aria-hidden />
         <input
@@ -27,17 +52,29 @@ export function Filters({ searchValue = '', onSearch, searchPlaceholder = '검�
           onChange={(e) => setDraft(e.target.value)}
           placeholder={searchPlaceholder}
           aria-label={searchPlaceholder}
+          type="search"
         />
       </div>
       {selects.map((s) => (
-        <select key={s.name} className="adm-select" value={s.value} onChange={(e) => s.onChange?.(e.target.value)} aria-label={s.ariaLabel || s.name}>
-          {(s.options || []).map((o) => (
-            <option key={String(o.value)} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        <Dropdown
+          key={s.name}
+          value={s.value}
+          options={s.options || []}
+          onChange={(v) => s.onChange?.(v)}
+          ariaLabel={s.ariaLabel || s.name}
+          label={s.label}
+        />
       ))}
       {children}
-      {onReset ? <button type="button" className="adm-btn" onClick={onReset}>초기화 Reset</button> : null}
+      {(chips.length > 0 || onReset) && (
+        <div className="adm-filter-chips">
+          <FilterChips
+            chips={chips}
+            onResetAll={onReset}
+            resetLabel={resetLabel}
+          />
+        </div>
+      )}
     </div>
   );
 }
