@@ -116,8 +116,6 @@
 }
 .adm-filter-bar .fancy-select-btn:hover { border-color: var(--adm-text); }
 .adm-filter-bar .fancy-select-btn:focus-visible { outline: 2px solid var(--adm-text); outline-offset: 2px; }
-.adm-filter-bar .fancy-select-pop { right: auto; left: 0; }
-.adm-filter-bar .fancy-select-pop.flip { left: auto; right: 0; }
 .adm-filter-bar .fancy-select-opt { color: var(--adm-text-2); }
 .adm-filter-bar .fancy-select-opt.focused { background: var(--adm-bg); }
 .adm-filter-bar .fancy-select-opt.selected { color: var(--adm-text); }

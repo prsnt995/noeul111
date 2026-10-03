@@ -121,7 +121,7 @@ export function ShopPage() {
   };
 
   return (
-    <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
+    <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'clip' }}>
       {/* Category Sub-Bar — sticky below header, same pattern as homepage */}
       <div
         className="noeul-category-bar"

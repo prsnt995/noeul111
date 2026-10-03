@@ -116,12 +116,18 @@ describe('Premium filters — overlay stacking (no filter-over-modal overlap)', 
     expect(src.includes('focusin'), 'focus-loss close').toBe(true);
   });
 
-  it('dropdown flips alignment near the right viewport edge', () => {
+  it('dropdown popover is portalled with viewport-fixed coords (never clipped, never over header)', () => {
     const src = read('src/components/common/Dropdown.jsx');
-    expect(src.includes('flip'), 'flip state').toBe(true);
+    expect(src.includes('createPortal'), 'body portal').toBe(true);
     expect(src.includes('getBoundingClientRect'), 'trigger measurement').toBe(true);
-    expect(read('src/index.css').includes('.fancy-select-pop.flip'), 'flip CSS').toBe(true);
-    expect(read('src/styles/admin.css').includes('.fancy-select-pop.flip'), 'admin flip CSS').toBe(true);
+    expect(src.includes("'scroll', onScroll, true"), 'scroll-close listener').toBe(true);
+    expect(src.includes('rect.bottom + 6'), 'opens downward only').toBe(true);
+    expect(read('src/index.css').includes('.fancy-select-pop {\n  position: fixed;'), 'fixed CSS').toBe(true);
+  });
+
+  it('shop/home roots use overflow-x clip so sticky bars never ride over the header', () => {
+    expect(read('src/pages/ShopPage.jsx').includes("overflowX: 'clip'"), 'shop clip').toBe(true);
+    expect(read('src/pages/HomePage.jsx').includes("overflowX: 'clip'"), 'home clip').toBe(true);
   });
 
   it('admin overlays stack above filter popovers (120)', () => {

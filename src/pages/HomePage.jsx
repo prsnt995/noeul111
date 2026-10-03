@@ -218,7 +218,7 @@ export function HomePage() {
         width: '100%',
         maxWidth: '100%',
         boxSizing: 'border-box',
-        overflowX: 'hidden',
+        overflowX: 'clip',
       }}
     >
       {/* =========================================================
