@@ -157,12 +157,12 @@ export function AdminCategoriesPage() {
     const targetIdx = dir === 'up' ? idx - 1 : idx + 1;
     if (targetIdx < 0 || targetIdx >= sorted.length) return;
     const target = sorted[targetIdx];
-    // swap sort_order
+    // Atomic reorder: single PATCH with the full new order (no split PUTs).
     try {
-      await Promise.all([
-        adminApi.put(`/admin/categories/${cat.id}`, { sort_order: target.sort_order }),
-        adminApi.put(`/admin/categories/${target.id}`, { sort_order: cat.sort_order }),
-      ]);
+      const next = [...sorted];
+      next[idx] = target;
+      next[targetIdx] = cat;
+      await adminApi.patch('/admin/categories/reorder', { orderedIds: next.map((c) => c.id) });
       fetchCategories();
     } catch {
       showToast('순서 변경 실패', 'error');

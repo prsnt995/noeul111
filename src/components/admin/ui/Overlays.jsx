@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useDialogFocus } from '../../../utils/dialogFocus.js';
 
 function useEscape(onClose) {
   useEffect(() => {
@@ -11,13 +12,15 @@ function useEscape(onClose) {
 
 export function ConfirmModal({ open, title = 'Confirm 확인', desc, confirmLabel = 'Delete 삭제', cancelLabel = 'Cancel 취소', onConfirm, onClose, danger = true }) {
   const btnRef = useRef(null);
+  const dialogRef = useRef(null);
   useEscape(onClose);
   useEffect(() => { if (open) btnRef.current?.focus(); }, [open ]);
+  useDialogFocus(open, dialogRef);
   if (!open) return null;
   return (
     <>
       <div className="adm-backdrop" onClick={onClose} />
-      <div className="adm-modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={dialogRef} className="adm-modal" role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {desc ? <p className="adm-modal-sub">{desc}</p> : null}
         <div className="adm-modal-actions">
@@ -37,12 +40,14 @@ export function ConfirmModal({ open, title = 'Confirm 확인', desc, confirmLabe
 }
 
 export function Drawer({ open, title, subtitle, onClose, children, footer }) {
+  const dialogRef = useRef(null);
   useEscape(onClose);
+  useDialogFocus(open, dialogRef);
   if (!open) return null;
   return (
     <>
       <div className="adm-backdrop" onClick={onClose} />
-      <aside className="adm-drawer" role="dialog" aria-modal="true" aria-label={title}>
+      <aside ref={dialogRef} className="adm-drawer" role="dialog" aria-modal="true" aria-label={title}>
         <div className="adm-drawer-head">
           <div style={{ flex: 1 }}>
             <h2 style={{ margin: 0, fontSize: '1.05rem' }}>{title}</h2>

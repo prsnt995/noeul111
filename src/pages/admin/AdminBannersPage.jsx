@@ -11,6 +11,7 @@ import {
 } from '../../components/admin/ui/index.js';
 import { Pagination } from '../../components/admin/ui/Pagination.jsx';
 import { adminApi } from '../../utils/api.js';
+import { safeHttpUrl } from '../../utils/imageHelper.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
 import { Plus, Edit2, Trash2, X } from 'lucide-react';
@@ -69,7 +70,7 @@ export function AdminBannersPage() {
 
   useEffect(() => {
     fetchBanners();
-  }, []);
+  }, [page]);
 
   const openAddModal = () => {
     setIsEditMode(false);
@@ -195,8 +196,8 @@ export function AdminBannersPage() {
               }}
             >
               <div style={{ position: 'relative', height: '180px', backgroundColor: '#121213' }}>
-                {b.image_url ? (
-                  <img src={b.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {safeHttpUrl(b.image_url) ? (
+                  <img src={safeHttpUrl(b.image_url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
                     텍스트 전용 배너
@@ -328,6 +329,27 @@ export function AdminBannersPage() {
                   </div>
                 </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">한글 부제목 (선택)</label>
+                    <input
+                      type="text"
+                      value={formData.subtitle_ko}
+                      onChange={(e) => setFormData({ ...formData, subtitle_ko: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">영문 부제목 (선택)</label>
+                    <input
+                      type="text"
+                      value={formData.subtitle_en}
+                      onChange={(e) => setFormData({ ...formData, subtitle_en: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <label className="form-label">데스크탑 이미지 URL *</label>
@@ -377,6 +399,49 @@ export function AdminBannersPage() {
                       type="text"
                       value={formData.button_text_ko}
                       onChange={(e) => setFormData({ ...formData, button_text_ko: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">버튼 텍스트 (영문)</label>
+                    <input
+                      type="text"
+                      value={formData.button_text_en}
+                      onChange={(e) => setFormData({ ...formData, button_text_en: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">노출 순서 (낮을수록 먼저)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.sort_order}
+                      onChange={(e) => setFormData({ ...formData, sort_order: Number(e.target.value) })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">시작일</label>
+                    <input
+                      type="date"
+                      value={formData.start_date}
+                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">종료일</label>
+                    <input
+                      type="date"
+                      value={formData.end_date}
+                      onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                       className="form-input"
                     />
                   </div>

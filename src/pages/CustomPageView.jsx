@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { useRoute, Link } from 'wouter';
 import { api } from '../utils/api.js';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ArrowLeft } from 'lucide-react';
+import { safeHttpUrl } from '../utils/imageHelper.js';
 
 export function CustomPageView() {
   const [match, params] = useRoute('/p/:slug');
@@ -49,22 +51,17 @@ export function CustomPageView() {
 
   const title = lang === 'ko' ? page.title_ko : (page.title_en || page.title_ko);
   const rawContent = lang === 'ko' ? page.content_ko : (page.content_en || page.content_ko);
-  const sanitize = (html) => {
-    if (!html) return '';
-    return String(html)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/\bon\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      .replace(/javascript:/gi, '');
-  };
-  const content = sanitize(rawContent);
+  // DOMPurify allowlist-sanitized admin HTML (the old regex strip was
+  // bypassable via svg/iframe/srcdoc/entity vectors).
+  const content = useMemo(() => DOMPurify.sanitize(String(rawContent || ''), { USE_PROFILES: { html: true } }), [rawContent]);
 
   return (
     <div>
       {/* Banner */}
-      {page.banner_image && (
+      {safeHttpUrl(page.banner_image) && (
         <div style={{ position: 'relative', height: '320px', backgroundColor: '#121213', overflow: 'hidden' }}>
           <img
-            src={page.banner_image}
+            src={safeHttpUrl(page.banner_image)}
             alt=""
             style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
           />
@@ -89,7 +86,7 @@ export function CustomPageView() {
 
       {/* Page Content Body */}
       <div className="container" style={{ maxWidth: '840px', padding: '60px 24px 100px' }}>
-        {!page.banner_image && (
+        {!safeHttpUrl(page.banner_image) && (
           <h1 className="font-serif" style={{ fontSize: '2.5rem', fontWeight: 600, marginBottom: '32px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
             {title}
           </h1>

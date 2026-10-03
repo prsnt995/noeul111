@@ -181,7 +181,7 @@ export function ProductDetailPage() {
   if (loading) {
     return (
       <div className="container" style={{ textAlign: 'center', padding: '120px 0', color: 'var(--text-muted)' }}>
-        <p>{lang === 'ko' ? '상품 정보를 불러오는 중입니다...' : 'Loading product details...'}</p>
+        <p>{t('product.loading_details')}</p>
       </div>
     );
   }
@@ -189,7 +189,7 @@ export function ProductDetailPage() {
   if (!product) {
     return (
       <div className="container" style={{ textAlign: 'center', padding: '120px 0' }}>
-        <h2>{lang === 'ko' ? '상품을 찾을 수 없습니다.' : 'Product not found.'}</h2>
+        <h2>{t('product.not_found')}</h2>
         <Link href="/shop" className="btn-primary" style={{ marginTop: '20px' }}>
           {t('cart.continue_shopping')}
         </Link>
@@ -354,7 +354,7 @@ export function ProductDetailPage() {
                 }}
               >
                 <Heart size={18} fill={isWish ? '#ef4444' : 'none'} />
-                <span>{isWish ? (lang === 'ko' ? '위시리스트 담김' : 'Saved') : (lang === 'ko' ? '위시리스트' : 'Wishlist')}</span>
+                <span>{isWish ? t('product.saved') : t('nav.wishlist')}</span>
               </button>
             </div>
 
@@ -405,11 +405,11 @@ export function ProductDetailPage() {
               }}
             >
               <div>
-                <strong style={{ color: '#18181b' }}>{lang === 'ko' ? '소재' : 'Material'}:</strong>{' '}
+                <strong style={{ color: '#18181b' }}>{t('product.material')}:</strong>{' '}
                 {productMaterial}
               </div>
               <div>
-                <strong style={{ color: '#18181b' }}>{lang === 'ko' ? '색상' : 'Color'}:</strong>{' '}
+                <strong style={{ color: '#18181b' }}>{t('product.color_label')}:</strong>{' '}
                 {product.color || (colors[0]?.name_en || 'Black')}
               </div>
             </div>
@@ -419,7 +419,7 @@ export function ProductDetailPage() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#18181b' }}>
-                    {lang === 'ko' ? '색상 선택' : 'Select Color'}
+                    {t('product.select_color')}
                   </span>
                   <span style={{ fontSize: '0.8125rem', color: '#71717a' }}>
                     {selectedColor ? (lang === 'ko' ? (selectedColor.name_ko || selectedColor.name) : (selectedColor.name_en || selectedColor.name)) : ''}

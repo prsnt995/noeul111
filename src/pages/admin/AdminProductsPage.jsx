@@ -159,7 +159,7 @@ export function AdminProductsPage() {
 
   useEffect(() => {
     fetchProducts();
-  }, [selectedCategory, stockFilter, specialFilter, page, sort]);
+  }, [selectedCategory, stockFilter, specialFilter, page, sort, search]);
 
   const resetPage = (fn) => (v) => { fn(v); setPage(1); };
 

@@ -85,11 +85,21 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }) {
     }
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
     <div className="backdrop" onClick={onClose} style={{ zIndex: 120 }}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="미디어 선택 Media library"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
@@ -120,8 +130,8 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }) {
             <ImageIcon size={20} color="var(--accent-sunset)" />
             <h3 style={{ fontSize: '1.125rem', fontWeight: 700 }}>사진 및 미디어 선택 (Media Library)</h3>
           </div>
-          <button onClick={onClose} style={{ color: '#71717a', background: 'none', border: 'none', cursor: 'pointer' }}>
-            <X size={20} />
+          <button onClick={onClose} aria-label="닫기 Close" style={{ color: '#71717a', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <X size={20} aria-hidden />
           </button>
         </div>
 

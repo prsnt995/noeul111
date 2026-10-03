@@ -26,6 +26,8 @@ export function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const { showToast } = useToast();
+  // Hooks must all run before any conditional early return (Rules of Hooks).
+  const { lang } = useLanguage();
 
   const fetchStats = async () => {
     try {
@@ -90,7 +92,6 @@ export function AdminDashboardPage() {
   const hasError = !!errorMsg && !data;
   const salesTrend = data?.salesTrend || [];
   const salesBySource = data?.salesBySource || [];
-  const { lang } = useLanguage();
 
   return (
     <AdminLayout activePage="dashboard">
@@ -126,7 +127,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
-              {formatKRW(stats.totalRevenue)}
+              {hasError ? '—' : formatKRW(stats.totalRevenue)}
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               실 결제 완료 누적
@@ -142,7 +143,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
-              {stats.totalProducts || 0}개
+              {hasError ? '—' : `${stats.totalProducts ?? 0}개`}
             </h2>
             <Link href="/admin/products" style={{ fontSize: '0.75rem', color: 'var(--accent-sunset)', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               상품 목록 관리 →
@@ -158,7 +159,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
-              {stats.womensProducts || 0}개
+              {hasError ? '—' : `${stats.womensProducts ?? 0}개`}
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '4px', display: 'block' }}>
               여성 의류 라인업
@@ -174,7 +175,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
-              {stats.newArrivalsCount || 0}개
+              {hasError ? '—' : `${stats.newArrivalsCount ?? 0}개`}
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               NEW 뱃지 지정 상품
@@ -190,7 +191,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#18181b' }}>
-              {stats.totalOrders || 0}건
+              {hasError ? '—' : `${stats.totalOrders ?? 0}건`}
             </h2>
             <Link href="/admin/orders" style={{ fontSize: '0.75rem', color: 'var(--accent-sunset)', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               주문 전체 내역 →
@@ -206,7 +207,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#b45309' }}>
-              {stats.pendingOrdersCount || 0}건
+              {hasError ? '—' : `${stats.pendingOrdersCount ?? 0}건`}
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               입금 & 검수 대기중
@@ -222,7 +223,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#15803d' }}>
-              {stats.completedOrdersCount || 0}건
+              {hasError ? '—' : `${stats.completedOrdersCount ?? 0}건`}
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#15803d', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               결제 완료 & 배송 완료
@@ -238,7 +239,7 @@ export function AdminDashboardPage() {
               </div>
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.lowStockCount > 0 ? '#dc2626' : '#18181b' }}>
-              {stats.lowStockCount || 0}개
+              {hasError ? '—' : `${stats.lowStockCount ?? 0}개`}
             </h2>
             <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               상품 재고 관리 →
@@ -283,7 +284,7 @@ export function AdminDashboardPage() {
                   {st.label}
                 </span>
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: st.color }}>
-                  {st.count || 0}
+                  {st.count ?? 0}
                 </span>
               </div>
             ))}

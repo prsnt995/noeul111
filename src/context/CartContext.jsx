@@ -119,7 +119,7 @@ export function CartProvider({ children }) {
     setItems((prev) =>
       prev.map((item) => {
         if (item.id === cartItemId) {
-          const clampedQty = Math.min(newQty, item.max_stock || 99);
+          const clampedQty = Math.min(newQty, item.max_stock ?? 99);
           return { ...item, quantity: clampedQty };
         }
         return item;

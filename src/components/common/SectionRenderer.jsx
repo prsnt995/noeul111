@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ProductCard } from './ProductCard.jsx';
 import { api } from '../../utils/api.js';
+import { safeHttpUrl } from '../../utils/imageHelper.js';
 import { ArrowRight, Truck, ShieldCheck, RefreshCw, Sparkles, Tag, Camera, ChevronRight } from 'lucide-react';
 
 export function SectionRenderer({ section }) {
@@ -20,9 +21,9 @@ export function SectionRenderer({ section }) {
       const limit = content.limit || 4;
       let url = `/catalog/products?limit=${limit}`;
 
-      if (filterType === 'new') url += '&isNew=true';
-      else if (filterType === 'best') url += '&isBest=true';
-      else if (filterType === 'featured') url += '&isBest=true';
+      if (filterType === 'new') url += '&is_new=true';
+      else if (filterType === 'best') url += '&is_best=true';
+      else if (filterType === 'featured') url += '&is_best=true';
       else if (content.category_id) url += `&category=${content.category_id}`;
 
       api.get(url)
@@ -59,7 +60,7 @@ export function SectionRenderer({ section }) {
         <section style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #f0f0f2', overflow: 'hidden' }}>
           <div className="container" style={{ padding: '0 0 20px' }}>
             <Link
-              href={content.button_link || '/shop'}
+              href={safeHttpUrl(content.button_link) || '/shop'}
               style={{
                 display: 'grid',
                 gridTemplateColumns: '2fr 1fr',
@@ -111,7 +112,7 @@ export function SectionRenderer({ section }) {
           image: '/products/men/tshirts/classic-tshirt/1.jpg',
           label: 'SlgTho 슬토',
           hashtags: ['#Slog', '#Thought', '#브랜드'],
-          link: '/shop?filter=featured',
+          link: '/shop',
         },
         {
           tag_sub: 'CUSTOM',
@@ -138,7 +139,7 @@ export function SectionRenderer({ section }) {
                 <div key={idx} style={{ display: 'flex', flexDirection: 'column' }}>
                   {/* Photo Card with text overlay */}
                   <Link
-                    href={t.link}
+                    href={safeHttpUrl(t.link) || '/shop'}
                     style={{
                       position: 'relative',
                       height: '380px',
@@ -274,7 +275,7 @@ export function SectionRenderer({ section }) {
                     marginBottom: '4px',
                   }}
                 >
-                  {lang === 'ko' ? '에센셜 컬렉션' : 'ESSENTIAL COLLECTION'}
+                  {t('home.essential_collection')}
                 </span>
                 <h2
                   style={{
@@ -285,7 +286,7 @@ export function SectionRenderer({ section }) {
                     lineHeight: 1.2,
                   }}
                 >
-                  {title || (lang === 'ko' ? '매일 매일 업데이트' : 'Daily Updates')}
+                  {title || t('home.daily_updates')}
                 </h2>
                 {subtitle && (
                   <p
@@ -301,7 +302,7 @@ export function SectionRenderer({ section }) {
               </div>
 
               <Link
-                href={content.view_all_link || '/shop?filter=new'}
+                href={safeHttpUrl(content.view_all_link) || '/shop?filter=new'}
                 style={{
                   fontSize: '0.8125rem',
                   fontWeight: 500,
@@ -314,7 +315,7 @@ export function SectionRenderer({ section }) {
                   transition: 'opacity 0.2s ease',
                 }}
               >
-                <span>{lang === 'ko' ? '전체보기' : 'View All'}</span>
+                <span>{t('home.view_all')}</span>
                 <ChevronRight size={15} />
               </Link>
             </div>
@@ -346,8 +347,8 @@ export function SectionRenderer({ section }) {
                 <h2 style={{ fontSize: '1.375rem', fontWeight: 800 }}>{title}</h2>
                 {subtitle && <p style={{ color: '#71717a', fontSize: '0.875rem', marginTop: '2px' }}>{subtitle}</p>}
               </div>
-              <Link href={content.view_all_link || '/shop'} style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--accent-sunset)' }}>
-                전체보기 →
+              <Link href={safeHttpUrl(content.view_all_link) || '/shop'} style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--accent-sunset)' }}>
+                {t('home.view_all')} →
               </Link>
             </div>
 
@@ -408,12 +409,12 @@ export function SectionRenderer({ section }) {
             {content.coupon_code && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.15)', padding: '6px 14px', borderRadius: '6px', marginBottom: '20px' }}>
                 <Tag size={15} color="#FEE500" />
-                <span style={{ fontSize: '0.8125rem' }}>쿠폰코드: <strong>{content.coupon_code}</strong></span>
+                <span style={{ fontSize: '0.8125rem' }}>{t('home.coupon_code')}: <strong>{content.coupon_code}</strong></span>
               </div>
             )}
             <div>
-              <Link href={content.button_link || '/shop'} className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)', padding: '12px 28px', fontSize: '0.875rem' }}>
-                {content.button_text_ko || '지금 혜택 받기'}
+              <Link href={safeHttpUrl(content.button_link) || '/shop'} className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)', padding: '12px 28px', fontSize: '0.875rem' }}>
+                {lang === 'ko' ? (content.button_text_ko || t('home.claim_offer')) : (content.button_text_en || content.button_text_ko || t('home.claim_offer'))}
               </Link>
             </div>
           </div>
@@ -507,7 +508,7 @@ export function SectionRenderer({ section }) {
               {/* Username + Follow button row */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 <a
-                  href={instagramUrl}
+                  href={safeHttpUrl(instagramUrl) || 'https://www.instagram.com/noeul.me/'}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -528,7 +529,7 @@ export function SectionRenderer({ section }) {
                 </a>
 
                 <a
-                  href={instagramUrl}
+                  href={safeHttpUrl(instagramUrl) || 'https://www.instagram.com/noeul.me/'}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -578,7 +579,7 @@ export function SectionRenderer({ section }) {
               {images.slice(0, 6).map((imgUrl, idx) => (
                 <a
                   key={idx}
-                  href={instagramUrl}
+                  href={safeHttpUrl(instagramUrl) || 'https://www.instagram.com/noeul.me/'}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -635,7 +636,7 @@ export function SectionRenderer({ section }) {
             {/* Bottom CTA */}
             <div style={{ textAlign: 'center', marginTop: '32px' }}>
               <a
-                href={instagramUrl}
+                href={safeHttpUrl(instagramUrl) || 'https://www.instagram.com/noeul.me/'}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{

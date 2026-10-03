@@ -60,9 +60,9 @@ export function ShopPage() {
     const params = new URLSearchParams();
     if (g && g !== 'all') params.set('gender', g);
     if (c && c !== 'all') params.set('category', c);
-    // Clear stale filter when category/gender changes; only keep explicit valid filters
-    const genderOrCatChanged = (newGender !== undefined || newCategory !== undefined);
-    if (!genderOrCatChanged && f && f !== '' && f !== 'featured') params.set('filter', f);
+    // Preserve filter/search across gender/category changes (same rule as
+    // the homepage) so both storefronts behave identically.
+    if (f && f !== '') params.set('filter', f);
     if (s) params.set('search', s);
     if (sort && sort !== 'newest') params.set('sort', sort);
     setSearchParams(params);
@@ -94,15 +94,15 @@ export function ShopPage() {
   // Title formatting
   const getPageHeading = () => {
     if (searchQuery) {
-      return lang === 'ko' ? `"${searchQuery}" 검색 결과` : `Search: "${searchQuery}"`;
+      return t('shop.search_results', { query: searchQuery });
     }
     if (activeFilter === 'new') return t('nav.new_arrivals');
     if (activeFilter === 'best') return t('nav.best_sellers');
     if (activeFilter === 'sale') return t('nav.sale');
 
     let prefix = '';
-    if (selectedGender === 'women') prefix = lang === 'ko' ? '여성' : 'Women';
-    else if (selectedGender === 'men') prefix = lang === 'ko' ? '남성' : 'Men';
+    if (selectedGender === 'women') prefix = t('nav.women');
+    else if (selectedGender === 'men') prefix = t('nav.men');
     else prefix = t('nav.all');
 
     if (selectedCategory !== 'all') {
@@ -111,7 +111,7 @@ export function ShopPage() {
       return `${prefix} • ${catName}`;
     }
 
-    return lang === 'ko' ? `${prefix} 컬렉션` : `${prefix} Collection`;
+    return t('shop.collection', { prefix });
   };
 
   return (
@@ -269,6 +269,25 @@ export function ShopPage() {
             >
               {t('home.view_all_products')}
             </button>
+            {activeFilter && selectedCategory !== 'all' && (
+              <button
+                type="button"
+                onClick={() => updateUrl(undefined, undefined, '', undefined, undefined)}
+                style={{
+                  marginTop: '8px',
+                  padding: '8px 18px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  backgroundColor: '#ffffff',
+                  color: '#18181b',
+                  borderRadius: '2px',
+                  border: '1px solid #e4e4e7',
+                  cursor: 'pointer',
+                }}
+              >
+                {t('shop.reset_filters')}
+              </button>
+            )}
           </div>
            ) : (
           <div className="noeul-product-grid product-grid">

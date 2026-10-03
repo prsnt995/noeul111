@@ -88,6 +88,7 @@ export function RightFloatingBar({ onOpenSearch }) {
               borderRadius: '50%',
               transition: 'background-color 0.15s',
             }}
+            aria-label={isLoggedIn ? t('nav.account') : t('nav.login')}
             title={isLoggedIn ? t('nav.account') : t('nav.login')}
           >
             <User size={16} />
@@ -104,6 +105,7 @@ export function RightFloatingBar({ onOpenSearch }) {
               justifyContent: 'center',
               position: 'relative',
             }}
+            aria-label={t('nav.wishlist')}
             title={t('nav.wishlist')}
           >
             <Heart size={16} />
@@ -144,6 +146,7 @@ export function RightFloatingBar({ onOpenSearch }) {
               cursor: 'pointer',
               position: 'relative',
             }}
+            aria-label={t('nav.cart')}
             title={t('nav.cart')}
           >
             <ShoppingBag size={16} />
@@ -183,6 +186,7 @@ export function RightFloatingBar({ onOpenSearch }) {
               border: 'none',
               cursor: 'pointer',
             }}
+            aria-label={t('nav.search')}
             title={t('nav.search')}
           >
             <Search size={16} />
@@ -203,7 +207,8 @@ export function RightFloatingBar({ onOpenSearch }) {
               border: 'none',
               cursor: 'pointer',
             }}
-            title="맨 위로"
+            aria-label={t('nav.scroll_top')}
+            title={t('nav.scroll_top')}
           >
             <ChevronUp size={16} />
           </button>
@@ -221,7 +226,8 @@ export function RightFloatingBar({ onOpenSearch }) {
               border: 'none',
               cursor: 'pointer',
             }}
-            title="맨 아래로"
+            aria-label={t('nav.scroll_bottom')}
+            title={t('nav.scroll_bottom')}
           >
             <ChevronDown size={16} />
           </button>
@@ -252,7 +258,8 @@ export function RightFloatingBar({ onOpenSearch }) {
           transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
           textDecoration: 'none',
         }}
-        title="고객센터 이메일 상담"
+        aria-label={t('nav.support_email')}
+        title={t('nav.support_email')}
       >
         <Mail size={22} color="#ffffff" />
       </a>

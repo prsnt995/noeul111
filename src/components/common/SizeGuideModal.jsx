@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { X, Ruler } from 'lucide-react';
 
 export function SizeGuideModal({ isOpen, onClose, categorySlug }) {
-  const { lang } = useLanguage();
+  const { t } = useLanguage();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -12,6 +19,9 @@ export function SizeGuideModal({ isOpen, onClose, categorySlug }) {
   return (
     <div className="backdrop" onClick={onClose} style={{ zIndex: 120 }}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('product.sg_title')}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
@@ -28,11 +38,11 @@ export function SizeGuideModal({ isOpen, onClose, categorySlug }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Ruler size={20} color="var(--accent-sunset)" />
             <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>
-              {lang === 'ko' ? '실측 사이즈 가이드 (단위: cm)' : 'Size Guide & Measurements (cm)'}
+              {t('product.sg_title')}
             </h3>
           </div>
-          <button onClick={onClose} style={{ padding: '4px', color: 'var(--text-muted)' }}>
-            <X size={20} />
+          <button onClick={onClose} aria-label={t('nav.close')} style={{ padding: '4px', color: 'var(--text-muted)' }}>
+            <X size={20} aria-hidden />
           </button>
         </div>
 
@@ -41,11 +51,11 @@ export function SizeGuideModal({ isOpen, onClose, categorySlug }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.875rem', marginBottom: '20px' }}>
             <thead>
               <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-light)' }}>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '사이즈' : 'Size'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '총장' : 'Length'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '어깨너비' : 'Shoulder'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '가슴단면' : 'Chest'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '소매길이' : 'Sleeve'}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_size')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_length')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_shoulder')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_chest')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_sleeve')}</th>
               </tr>
             </thead>
             <tbody>
@@ -83,12 +93,12 @@ export function SizeGuideModal({ isOpen, onClose, categorySlug }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.875rem', marginBottom: '20px' }}>
             <thead>
               <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-light)' }}>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '사이즈' : 'Size'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '허리단면' : 'Waist'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '허벅지단면' : 'Thigh'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '밑위' : 'Rise'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '밑단' : 'Hem'}</th>
-                <th style={{ padding: '10px 12px' }}>{lang === 'ko' ? '총장' : 'Length'}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_size')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_waist')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_thigh')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_rise')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_hem')}</th>
+                <th style={{ padding: '10px 12px' }}>{t('product.sg_length')}</th>
               </tr>
             </thead>
             <tbody>
@@ -129,8 +139,8 @@ export function SizeGuideModal({ isOpen, onClose, categorySlug }) {
         )}
 
         <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '14px', borderRadius: '6px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-          <p>• {lang === 'ko' ? '사이즈는 측정 위치와 방법에 따라 1~2cm 오차가 발생할 수 있습니다.' : 'Measurements may vary by 1-2cm depending on measuring methods.'}</p>
-          <p>• {lang === 'ko' ? '평소 착용하시는 제품의 실측 사이즈와 비교하여 선택하시면 더욱 정확합니다.' : 'For best results, compare with measurements of your favorite fitting garment.'}</p>
+          <p>• {t('product.sg_note1')}</p>
+          <p>• {t('product.sg_note2')}</p>
         </div>
       </div>
     </div>

@@ -49,7 +49,7 @@ export function AdminReviewsPage() {
 
   useEffect(() => {
     fetchReviews();
-  }, [page, sort, status]);
+  }, [page, sort, status, search]);
 
   const handleSort = (key) => {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));

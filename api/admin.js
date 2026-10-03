@@ -596,7 +596,7 @@ export function registerAdminRoutes(app, ctx) {
       let data = null;
       let total = 0;
       if (category && category !== 'all') {
-        const { data: cat } = await database().from('categories').select('id').or(`slug.eq.${category},id.eq.${Number(category) || -1}`).maybeSingle();
+        const slug = String(category).toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 80); const numId = /^\d+$/.test(String(category)) ? Number(category) : -1; if (!slug && numId < 0) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize })); const { data: cat } = await database().from('categories').select('id').or(`slug.eq.${slug},id.eq.${numId}`).maybeSingle();
         if (!cat) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize }));
         const r = await applyCommon(
           database().from('products').select('*', { count: 'exact' }).eq('category_id', cat.id).order(sortCol, { ascending }).range(offset, offset + pageSize - 1)
@@ -879,7 +879,7 @@ export function registerAdminRoutes(app, ctx) {
       min_order_amount: c.minimum, max_discount_amount: c.max_discount ?? null,
       start_date: String(c.starts_at || '').slice(0, 10), end_date: String(c.ends_at || '').slice(0, 10),
       usage_limit: c.limit_count, times_used: c.used,
-      is_active: c.ends_at ? new Date(c.ends_at) >= new Date() : true,
+      is_active: c.ends_at && c.starts_at ? (new Date(c.starts_at) <= new Date() && new Date(c.ends_at) >= new Date()) : (c.ends_at ? new Date(c.ends_at) >= new Date() : true),
     };
   }
 
@@ -908,6 +908,16 @@ export function registerAdminRoutes(app, ctx) {
     if (b.description_ko !== undefined) row.description_ko = String(b.description_ko).slice(0, 200);
     if (b.description_en !== undefined) row.description_en = String(b.description_en).slice(0, 200);
     if (b.min_order_amount !== undefined) row.minimum = Math.max(0, Number(b.min_order_amount) || 0);
+    // Dates are KST day boundaries (admin intent): start = 00:00+09:00,
+    // end = end-of-day 23:59:59+09:00. Explicit null clears the bound;
+    // ''/undefined leaves it unchanged (differs from max_discount/minimum).
+    const parseCouponDate = (v, endOfDay) => { if (v === undefined || v === null || v === '') return v === null ? null : undefined; const s = String(v).slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return 'INVALID'; const d = new Date(`${s}T${endOfDay ? '23:59:59.999' : '00:00:00'}+09:00`); return Number.isNaN(d.getTime()) ? 'INVALID' : d.toISOString(); };
+    if (b.start_date !== undefined && b.start_date !== '') { const d = parseCouponDate(b.start_date, false); if (d === 'INVALID') return { error: 'INVALID_START_DATE' }; if (d !== undefined) row.starts_at = d; }
+    if (b.start_date === null && !isCreate) row.starts_at = null;
+    if (b.end_date !== undefined && b.end_date !== '') { const d = parseCouponDate(b.end_date, true); if (d === 'INVALID') return { error: 'INVALID_END_DATE' }; if (d !== undefined) row.ends_at = d; }
+    if (b.end_date === null && !isCreate) row.ends_at = null;
+    if (b.start_date !== undefined && b.end_date !== undefined && b.start_date !== '' && b.end_date !== '' && b.start_date !== null && b.end_date !== null && row.starts_at && row.ends_at && row.starts_at > row.ends_at) return { error: 'INVALID_DATE_RANGE' };
+    if (b.usage_limit !== undefined && b.usage_limit !== '' && b.usage_limit !== null) { const lim = Number(b.usage_limit); if (!Number.isInteger(lim) || lim < 1) return { error: 'INVALID_USAGE_LIMIT' }; row.limit_count = lim; }
     if (isCreate) {
       row.starts_at = row.starts_at || new Date().toISOString();
       row.ends_at = row.ends_at || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
@@ -970,6 +980,20 @@ export function registerAdminRoutes(app, ctx) {
       const { row, error: err } = couponFromLegacy(req.body || {}, false);
       if (err) return error(res, 400, err);
       delete row.code;
+      // Validate the resulting (type, amount) pair and date range against
+      // the stored row: a type-only update must not create e.g. 5000%
+      // (type-swap bypass), and a single-side date update must not invert
+      // the stored opposite bound.
+      if (row.discount_type !== undefined || row.amount !== undefined || row.starts_at !== undefined || row.ends_at !== undefined) {
+        const { data: stored } = await database().from('coupons').select('discount_type,amount,starts_at,ends_at').eq('code', decodeURIComponent(req.params.id)).maybeSingle();
+        if (!stored) return error(res, 404, 'COUPON_NOT_FOUND');
+        const effType = row.discount_type ?? stored.discount_type;
+        const effAmount = row.amount ?? stored.amount;
+        if (effType === 'percentage' && effAmount > 100) return error(res, 400, 'INVALID_PERCENTAGE');
+        const effStart = row.starts_at !== undefined ? row.starts_at : stored.starts_at;
+        const effEnd = row.ends_at !== undefined ? row.ends_at : stored.ends_at;
+        if (effStart && effEnd && effStart > effEnd) return error(res, 400, 'INVALID_DATE_RANGE');
+      }
       const { data, error: e } = await database().from('coupons').update(row).eq('code', decodeURIComponent(req.params.id)).select().maybeSingle();
       if (e || !data) return error(res, e ? 400 : 404, e ? 'COUPON_UPDATE_FAILED' : 'COUPON_NOT_FOUND');
       await auditLog(req, 'COUPON_UPDATE', { table: 'coupons', id: data.code });
@@ -1102,7 +1126,7 @@ export function registerAdminRoutes(app, ctx) {
         const namePhone = `,address->>recipient.ilike.%${safe}%,address->>phone.ilike.%${safe}%`;
         // orders.id is a uuid: only attempt the equality arm for uuid-shaped
         // input, otherwise a raw string 400s the whole listing.
-        const orClause = /^[0-9a-f-]{1,64}$/i.test(search.trim())
+        const orClause = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search.trim())
           ? `order_number.ilike.%${safe}%,id.eq.${search.trim()}${namePhone}`
           : `order_number.ilike.%${safe}%${namePhone}`;
         if (safe) q = q.or(orClause);
@@ -1204,11 +1228,10 @@ export function registerAdminRoutes(app, ctx) {
         const code = String(b.coupon_code).toUpperCase().trim();
         const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle();
         const today = new Date().toISOString();
-        if (!coupon || coupon.starts_at > today || coupon.ends_at < today ||
-            ((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count ||
-            subtotal < (coupon.minimum || 0)) {
-          return error(res, 400, 'COUPON_INVALID');
-        }
+        if (!coupon) return error(res, 400, 'COUPON_INVALID');
+        if (coupon.starts_at > today || coupon.ends_at < today) return error(res, 400, 'COUPON_EXPIRED');
+        if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) return error(res, 400, 'COUPON_LIMIT_REACHED');
+        if (subtotal < (coupon.minimum || 0)) return error(res, 400, 'COUPON_MINIMUM_NOT_MET');
         discount = couponDiscount(subtotal, coupon);
         couponCode = coupon.code;
       }
@@ -1600,6 +1623,17 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
   });
 
+  // Banner fields any cms-role holder may write (no mass assignment:
+  // unknown keys such as script-bearing extras are dropped).
+  const BANNER_FIELDS = ['type', 'title_ko', 'title_en', 'subtitle_ko', 'subtitle_en', 'image_url', 'mobile_image_url', 'link_url', 'button_text_ko', 'button_text_en', 'start_date', 'end_date', 'sort_order', 'is_active'];
+  function pickBanner(b) {
+    const out = {};
+    for (const k of BANNER_FIELDS) if (b[k] !== undefined) out[k] = b[k];
+    if (out.sort_order !== undefined) out.sort_order = Number(out.sort_order) || 0;
+    if (out.is_active !== undefined) out.is_active = !!out.is_active;
+    return out;
+  }
+
   function validBanner(b) {
     return b && b.type && b.title_ko && b.title_en;
   }
@@ -1626,7 +1660,7 @@ export function registerAdminRoutes(app, ctx) {
     try {
       const existing = await findDocItem(database, 'banners', req.params.id);
       if (!existing) return error(res, 404, 'BANNER_NOT_FOUND');
-      await saveDocItem(database, 'banners', { ...existing, ...req.body, id: existing.id });
+      await saveDocItem(database, 'banners', { ...existing, ...pickBanner(req.body || {}), id: existing.id });
       res.json({ success: true });
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
   });

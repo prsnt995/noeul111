@@ -58,7 +58,7 @@ export function AdminCustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
-  }, [page, sort]);
+  }, [page, sort, search]);
 
   const handleSort = (key) => {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));

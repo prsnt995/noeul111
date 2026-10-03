@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useCart } from '../../context/CartContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
+import { useDialogFocus } from '../../utils/dialogFocus.js';
 import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight, Truck } from 'lucide-react';
 
 export function CartDrawer() {
@@ -21,6 +22,15 @@ export function CartDrawer() {
 
   const { lang, t, formatKRW } = useLanguage();
   const [, setLocation] = useLocation();
+  const dialogRef = useRef(null);
+  useDialogFocus(isCartOpen, dialogRef);
+
+  useEffect(() => {
+    if (!isCartOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') closeCart(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isCartOpen, closeCart]);
 
   if (!isCartOpen) return null;
 
@@ -32,6 +42,10 @@ export function CartDrawer() {
   return (
     <div className="backdrop" onClick={closeCart}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('cart.title')}
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'absolute',
@@ -65,8 +79,8 @@ export function CartDrawer() {
               ({items.reduce((s, i) => s + i.quantity, 0)})
             </span>
           </div>
-          <button onClick={closeCart} style={{ padding: '4px', color: 'var(--text-muted)' }}>
-            <X size={20} />
+          <button onClick={closeCart} aria-label={t('nav.close')} style={{ padding: '4px', color: 'var(--text-muted)' }}>
+            <X size={20} aria-hidden />
           </button>
         </div>
 
@@ -173,8 +187,9 @@ export function CartDrawer() {
                           onClick={() => removeFromCart(item.id)}
                           style={{ color: 'var(--text-muted)', padding: '2px' }}
                           title={t('cart.remove')}
+                          aria-label={t('cart.remove')}
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={15} aria-hidden />
                         </button>
                       </div>
 
@@ -201,18 +216,20 @@ export function CartDrawer() {
                       >
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                          aria-label={t('cart.decrease')}
                           style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}
                         >
-                          <Minus size={13} />
+                          <Minus size={13} aria-hidden />
                         </button>
                         <span style={{ padding: '0 8px', fontSize: '0.8125rem', fontWeight: 600 }}>
                           {item.quantity}
                         </span>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          aria-label={t('cart.increase')}
                           style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}
                         >
-                          <Plus size={13} />
+                          <Plus size={13} aria-hidden />
                         </button>
                       </div>
 

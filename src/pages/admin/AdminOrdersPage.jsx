@@ -119,7 +119,7 @@ export function AdminOrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, [selectedStatus, selectedPaymentStatus, selectedSource, page, sort]);
+  }, [selectedStatus, selectedPaymentStatus, selectedSource, page, sort, search]);
 
   const resetPage = (fn) => (v) => { fn(v); setPage(1); };
 

@@ -55,7 +55,7 @@ export function AdminMediaPage() {
 
   useEffect(() => {
     fetchMedia();
-  }, [page]);
+  }, [page, search]);
 
   const handleDirectFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);

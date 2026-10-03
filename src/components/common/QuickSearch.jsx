@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { api } from '../../utils/api.js';
 import { Search, X, TrendingUp, ArrowRight } from 'lucide-react';
+import { useDialogFocus } from '../../utils/dialogFocus.js';
 
 export function QuickSearch({ isOpen, onClose }) {
   const [query, setQuery] = useState('');
@@ -10,6 +11,8 @@ export function QuickSearch({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const { lang, t, formatKRW } = useLanguage();
   const inputRef = useRef(null);
+  const dialogRef = useRef(null);
+  useDialogFocus(isOpen, dialogRef);
 
   useEffect(() => {
     if (isOpen) {
@@ -43,6 +46,13 @@ export function QuickSearch({ isOpen, onClose }) {
     return () => clearTimeout(timer);
   }, [query]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const popularTags = [
@@ -57,6 +67,10 @@ export function QuickSearch({ isOpen, onClose }) {
   return (
     <div className="backdrop" onClick={onClose} style={{ zIndex: 110 }}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('nav.search')}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
@@ -95,8 +109,8 @@ export function QuickSearch({ isOpen, onClose }) {
             }}
           />
           {query && (
-            <button onClick={() => setQuery('')} style={{ color: 'var(--text-muted)' }}>
-              <X size={18} />
+            <button onClick={() => setQuery('')} aria-label={t('shop.clear')} style={{ color: 'var(--text-muted)' }}>
+              <X size={18} aria-hidden />
             </button>
           )}
           <button onClick={onClose} style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginLeft: '8px' }}>

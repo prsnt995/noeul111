@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { X } from 'lucide-react';
 import { getPrimaryProductImage } from '../../utils/imageHelper.js';
+import { useDialogFocus } from '../../utils/dialogFocus.js';
 
 export function ProductPreviewModal({ product, isOpen, onClose }) {
   const [, setLocation] = useLocation();
   const { lang, formatKRW, t } = useLanguage();
+  const dialogRef = useRef(null);
 
   // Lock body scroll and listen for Escape key
   useEffect(() => {
@@ -23,6 +25,8 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
       };
     }
   }, [isOpen, onClose]);
+
+  useDialogFocus(isOpen, dialogRef);
 
   if (!isOpen || !product) return null;
 
@@ -45,6 +49,7 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
     <div
       role="dialog"
       aria-modal="true"
+      aria-label={productName}
       onClick={onClose}
       style={{
         position: 'fixed',

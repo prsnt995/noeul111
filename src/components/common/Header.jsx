@@ -68,6 +68,14 @@ export function Header({ onOpenSearch }) {
     }
   }, [location]);
 
+  // Escape closes the slide-out menu
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
   // Unified navigation — everything stays on / homepage (same-page filtering)
   const navigateWithFilter = (paramsObj) => {
     setMenuOpen(false);
@@ -88,11 +96,6 @@ export function Header({ onOpenSearch }) {
       <div className={`drawer-section${isActiveGender ? ' active-gender' : ''}`}>
         <div
           className="drawer-section-head"
-          onClick={() => setExpandedSection(isExpanded ? null : gender)}
-          aria-expanded={isExpanded}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedSection(isExpanded ? null : gender); } }}
         >
           <button
             type="button"
@@ -104,10 +107,19 @@ export function Header({ onOpenSearch }) {
           >
             {title.toUpperCase()}
           </button>
+          <button
+            type="button"
+            className="drawer-section-toggle"
+            onClick={() => setExpandedSection(isExpanded ? null : gender)}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? t('nav.collapse_section', { title }) : t('nav.expand_section', { title })}
+          >
           <ChevronDown
             size={16}
             className={isExpanded ? 'chev open' : 'chev'}
+            aria-hidden
           />
+          </button>
         </div>
 
         {isExpanded && (
@@ -298,6 +310,9 @@ export function Header({ onOpenSearch }) {
           }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('nav.menu')}
             onClick={(e) => e.stopPropagation()}
             style={{
               width: '100%',
@@ -477,8 +492,14 @@ export function Header({ onOpenSearch }) {
         .drawer-active-dot { width: 6px; height: 6px; border-radius: 50%; background: #000; }
         .drawer-section-head {
           display: flex; align-items: center; justify-content: space-between;
-          padding: 12px 24px; cursor: pointer;
+          padding: 12px 24px;
         }
+        .drawer-section-toggle {
+          display: flex; align-items: center; justify-content: center;
+          min-width: 40px; min-height: 40px; margin: -8px -8px -8px 0;
+          background: none; border: none; border-radius: 8px; cursor: pointer;
+        }
+        .drawer-section-toggle:focus-visible { outline: 2px solid #18181b; outline-offset: 2px; }
         .drawer-section-title {
           font-size: 0.9375rem; font-weight: 600; letter-spacing: 0.08em;
           color: #000000; background: none; border: none; border-left: 2px solid transparent;

@@ -16,7 +16,7 @@ function getSlideWidth() {
 
 export function BestSellersCarousel({ items = [], loading = false, title, subtitle }) {
   const [slideW, setSlideW] = useState(getSlideWidth);
-  const [viewportW, setViewportW] = useState(0);
+  const [viewportW, setViewportW] = useState(null);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [touchX, setTouchX] = useState(null);
@@ -39,9 +39,9 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
   // viewport end — never a blank gap.
   const step = slideW + TRACK_GAP;
   const trackW = total * slideW + Math.max(0, total - 1) * TRACK_GAP;
-  const showControls = total > 0 && trackW > viewportW + 1;
-  const maxOffset = Math.max(0, trackW - viewportW);
-  const maxStart = Math.floor(maxOffset / step);
+  const showControls = total > 0 && viewportW !== null && trackW > viewportW + 1;
+  const maxOffset = Math.max(0, trackW - (viewportW ?? 0));
+  const maxStart = viewportW === null ? 0 : Math.floor(maxOffset / step);
   const offset = Math.min(index * step, maxOffset);
 
   const goNext = useCallback(() => {
@@ -101,7 +101,7 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setPaused(false); }}
     >
       <div className="best-carousel-head">
         <div>
@@ -140,7 +140,9 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
             else goPrev();
           }
           setTouchX(null);
-          setPaused(false);
+          // On hover-capable devices the mouse handlers own the pause state;
+          // only touch-only devices resume here.
+          if (!window.matchMedia?.('(hover: hover)').matches) setPaused(false);
         }}
       >
         <div
@@ -163,20 +165,24 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
               aria-roledescription="slide"
               aria-label={`Best item ${i + 1} of ${total}`}
             >
-              <ProductCard product={prod} variant="classic" eager />
+              <ProductCard product={prod} variant="classic" eager={i === 0} />
             </div>
           ))}
         </div>
       </div>
 
       {showControls && (
-        <div className="best-carousel-dots" role="tablist" aria-label="Best items pages">
+        <div
+          className="best-carousel-dots"
+          role="group"
+          aria-label="Best items pages"
+          onKeyDown={(e) => { if (e.key === 'ArrowLeft') goPrev(); else if (e.key === 'ArrowRight') goNext(); }}
+        >
           {Array.from({ length: maxStart + 1 }, (_, i) => (
             <button
               key={i}
               type="button"
-              role="tab"
-              aria-selected={i === index}
+              aria-current={i === index ? true : undefined}
               aria-label={`Go to best items page ${i + 1} of ${maxStart + 1}`}
               className={i === index ? 'active' : ''}
               onClick={() => setIndex(i)}

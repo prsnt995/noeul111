@@ -46,6 +46,24 @@ export function getPrimaryProductImage(product) {
   return images[0] || getProductPlaceholder(product);
 }
 
+// Render guard for CMS/admin-controlled URLs: only http(s) absolute or
+// site-relative paths pass, everything else (javascript:, data:, etc.)
+// becomes null so the caller can fall back or skip rendering.
+export function safeHttpUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const t = url.trim();
+  if (!t) return null;
+  if (/^https?:\/\//i.test(t)) {
+    try {
+      const u = new URL(t);
+      if (u.protocol === 'http:' || u.protocol === 'https:') return t;
+    } catch { /* fall through */ }
+    return null;
+  }
+  if (t.startsWith('/')) return t;
+  return null;
+}
+
 export function getOptimizedImageUrl(url, width = 800) {
   if (!url || typeof url !== 'string') return url;
   try {

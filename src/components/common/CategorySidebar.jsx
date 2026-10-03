@@ -1,12 +1,14 @@
 import React from 'react';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 
 export function CategorySidebar({ categories, selectedCategory, onSelect }) {
+  const { lang, t } = useLanguage();
   const handleClick = (slug) => {
     if (onSelect) onSelect(slug);
   };
 
   const items = [
-    { key: 'all', label: '전체', labelEn: 'All' },
+    { key: 'all', label: t('nav.all'), labelEn: t('nav.all') },
     ...categories.map((c) => ({
       // Accept both DB shape {slug,name_ko,name_en} and homepage shape {key,label,label_ko}
       key: (c.key || c.slug || '').toLowerCase(),
@@ -59,7 +61,7 @@ export function CategorySidebar({ categories, selectedCategory, onSelect }) {
                 flexShrink: 0,
               }}
             >
-              {item.label} {item.labelEn}
+              {lang === 'ko' ? item.label : (item.labelEn || item.label)}
             </button>
           );
         })}

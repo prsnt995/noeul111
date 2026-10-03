@@ -86,7 +86,7 @@ export function HomePage() {
         const params = new URLSearchParams();
         if (selectedGender !== 'all') params.append('gender', selectedGender);
         if (selectedCategory !== 'all') params.append('category', selectedCategory);
-        params.append('isBest', 'true');
+        params.append('is_best', 'true');
         const json = await api.get(`/catalog/products?${params.toString()}`);
         if (!cancelled) {
           if (json.success && Array.isArray(json.data)) {
@@ -113,9 +113,9 @@ export function HomePage() {
         const params = new URLSearchParams();
         if (selectedGender !== 'all') params.append('gender', selectedGender);
         if (selectedCategory !== 'all') params.append('category', selectedCategory);
-        if (activeFilter === 'new') params.append('isNew', 'true');
-        if (activeFilter === 'best') params.append('isBest', 'true');
-        if (activeFilter === 'sale') params.append('sale', 'true');
+        if (activeFilter === 'new') params.append('is_new', 'true');
+        if (activeFilter === 'best') params.append('is_best', 'true');
+        if (activeFilter === 'sale') params.append('is_sale', 'true');
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
 
         const json = await api.get(`/catalog/products?${params.toString()}`);
@@ -207,7 +207,7 @@ export function HomePage() {
       }}
     >
       {/* =========================================================
-          BEST ITEMS CAROUSEL (top, 6 items, 3 visible, shift-by-1)
+          BEST ITEMS CAROUSEL (top, 6 items, pixel-step paging)
           ========================================================= */}
       <BestSellersCarousel
         items={bestProducts}

@@ -67,7 +67,7 @@ export function AdminCouponsPage() {
 
   useEffect(() => {
     fetchCoupons();
-  }, [page, sort]);
+  }, [page, sort, search]);
 
   const handleSort = (key) => {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
@@ -120,6 +120,10 @@ export function AdminCouponsPage() {
         discount_value: Number(formData.discount_value),
         min_order_amount: Number(formData.min_order_amount) || 0,
         max_discount_amount: formData.max_discount_amount === '' || formData.max_discount_amount == null ? '' : Number(formData.max_discount_amount),
+        // Blank date on edit clears the bound (null); on create it falls
+        // back to the server default window.
+        start_date: formData.start_date === '' ? (isEditMode ? null : '') : formData.start_date,
+        end_date: formData.end_date === '' ? (isEditMode ? null : '') : formData.end_date,
       };
       if (payload.discount_type === 'percentage' && (!Number.isInteger(payload.discount_value) || payload.discount_value < 1 || payload.discount_value > 100)) {
         showToast('비율 할인은 1~100% 사이의 정수로 입력하세요.', 'error');
@@ -366,6 +370,40 @@ export function AdminCouponsPage() {
                   </div>
                 </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">시작일</label>
+                    <input
+                      type="date"
+                      value={formData.start_date}
+                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">종료일</label>
+                    <input
+                      type="date"
+                      value={formData.end_date}
+                      onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">발행 수량</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formData.usage_limit}
+                      onChange={(e) => setFormData({ ...formData, usage_limit: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+                <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>
+                  유효기간 밖의 쿠폰은 자동 비활성 (is_active는 기간에서 계산됩니다).
+                </span>
+
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">한글 설명 *</label>
                   <input
@@ -387,15 +425,6 @@ export function AdminCouponsPage() {
                     placeholder="e.g. 10% off for 2026 season launch"
                     className="form-input"
                   />
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.is_active}
-                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  />
-                  <span style={{ fontSize: '0.875rem' }}>쿠폰 활성화 (Active)</span>
                 </div>
 
                 <div className="adm-modal-actions">
