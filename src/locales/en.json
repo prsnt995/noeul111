@@ -66,6 +66,7 @@
     "clear": "Clear search",
     "search_results": "Search: \"{query}\"",
     "collection": "{prefix} Collection",
+    "view_all_results": "View all {count} results",
     "subtitle": "Contemporary Seoul wardrobe essentials",
     "filters": "Filters",
     "reset_filters": "Reset",

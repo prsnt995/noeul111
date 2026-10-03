@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link, useLocation, useSearch } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useCart } from '../../context/CartContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -12,6 +12,9 @@ export function Header({ onOpenSearch }) {
   const { totalCount, openCart } = useCart();
   const { isLoggedIn, user } = useAuth();
   const [location, setLocation] = useLocation();
+  // useSearch: query-only navigation doesn't change the pathname, so
+  // location alone would leave drawer active-states stale.
+  const search = useSearch();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState(null); // 'men' | 'women' | null
@@ -19,13 +22,13 @@ export function Header({ onOpenSearch }) {
 
   // Current filters from URL — single source of truth, homepage owns filtering
   const currentParams = useMemo(() => {
-    const sp = new URLSearchParams(window.location.search);
+    const sp = new URLSearchParams(search);
     return {
       gender: (sp.get('gender') || 'all').toLowerCase(),
       category: (sp.get('category') || 'all').toLowerCase(),
       filter: (sp.get('filter') || '').toLowerCase(),
     };
-  }, [location]);
+  }, [search]);
 
   // Live categories (frontend-only, same source as homepage pills)
   useEffect(() => {

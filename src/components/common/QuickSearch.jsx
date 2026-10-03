@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { api } from '../../utils/api.js';
 import { Search, X, TrendingUp, ArrowRight } from 'lucide-react';
@@ -8,11 +8,21 @@ import { useDialogFocus } from '../../utils/dialogFocus.js';
 export function QuickSearch({ isOpen, onClose }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const { lang, t, formatKRW } = useLanguage();
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
+  const [, setLocation] = useLocation();
   useDialogFocus(isOpen, dialogRef);
+
+  const goToResults = (e) => {
+    e?.preventDefault?.();
+    const q = query.trim();
+    if (!q) return;
+    onClose?.();
+    setLocation(`/shop?search=${encodeURIComponent(q)}`);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -26,28 +36,32 @@ export function QuickSearch({ isOpen, onClose }) {
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
-      return;
+      setTotal(0);
+      return undefined;
     }
 
+    let cancelled = false;
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
         const data = await api.get(`/catalog/products?search=${encodeURIComponent(query.trim())}&limit=6`);
+        if (cancelled) return;
         if (data.success) {
           setResults(data.data);
+          setTotal(Number(data.total) || data.data.length);
         }
       } catch (err) {
         console.error('Quick search error:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }, 250);
 
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [query]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -83,8 +97,9 @@ export function QuickSearch({ isOpen, onClose }) {
           animation: 'slideUp 0.2s ease forwards',
         }}
       >
-        {/* Search Input Bar */}
-        <div
+        {/* Search Input Bar — submit goes to full results on /shop */}
+        <form
+          onSubmit={goToResults}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -93,13 +108,14 @@ export function QuickSearch({ isOpen, onClose }) {
             gap: '12px',
           }}
         >
-          <Search size={22} color="var(--text-muted)" />
+          <Search size={22} color="var(--text-muted)" aria-hidden />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('shop.search_placeholder')}
+            aria-label={t('nav.search')}
             style={{
               flex: 1,
               border: 'none',
@@ -109,14 +125,14 @@ export function QuickSearch({ isOpen, onClose }) {
             }}
           />
           {query && (
-            <button onClick={() => setQuery('')} aria-label={t('shop.clear')} style={{ color: 'var(--text-muted)' }}>
+            <button type="button" onClick={() => setQuery('')} aria-label={t('shop.clear')} style={{ color: 'var(--text-muted)' }}>
               <X size={18} aria-hidden />
             </button>
           )}
-          <button onClick={onClose} style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginLeft: '8px' }}>
+          <button type="button" onClick={onClose} style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginLeft: '8px' }}>
             {t('nav.close')}
           </button>
-        </div>
+        </form>
 
         {/* Popular Tags */}
         {!query && (
@@ -209,6 +225,30 @@ export function QuickSearch({ isOpen, onClose }) {
               </div>
             )}
           </div>
+        )}
+        {/* Full results on /shop */}
+        {query.trim() && !loading && results.length > 0 && (
+          <button
+            type="button"
+            onClick={goToResults}
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderTop: '1px solid var(--border-light)',
+              backgroundColor: '#18181b',
+              color: '#ffffff',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            <span>{t('shop.view_all_results', { count: total })}</span>
+            <ArrowRight size={16} aria-hidden />
+          </button>
         )}
       </div>
     </div>

@@ -21,6 +21,7 @@ export function ShopPage() {
 
   // Fetch products via canonical api wrapper (credentials + CSRF handled)
   useEffect(() => {
+    let cancelled = false;
     async function fetchProducts() {
       setLoading(true);
       try {
@@ -34,19 +35,21 @@ export function ShopPage() {
         if (sortBy) params.append('sort', sortBy);
 
         const json = await api.get(`/catalog/products?${params.toString()}`);
+        if (cancelled) return;
         if (json.success && Array.isArray(json.data)) {
           setProducts(json.data);
         } else {
           setProducts([]);
         }
       } catch (err) {
-        setProducts([]);
+        if (!cancelled) setProducts([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     fetchProducts();
+    return () => { cancelled = true; };
   }, [selectedGender, selectedCategory, searchQuery, activeFilter, sortBy]);
 
   // Update URL helper — filter is cleared when category changes,
@@ -127,7 +130,7 @@ export function ShopPage() {
           alignItems: 'center',
           backgroundColor: '#ffffff',
           position: 'sticky',
-          top: 0,
+          top: 56,
           zIndex: 95,
           width: '100%',
           maxWidth: '100%',
@@ -185,8 +188,9 @@ export function ShopPage() {
           );
         })()}
 
-        {/* Right: Item Count & Sort Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, marginLeft: 'auto' }}>
+        {/* Right: Item Count & Sort Selector — pinned so it never
+            scrolls off-canvas when the category chip is present */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, marginLeft: 'auto', position: 'sticky', right: 0, backgroundColor: '#ffffff', paddingLeft: '12px', zIndex: 1 }}>
           <span style={{ fontSize: '0.6875rem', color: '#888888', fontWeight: 500 }}>
             {loading ? '...' : `${products.length} ${t('home.items')}`}
           </span>
@@ -212,8 +216,9 @@ export function ShopPage() {
         </div>
       </div>
 
-      {/* Horizontal Category Bar */}
+      {/* Horizontal Category Bar (static: the gender sub-bar above stays sticky) */}
       <CategorySidebar
+        sticky={false}
         categories={liveCategories}
         selectedCategory={selectedCategory}
         onSelect={(slug) => {

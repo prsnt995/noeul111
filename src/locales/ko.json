@@ -66,6 +66,7 @@
     "clear": "검색어 지우기",
     "search_results": "\"{query}\" 검색 결과",
     "collection": "{prefix} 컬렉션",
+    "view_all_results": "검색 결과 {count}건 모두 보기",
     "subtitle": "노을의 감각적인 컨템포러리 컬렉션",
     "filters": "필터",
     "reset_filters": "초기화",

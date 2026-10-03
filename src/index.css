@@ -429,16 +429,17 @@ img {
   border-color: #18181b !important;
 }
 
-/* Category Sub-Bar — pinned at top: 0, no shield needed */
+/* Category Sub-Bar — pinned below the 56px header, no shield needed */
 .noeul-category-bar {
   position: sticky;
-  top: 0;
+  top: 56px;
   z-index: 95;
   background-color: #ffffff;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
 }
+.noeul-category-bar::-webkit-scrollbar { display: none; }
 
 .noeul-category-bar::before {
   content: '';
@@ -685,7 +686,12 @@ img {
   justify-content: space-between;
   gap: 8px;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.home-quick-row::-webkit-scrollbar { display: none; }
 .home-quick-pills { flex: 1; min-width: 0; }
 .home-chip.sale { color: #e11d48; border-color: #fecdd3; }
 .home-chip.sale.active { background: #e11d48; border-color: #e11d48; color: #ffffff; }
@@ -698,6 +704,11 @@ img {
   color: #18181b;
   white-space: nowrap;
   flex-shrink: 0;
+  position: sticky;
+  right: 0;
+  background-color: #ffffff;
+  padding-left: 8px;
+  z-index: 1;
 }
 .home-context button {
   width: 18px; height: 18px; border-radius: 50%;

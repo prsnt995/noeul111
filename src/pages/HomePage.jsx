@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { BestSellersCarousel } from '../components/home/BestSellersCarousel.jsx';
@@ -8,7 +8,10 @@ import { api } from '../utils/api.js';
 
 export function HomePage() {
   const { lang, t } = useLanguage();
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
+  // useSearch subscribes to query changes (useLocation only sees the
+  // pathname, so query-only pill navigation would never re-sync state).
+  const search = useSearch();
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +27,7 @@ export function HomePage() {
 
   // 1. Sync state with URL query parameters
   useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
+    const sp = new URLSearchParams(search);
     const g = sp.get('gender') || 'all';
     const c = sp.get('category') || 'all';
     const f = sp.get('filter') || '';
@@ -34,7 +37,7 @@ export function HomePage() {
     setSelectedCategory(c.toLowerCase());
     setActiveFilter(f.toLowerCase());
     setSearchQuery(s);
-  }, [location]);
+  }, [search]);
 
   // 2. Live categories (frontend-only, falls back to hardcoded list)
   useEffect(() => {
@@ -107,6 +110,7 @@ export function HomePage() {
 
   // 4. Fetch grid products dynamically
   useEffect(() => {
+    let cancelled = false;
     async function loadProducts() {
       setLoading(true);
       try {
@@ -119,19 +123,21 @@ export function HomePage() {
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
 
         const json = await api.get(`/catalog/products?${params.toString()}`);
+        if (cancelled) return;
         if (json.success && Array.isArray(json.data)) {
           setProducts(json.data);
         } else {
           setProducts([]);
         }
       } catch (err) {
-        setProducts([]);
+        if (!cancelled) setProducts([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadProducts();
+    return () => { cancelled = true; };
   }, [selectedGender, selectedCategory, activeFilter, searchQuery]);
 
   // Handle switching gender filter smoothly — single source of truth via wouter
@@ -229,7 +235,7 @@ export function HomePage() {
           padding: '8px 12px 10px',
           backgroundColor: '#ffffff',
           position: 'sticky',
-          top: 0,
+          top: 56,
           zIndex: 95,
           width: '100%',
           maxWidth: '100%',
@@ -240,7 +246,7 @@ export function HomePage() {
         }}
       >
         {/* Row 1: gender segmented + count */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', overflowX: 'auto', scrollbarWidth: 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
             {[
               { key: 'all', label: t('nav.all') },
@@ -284,6 +290,11 @@ export function HomePage() {
               whiteSpace: 'nowrap',
               flexShrink: 0,
               marginLeft: 'auto',
+              position: 'sticky',
+              right: 0,
+              backgroundColor: '#ffffff',
+              paddingLeft: '12px',
+              zIndex: 1,
             }}
           >
             {loading ? '...' : `${products.length} ${t('home.items')}`}

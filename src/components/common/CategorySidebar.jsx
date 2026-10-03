@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 
-export function CategorySidebar({ categories, selectedCategory, onSelect }) {
+export function CategorySidebar({ categories, selectedCategory, onSelect, sticky = true }) {
   const { lang, t } = useLanguage();
   const handleClick = (slug) => {
     if (onSelect) onSelect(slug);
@@ -26,7 +26,7 @@ export function CategorySidebar({ categories, selectedCategory, onSelect }) {
         display: 'flex',
         alignItems: 'center',
         backgroundColor: '#ffffff',
-        position: 'sticky',
+        position: sticky ? 'sticky' : 'static',
         top: 0,
         zIndex: 95,
         width: '100%',
