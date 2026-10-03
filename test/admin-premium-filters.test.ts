@@ -75,9 +75,11 @@ describe('Premium filters — storefront', () => {
     expect(src.includes('edge-fade'), 'edge fades').toBe(true);
   });
 
-  it('home filter bar is slim: combined quick+category row with divider, chips below the sticky bar', () => {
+  it('home filter bar is slim: gender+quick chips in row 1, categories alone in scrollable row 2', () => {
     const src = read('src/pages/HomePage.jsx');
-    expect(src.includes('home-filter-divider'), 'row divider').toBe(true);
+    expect(src.includes('Row 1: gender segmented + quick chips'), 'row 1 layout').toBe(true);
+    expect(src.includes('Row 2: categories only'), 'row 2 layout').toBe(true);
+    expect(src.includes("aria-label={t('home.shop_by_category')}"), 'category tablist').toBe(true);
     // Sticky bar closes before the chips block (chips scroll away).
     const stickyClose = src.indexOf('Active-filter chips: NOT sticky');
     const chipsOpen = src.indexOf('<FilterChips');

@@ -216,8 +216,8 @@ export function HomePage() {
 
       {/* =========================================================
           SLIM STICKY FILTER BAR (2 rows — stays pinned, never heavy):
-          Row 1 = gender segmented + count + reset-when-filtered
-          Row 2 = quick chips + divider + category pills (one swipe row)
+          Row 1 = gender segmented + quick chips + count/reset
+          Row 2 = categories only (scrolls when there are many)
           Active-filter chips live BELOW the sticky bar and scroll away.
           ========================================================= */}
       <div
@@ -237,8 +237,8 @@ export function HomePage() {
           gap: '8px',
         }}
       >
-        {/* Row 1: gender segmented + count + reset */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {/* Row 1: gender segmented + quick chips + count/reset */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', maxWidth: '100%' }}>
           <div style={{ flexShrink: 0 }}>
             <GenderSegmented
               value={selectedGender}
@@ -250,6 +250,29 @@ export function HomePage() {
               ]}
               onChange={handleGenderSwitch}
             />
+          </div>
+
+          <div className="home-category-pills" role="tablist" aria-label={t('shop.filters')} style={{ flex: 1, minWidth: 0 }}>
+            {[
+              { key: '', label: t('home.view_all') },
+              { key: 'new', label: t('nav.new_arrivals') },
+              { key: 'best', label: t('nav.best_sellers') },
+              { key: 'sale', label: t('nav.sale') },
+            ].map((f) => {
+              const isSelected = (activeFilter || '') === f.key;
+              return (
+                <button
+                  key={f.key || 'all'}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={() => handleFilterSelect(f.key)}
+                  className={`home-pill home-chip${isSelected ? ' active' : ''}${f.key === 'sale' ? ' sale' : ''}`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
           </div>
 
           <div
@@ -264,10 +287,8 @@ export function HomePage() {
               whiteSpace: 'nowrap',
               flexShrink: 0,
               marginLeft: 'auto',
-              position: 'sticky',
-              right: 0,
               backgroundColor: '#ffffff',
-              paddingLeft: '12px',
+              paddingLeft: '4px',
               zIndex: 1,
             }}
           >
@@ -296,57 +317,32 @@ export function HomePage() {
           </div>
         </div>
 
-        {/* Row 2: quick chips + divider + category pills in one swipe row */}
-        <div className="home-category-pills edge-fade" role="group" aria-label={t('shop.filters')}>
-          <div role="tablist" aria-label={t('shop.filters')} style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-            {[
-              { key: '', label: t('home.view_all') },
-              { key: 'new', label: t('nav.new_arrivals') },
-              { key: 'best', label: t('nav.best_sellers') },
-              { key: 'sale', label: t('nav.sale') },
-            ].map((f) => {
-              const isSelected = (activeFilter || '') === f.key;
-              return (
-                <button
-                  key={f.key || 'all'}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => handleFilterSelect(f.key)}
-                  className={`home-pill home-chip${isSelected ? ' active' : ''}${f.key === 'sale' ? ' sale' : ''}`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-          <span className="home-filter-divider" aria-hidden="true" />
-          <div role="tablist" aria-label={t('home.shop_by_category')} style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={selectedCategory === 'all'}
-              onClick={() => handleCategorySelect('all')}
-              className={`home-pill${selectedCategory === 'all' ? ' active' : ''}`}
-            >
-              {t('shop.all_categories')}
-            </button>
-            {availableCategories.map((c) => {
-              const isSelected = selectedCategory === c.key;
-              return (
-                <button
-                  key={c.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => handleCategorySelect(c.key)}
-                  className={`home-pill${isSelected ? ' active' : ''}`}
-                >
-                  {categoryLabel(c)}
-                </button>
-              );
-            })}
-          </div>
+        {/* Row 2: categories only — scrolls when there are many */}
+        <div className="home-category-pills edge-fade" role="tablist" aria-label={t('home.shop_by_category')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selectedCategory === 'all'}
+            onClick={() => handleCategorySelect('all')}
+            className={`home-pill${selectedCategory === 'all' ? ' active' : ''}`}
+          >
+            {t('shop.all_categories')}
+          </button>
+          {availableCategories.map((c) => {
+            const isSelected = selectedCategory === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => handleCategorySelect(c.key)}
+                className={`home-pill${isSelected ? ' active' : ''}`}
+              >
+                {categoryLabel(c)}
+              </button>
+            );
+          })}
         </div>
       </div>
 
