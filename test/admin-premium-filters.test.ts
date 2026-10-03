@@ -49,8 +49,7 @@ describe('Premium filters — shared primitives', () => {
     expect(src.includes('touchesFilter'), 'page reset on filter change').toBe(true);
   });
 
-  it('premium CSS exists for pills, dropdown, and chips', () => {
-    const storefront = read('src/index.css');
+  it('premium CSS exists for pills, dropdown, and chips', () => {    const storefront = read('src/index.css');
     for (const cls of ['.pill-group', '.pill-indicator', '.fancy-select-pop', '.fancy-select-opt', '.filter-chip', '.edge-fade']) {
       expect(storefront.includes(cls), `index.css ${cls}`).toBe(true);
     }
@@ -108,5 +107,30 @@ describe('Premium filters — admin', () => {
     const block = src.slice(src.indexOf('selects={'));
     const labels = (block.match(/label: '/g) || []).length;
     expect(labels, `${file} visible mini-labels`).toBeGreaterThan(0);
+  });
+});
+
+describe('Premium filters — overlay stacking (no filter-over-modal overlap)', () => {
+  it('dropdown closes when focus leaves it (keyboard-opened overlays)', () => {
+    const src = read('src/components/common/Dropdown.jsx');
+    expect(src.includes('focusin'), 'focus-loss close').toBe(true);
+  });
+
+  it('dropdown flips alignment near the right viewport edge', () => {
+    const src = read('src/components/common/Dropdown.jsx');
+    expect(src.includes('flip'), 'flip state').toBe(true);
+    expect(src.includes('getBoundingClientRect'), 'trigger measurement').toBe(true);
+    expect(read('src/index.css').includes('.fancy-select-pop.flip'), 'flip CSS').toBe(true);
+    expect(read('src/styles/admin.css').includes('.fancy-select-pop.flip'), 'admin flip CSS').toBe(true);
+  });
+
+  it('admin overlays stack above filter popovers (120)', () => {
+    const admin = read('src/styles/admin.css');
+    const backdrop = admin.match(/\.adm-backdrop\s*\{[^}]*z-index:\s*(\d+)/);
+    const modal = admin.match(/\.adm-modal\s*\{[^}]*z-index:\s*(\d+)/);
+    const drawer = admin.match(/\.adm-drawer\s*\{[^}]*z-index:\s*(\d+)/);
+    expect(Number(backdrop?.[1]), 'backdrop above popover').toBeGreaterThan(120);
+    expect(Number(modal?.[1]), 'modal above popover').toBeGreaterThan(120);
+    expect(Number(drawer?.[1]), 'drawer above popover').toBeGreaterThan(120);
   });
 });

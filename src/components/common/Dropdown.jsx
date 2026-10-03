@@ -19,6 +19,7 @@ export function Dropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [focusIdx, setFocusIdx] = useState(-1);
+  const [flip, setFlip] = useState(false);
   const rootRef = useRef(null);
   const btnRef = useRef(null);
   const listId = useId();
@@ -28,11 +29,25 @@ export function Dropdown({
   useEffect(() => {
     if (!open) return;
     setFocusIdx(selectedIdx >= 0 ? selectedIdx : 0);
+    // Flip to right-alignment when the popover would overflow the viewport
+    // (e.g. the rightmost admin filter) instead of overlapping neighbors.
+    const rect = btnRef.current?.getBoundingClientRect();
+    setFlip(!!rect && rect.left + 220 > window.innerWidth);
     const onDown = (e) => {
       if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
     };
+    // Keyboard hole: focus leaving the dropdown (e.g. opening a drawer or
+    // modal from another control) must close the popover so it can never
+    // paint above the overlay.
+    const onFocusIn = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('focusin', onFocusIn);
+    };
   }, [open, selectedIdx]);
 
   const pick = (idx) => {
@@ -82,7 +97,7 @@ export function Dropdown({
           role="listbox"
           id={listId}
           aria-label={ariaLabel || label || 'Options'}
-          className="fancy-select-pop"
+          className={`fancy-select-pop${flip ? ' flip' : ''}`}
           onKeyDown={onListKey}
           tabIndex={-1}
         >

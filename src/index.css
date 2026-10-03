@@ -867,6 +867,9 @@ img {
 .fancy-select-check { margin-left: auto; color: #18181b; }
 .fancy-select-opt.selected small + .fancy-select-check,
 .fancy-select-opt.selected .fancy-select-check { margin-left: 4px; }
+/* Right-edge flip: align popover to the trigger's right edge instead of
+   overflowing past the viewport (right-side controls/modals). */
+.fancy-select-pop.flip { left: auto; right: 0; }
 
 /* Active-filter chips */
 .filter-chips {
