@@ -75,6 +75,24 @@ describe('Premium filters — storefront', () => {
     expect(src.includes('edge-fade'), 'edge fades').toBe(true);
   });
 
+  it('home filter bar is slim: combined quick+category row with divider, chips below the sticky bar', () => {
+    const src = read('src/pages/HomePage.jsx');
+    expect(src.includes('home-filter-divider'), 'row divider').toBe(true);
+    // Sticky bar closes before the chips block (chips scroll away).
+    const stickyClose = src.indexOf('Active-filter chips: NOT sticky');
+    const chipsOpen = src.indexOf('<FilterChips');
+    expect(stickyClose, 'sticky section marker').toBeGreaterThan(-1);
+    expect(chipsOpen, 'chips below sticky bar').toBeGreaterThan(stickyClose);
+  });
+
+  it('floating rail paints above sticky filter bars but below header and modals', () => {
+    const src = read('src/components/common/RightFloatingBar.jsx');
+    const m = src.match(/zIndex:\s*(\d+)/);
+    const z = Number(m?.[1]);
+    expect(z, 'rail above sticky bars (95)').toBeGreaterThan(95);
+    expect(z, 'rail below header (100)').toBeLessThan(100);
+  });
+
   it('category sidebar has edge fades', () => {
     expect(read('src/components/common/CategorySidebar.jsx').includes('edge-fade'), 'edge fade').toBe(true);
   });

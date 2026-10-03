@@ -26,12 +26,15 @@ export function RightFloatingBar({ onOpenSearch }) {
       {/* 1. Main Floating Navigation Toolbar */}
       <aside
         className="korean-floating-bar"
+        aria-label={t('nav.menu')}
         style={{
           position: 'fixed',
           right: '20px',
           top: '50%',
           transform: 'translateY(-50%)',
-          zIndex: 85,
+          // Above sticky filter bars (95) so the rail never slides under
+          // them; below header (100) and all modals/drawers.
+          zIndex: 96,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -65,7 +68,9 @@ export function RightFloatingBar({ onOpenSearch }) {
         <div
           className="korean-floating-tools"
           style={{
-            backgroundColor: '#ffffff',
+            backgroundColor: 'rgba(255,255,255,0.88)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
             borderRadius: '24px',
             border: '1px solid #e4e4e7',
             boxShadow: '0 8px 24px rgba(0,0,0,0.08)',

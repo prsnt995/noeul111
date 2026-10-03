@@ -191,23 +191,6 @@ export function HomePage() {
     setLocation(qs ? `/?${qs}` : '/');
   };
 
-  const activeContextLabel = () => {
-    const parts = [];
-    if (selectedGender !== 'all') {
-      parts.push(selectedGender === 'men' ? t('nav.men') : t('nav.women'));
-    }
-    if (selectedCategory !== 'all') {
-      const c = availableCategories.find((x) => x.key === selectedCategory);
-      parts.push(c ? categoryLabel(c) : selectedCategory);
-    }
-    if (activeFilter) {
-      if (activeFilter === 'new') parts.push(t('nav.new_arrivals'));
-      else if (activeFilter === 'best') parts.push(t('nav.best_sellers'));
-      else if (activeFilter === 'sale') parts.push(t('nav.sale'));
-    }
-    return parts.join(' • ');
-  };
-
   const categoryLabel = (c) => (lang === 'ko' ? (c.label_ko || c.label) : (c.label || c.label_ko));
 
   return (
@@ -232,10 +215,10 @@ export function HomePage() {
       />
 
       {/* =========================================================
-          STICKY SELECTION BAR:
-          Row 1 = gender (ALL / MEN / WOMEN) + item count
-          Row 2 = category pills (shirts / jeans ...)
-          Row 3 = quick filters (All / New / Best / Sale) + context
+          SLIM STICKY FILTER BAR (2 rows — stays pinned, never heavy):
+          Row 1 = gender segmented + count + reset-when-filtered
+          Row 2 = quick chips + divider + category pills (one swipe row)
+          Active-filter chips live BELOW the sticky bar and scroll away.
           ========================================================= */}
       <div
         className="noeul-category-bar home-filter-bar"
@@ -254,7 +237,7 @@ export function HomePage() {
           gap: '8px',
         }}
       >
-        {/* Row 1: gender segmented + count */}
+        {/* Row 1: gender segmented + count + reset */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', overflowX: 'auto', scrollbarWidth: 'none' }}>
           <div style={{ flexShrink: 0 }}>
             <GenderSegmented
@@ -271,6 +254,9 @@ export function HomePage() {
 
           <div
             style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
               fontSize: '0.6875rem',
               color: '#888888',
               letterSpacing: '0.04em',
@@ -285,41 +271,34 @@ export function HomePage() {
               zIndex: 1,
             }}
           >
-            {loading ? '...' : `${products.length} ${t('home.items')}`}
+            {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
+              <button
+                type="button"
+                onClick={handleReset}
+                aria-label={t('shop.reset_filters')}
+                style={{
+                  background: 'none',
+                  border: '1px solid #e4e4e7',
+                  borderRadius: '9999px',
+                  fontSize: '0.6875rem',
+                  fontWeight: 700,
+                  color: '#52525b',
+                  padding: '3px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                {t('shop.reset_filters')} ✕
+              </button>
+            )}
+            <span aria-live="polite">
+              {loading ? '...' : `${products.length} ${t('home.items')}`}
+            </span>
           </div>
         </div>
 
-        {/* Row 2: category pills */}
-        <div className="home-category-pills edge-fade" role="tablist" aria-label={t('home.shop_by_category')}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={selectedCategory === 'all'}
-            onClick={() => handleCategorySelect('all')}
-            className={`home-pill${selectedCategory === 'all' ? ' active' : ''}`}
-          >
-            {t('shop.all_categories')}
-          </button>
-          {availableCategories.map((c) => {
-            const isSelected = selectedCategory === c.key;
-            return (
-              <button
-                key={c.key}
-                type="button"
-                role="tab"
-                aria-selected={isSelected}
-                onClick={() => handleCategorySelect(c.key)}
-                className={`home-pill${isSelected ? ' active' : ''}`}
-              >
-                {categoryLabel(c)}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Row 3: quick filters (same-page, mirrors drawer) + active chips */}
-        <div className="home-quick-row">
-          <div className="home-category-pills home-quick-pills" role="tablist" aria-label={t('shop.filters')}>
+        {/* Row 2: quick chips + divider + category pills in one swipe row */}
+        <div className="home-category-pills edge-fade" role="group" aria-label={t('shop.filters')}>
+          <div role="tablist" aria-label={t('shop.filters')} style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
             {[
               { key: '', label: t('home.view_all') },
               { key: 'new', label: t('nav.new_arrivals') },
@@ -341,18 +320,39 @@ export function HomePage() {
               );
             })}
           </div>
-          {activeContextLabel() && (
-            <div className="home-context">
-              <span>{activeContextLabel()}</span>
-              <button type="button" onClick={handleReset} aria-label={t('shop.reset_filters')}>
-                ✕
-              </button>
-            </div>
-          )}
+          <span className="home-filter-divider" aria-hidden="true" />
+          <div role="tablist" aria-label={t('home.shop_by_category')} style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedCategory === 'all'}
+              onClick={() => handleCategorySelect('all')}
+              className={`home-pill${selectedCategory === 'all' ? ' active' : ''}`}
+            >
+              {t('shop.all_categories')}
+            </button>
+            {availableCategories.map((c) => {
+              const isSelected = selectedCategory === c.key;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={() => handleCategorySelect(c.key)}
+                  className={`home-pill${isSelected ? ' active' : ''}`}
+                >
+                  {categoryLabel(c)}
+                </button>
+              );
+            })}
+          </div>
         </div>
+      </div>
 
-        {/* Row 4: active-filter chips with per-filter clear */}
-        {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
+      {/* Active-filter chips: NOT sticky — scrolls away with content */}
+      {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
+        <div style={{ padding: '10px 12px 0', backgroundColor: '#ffffff' }}>
           <FilterChips
             chips={[
               ...(selectedGender !== 'all' ? [{
@@ -382,8 +382,8 @@ export function HomePage() {
             onResetAll={handleReset}
             resetLabel={t('shop.reset_filters')}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* =========================================================
           PRODUCT GRID

@@ -692,6 +692,13 @@ img {
   -ms-overflow-style: none;
 }
 .home-quick-row::-webkit-scrollbar { display: none; }
+.home-filter-divider {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 2px;
+  background: #e4e4e7;
+}
 .home-quick-pills { flex: 1; min-width: 0; }
 .home-chip.sale { color: #e11d48; border-color: #fecdd3; }
 .home-chip.sale.active { background: #e11d48; border-color: #e11d48; color: #ffffff; }
