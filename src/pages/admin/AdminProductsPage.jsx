@@ -1196,7 +1196,6 @@ export function AdminProductsPage() {
                 <ImageUploader
                   images={formData.images}
                   onChange={(imgs) => setFormData({ ...formData, images: imgs })}
-                  maxImages={10}
                   label="상품 이미지 관리 (Product Photos - 첫 번째 사진이 메인, 색상 지정 시 해당 색상 선택 시 먼저 표시)"
                   availableColors={formData.colors}
                 />

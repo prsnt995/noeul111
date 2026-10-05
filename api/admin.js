@@ -9,6 +9,18 @@ import {
   buildSalesBySource,
   salesBySourceToCsv,
 } from './orderSources.js';
+import {
+  UPLOAD_MAX_FILES_PER_REQUEST,
+  UPLOAD_MAX_FILE_BYTES,
+  UPLOAD_ALLOWED_EXTENSIONS,
+  UPLOAD_ALLOWED_MIME,
+  UPLOAD_FAILED_TOO_MANY,
+  UPLOAD_FAILED_TOO_LARGE,
+  UPLOAD_FAILED_TYPE,
+  UPLOAD_FAILED_STORAGE,
+  UPLOAD_FAILED_GENERIC,
+  UPLOAD_FAILED_EMPTY,
+} from '../src/config/upload.js';
 
 // Wave 3: Supabase-backed /api/v1/admin/* surface. The storefront frontend
 // speaks legacy payload shapes; this module translates them onto the
@@ -1489,16 +1501,29 @@ export function registerAdminRoutes(app, ctx) {
   const __adminDirname = path.dirname(fileURLToPath(import.meta.url));
   const uploadDir = path.join(__adminDirname, '../uploads');
   const MIME_TO_EXT = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif' };
+  // Per-file validation happens in the handler (per-file results) — multer
+  // only enforces a generous DoS guard (25 MB/file) and the request cap.
   const adminUpload = multer({
     storage: multer.memoryStorage(),
-    fileFilter: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const mime = String(file.mimetype || '').toLowerCase();
-      if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) && MIME_TO_EXT[mime]) cb(null, true);
-      else cb(new Error('이미지 파일(JPG, PNG, WEBP, GIF)만 업로드 가능합니다.'), false);
-    },
-    limits: { fileSize: 8 * 1024 * 1024 },
+    limits: { fileSize: 25 * 1024 * 1024, files: UPLOAD_MAX_FILES_PER_REQUEST },
   });
+
+  function uploadFileProblem(file) {
+    const name = file?.originalname || 'file';
+    const ext = path.extname(name).toLowerCase().replace(/^\./, '');
+    const mime = String(file?.mimetype || '').toLowerCase();
+    if (!UPLOAD_ALLOWED_EXTENSIONS.includes(ext) || (mime && !UPLOAD_ALLOWED_MIME.has(mime))) {
+      return { name, code: UPLOAD_FAILED_TYPE };
+    }
+    if (!file?.size || file.size > UPLOAD_MAX_FILE_BYTES) {
+      return { name, code: file?.size ? UPLOAD_FAILED_TOO_LARGE : UPLOAD_FAILED_GENERIC };
+    }
+    return null;
+  }
+
+  function isStorageFullMessage(message) {
+    return /quota|exceeded|storage.*(full|limit)|payload too large/i.test(String(message || ''));
+  }
 
   function isHttpUrl(u) {
     try {
@@ -1540,10 +1565,14 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/upload-multiple', authenticate, staff(R.catalog), adminUpload.array('images', 10), async (req, res) => {
+  // Per-file results: one bad file never fails the batch. Responds with
+  // { uploaded: [...], failed: [{ name, code }] }; `data` mirrors `uploaded`
+  // for older clients.
+  app.post('/api/v1/admin/upload-multiple', authenticate, staff(R.catalog), adminUpload.array('images', UPLOAD_MAX_FILES_PER_REQUEST), async (req, res) => {
     try {
-      if (!req.files || !req.files.length) return error(res, 400, 'NO_FILES');
-      const saved = [];
+      if (!req.files || !req.files.length) return error(res, 400, UPLOAD_FAILED_EMPTY);
+      const uploaded = [];
+      const failed = [];
       // Try Supabase Storage (free-tier 1GB, 5GB bandwidth) if configured, fallback to local /uploads
       const bucket = process.env.MEDIA_BUCKET || 'product-media';
       let supabaseStorage = null;
@@ -1555,35 +1584,70 @@ export function registerAdminRoutes(app, ctx) {
           supabaseStorage = sb;
         } catch {}
       }
-      for (const file of req.files) {
-        let url = null;
-        try {
-          if (supabaseStorage) {
-            const ext = path.extname(file.originalname) || MIME_TO_EXT[String(file.mimetype || '').toLowerCase()] || '.jpg';
-            const objectPath = `products/${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
-            const { error: upErr } = await supabaseStorage.storage.from(bucket).upload(objectPath, file.buffer, { contentType: file.mimetype || 'image/jpeg', upsert: false, cacheControl: '31536000' });
-            if (!upErr) {
-              const { data } = supabaseStorage.storage.from(bucket).getPublicUrl(objectPath);
-              url = data.publicUrl;
-            }
-          }
-        } catch (e) { console.error('Supabase upload error', e?.message); }
-        if (!url) {
-          console.error('Supabase upload failed, no fallback in serverless');
-          return error(res, 503, 'UPLOAD_FAILED');
-        }
-        const item = {
-          id: uid(), name: file.originalname, url,
-          file_type: 'image', size_bytes: file.size, alt_text: file.originalname,
-          tags: 'uploaded,product', created_at: new Date().toISOString(),
-        };
-        await saveDocItem(database, 'media', item);
-        saved.push({ url: item.url, name: file.originalname, size: file.size });
+      if (!supabaseStorage) {
+        console.error('Supabase storage unavailable for upload');
+        return error(res, 503, UPLOAD_FAILED_STORAGE);
       }
-      res.json({ success: true, message: `${saved.length}개의 이미지가 업로드되었습니다.`, data: saved });
+      for (const file of req.files) {
+        const problem = uploadFileProblem(file);
+        if (problem) {
+          failed.push(problem);
+          continue;
+        }
+        let url = null;
+        let storageError = null;
+        try {
+          const ext = path.extname(file.originalname) || MIME_TO_EXT[String(file.mimetype || '').toLowerCase()] || '.jpg';
+          const objectPath = `products/${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+          const { error: upErr } = await supabaseStorage.storage.from(bucket).upload(objectPath, file.buffer, { contentType: file.mimetype || 'image/jpeg', upsert: false, cacheControl: '31536000' });
+          if (upErr) {
+            storageError = upErr;
+          } else {
+            const { data } = supabaseStorage.storage.from(bucket).getPublicUrl(objectPath);
+            url = data.publicUrl;
+          }
+        } catch (e) {
+          console.error('Supabase upload error', e?.message);
+          storageError = e;
+        }
+        if (!url) {
+          const msg = storageError?.message || '';
+          failed.push({
+            name: file.originalname,
+            code: isStorageFullMessage(msg) ? UPLOAD_FAILED_STORAGE : UPLOAD_FAILED_GENERIC,
+          });
+          continue;
+        }
+        try {
+          const item = {
+            id: uid(), name: file.originalname, url,
+            file_type: 'image', size_bytes: file.size, alt_text: file.originalname,
+            tags: 'uploaded,product', created_at: new Date().toISOString(),
+          };
+          await saveDocItem(database, 'media', item);
+          uploaded.push({ url: item.url, name: file.originalname, size: file.size });
+        } catch (e) {
+          console.error('Media doc save error', e?.message);
+          failed.push({ name: file.originalname, code: UPLOAD_FAILED_GENERIC });
+        }
+      }
+      res.json({
+        success: true,
+        message: failed.length
+          ? `${uploaded.length}개 성공, ${failed.length}개 실패`
+          : `${uploaded.length}개의 이미지가 업로드되었습니다.`,
+        data: uploaded,
+        uploaded,
+        failed,
+      });
     } catch (err) {
       console.error('Upload error', err);
-      error(res, 400, err?.message || 'UPLOAD_FAILED');
+      // Multer DoS-guard errors stay whole-request: oversized buffer / too many parts.
+      if (err?.code === 'LIMIT_FILE_SIZE') return error(res, 400, UPLOAD_FAILED_TOO_LARGE);
+      if (err?.code === 'LIMIT_FILE_COUNT' || err?.code === 'LIMIT_UNEXPECTED_FILE') {
+        return error(res, 400, UPLOAD_FAILED_TOO_MANY);
+      }
+      error(res, 400, err?.message || UPLOAD_FAILED_GENERIC);
     }
   });
 

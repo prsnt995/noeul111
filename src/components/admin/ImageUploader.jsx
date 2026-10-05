@@ -1,7 +1,19 @@
 import React, { useState, useRef } from 'react';
 import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import { MediaPickerModal } from '../common/MediaPickerModal.jsx';
+import {
+  PRODUCT_IMAGE_MAX,
+  UPLOAD_BATCH_SIZE,
+  UPLOAD_DOWNSCALE_ABOVE_BYTES,
+  UPLOAD_FAILED_GENERIC,
+} from '../../config/upload.js';
+import {
+  validateImageFiles,
+  downscaleImage,
+  uploadErrorText,
+} from '../../utils/upload.js';
 import { Upload, X, Image as ImageIcon, Star, ArrowLeft, ArrowRight, Plus, Loader2 } from 'lucide-react';
 
 function normalizeImages(images) {
@@ -11,44 +23,81 @@ function normalizeImages(images) {
   });
 }
 
-export function ImageUploader({ images = [], onChange, maxImages = 10, label = '상품 사진 (Product Images)', availableColors = [] }) {
+export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE_MAX, label = '상품 사진 (Product Images)', availableColors = [] }) {
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const fileInputRef = useRef(null);
   const { showToast } = useToast();
+  const { lang } = useLanguage() || { lang: 'ko' };
 
   const normalized = normalizeImages(images);
 
+  const KNOWN_CODES = new Set([
+    'TOO_MANY_FILES', 'FILE_TOO_LARGE', 'UNSUPPORTED_TYPE',
+    'STORAGE_FULL', 'UPLOAD_FAILED', 'NO_FILES',
+  ]);
+
   const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files || []);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     if (files.length === 0) return;
 
-    if (images.length + files.length > maxImages) {
-      showToast(`최대 ${maxImages}장의 사진까지만 등록 가능합니다.`, 'error');
-      return;
+    // 1. Pre-flight: name every bad file before any network traffic.
+    const { accepted, issues } = validateImageFiles(files, { existingCount: images.length, max: maxImages });
+    for (const issue of issues) {
+      showToast(uploadErrorText(issue.code, lang, issue.name, { max: maxImages }), 'error');
     }
+    if (accepted.length === 0) return;
 
+    // 2 + 3. Downscale heavy rasters, then upload sequentially in small
+    // batches (dodges serverless body caps; one blip fails one batch).
     setUploading(true);
-    const formData = new FormData();
-    files.forEach((file) => {
-      formData.append('images', file);
-    });
-
+    setProgress({ done: 0, total: accepted.length });
     try {
-      const data = await adminApi.post('/admin/upload-multiple', formData);
-      if (data.success && data.data) {
-        const uploaded = data.data.map((f) => ({ url: f.url, color: null }));
-        onChange([...normalized, ...uploaded]);
-        showToast(`${uploaded.length}장의 사진이 성공적으로 업로드되었습니다.`, 'success');
-      } else {
-        showToast(data.message || '사진 업로드 실패', 'error');
+      const prepared = [];
+      for (const f of accepted) {
+        prepared.push(f.size > UPLOAD_DOWNSCALE_ABOVE_BYTES ? await downscaleImage(f) : f);
       }
-    } catch (err) {
-      console.error('File upload error:', err);
-      showToast('사진 업로드 중 오류가 발생했습니다.', 'error');
+      const uploaded = [];
+      const failed = [];
+      for (let i = 0; i < prepared.length; i += UPLOAD_BATCH_SIZE) {
+        const chunk = prepared.slice(i, i + UPLOAD_BATCH_SIZE);
+        const formData = new FormData();
+        chunk.forEach((file) => {
+          formData.append('images', file);
+        });
+        try {
+          const data = await adminApi.post('/admin/upload-multiple', formData);
+          if (data?.success) {
+            const rows = data.uploaded || data.data || [];
+            uploaded.push(...rows.map((u) => ({ url: u.url, color: null })));
+            for (const f of (data.failed || [])) failed.push(f);
+          } else {
+            const code = KNOWN_CODES.has(data?.code) ? data.code : UPLOAD_FAILED_GENERIC;
+            chunk.forEach((file) => failed.push({ name: file.name, code }));
+          }
+        } catch (err) {
+          const code = KNOWN_CODES.has(err?.message) ? err.message : UPLOAD_FAILED_GENERIC;
+          chunk.forEach((file) => failed.push({ name: file.name, code }));
+        }
+        setProgress({ done: Math.min(prepared.length, i + UPLOAD_BATCH_SIZE), total: prepared.length });
+      }
+      if (uploaded.length) onChange([...normalized, ...uploaded]);
+      if (uploaded.length && !failed.length) {
+        showToast(`${uploaded.length}장의 사진이 성공적으로 업로드되었습니다.`, 'success');
+      } else if (uploaded.length && failed.length) {
+        showToast(`${uploaded.length}장 성공, ${failed.length}장 실패`, 'info');
+      }
+      for (const f of failed.slice(0, 5)) {
+        showToast(uploadErrorText(f.code, lang, f.name, { max: maxImages }), 'error');
+      }
+      if (failed.length > 5) {
+        showToast(`그 외 ${failed.length - 5}건의 실패가 더 있습니다.`, 'error');
+      }
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setProgress(null);
     }
   };
 
@@ -103,7 +152,7 @@ export function ImageUploader({ images = [], onChange, maxImages = 10, label = '
         ref={fileInputRef}
         onChange={handleFileSelect}
         multiple
-        accept="image/png, image/jpeg, image/jpg, image/webp, image/gif"
+        accept="image/png, image/jpeg, image/jpg, image/webp, image/gif, image/avif"
         style={{ display: 'none' }}
       />
 
@@ -130,7 +179,7 @@ export function ImageUploader({ images = [], onChange, maxImages = 10, label = '
           <>
             <Loader2 size={32} className="animate-spin" color="var(--accent-sunset)" />
             <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#52525b' }}>
-              사진을 서버로 업로드하는 중입니다...
+              사진을 서버로 업로드하는 중입니다{progress ? ` (${progress.done}/${progress.total})` : '...'}
             </p>
           </>
         ) : (
@@ -154,7 +203,7 @@ export function ImageUploader({ images = [], onChange, maxImages = 10, label = '
                 컴퓨터 / 기기에서 사진 파일 업로드하기
               </p>
               <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
-                클릭하여 JPG, PNG, WEBP 사진 선택 (최대 10장, 드래그 앤 드롭 지원)
+                클릭하여 JPG, PNG, WEBP, GIF, AVIF 선택 (최대 {maxImages}장 · 장당 8MB · 2MB 초과분은 자동 최적화)
               </span>
             </div>
           </>
