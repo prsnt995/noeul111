@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { CartProvider } from './context/CartContext.jsx';
 import { WishlistProvider } from './context/WishlistContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
+import { BusyProvider } from './context/BusyContext.jsx';
 
 // Common Components
 import { Header } from './components/common/Header.jsx';
@@ -167,7 +168,9 @@ export function App() {
         <AuthProvider>
           <CartProvider>
             <WishlistProvider>
-              <AppContent />
+              <BusyProvider>
+                <AppContent />
+              </BusyProvider>
             </WishlistProvider>
           </CartProvider>
         </AuthProvider>

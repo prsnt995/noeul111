@@ -13,8 +13,10 @@ import {
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useListParams } from '../../hooks/useListParams.js';
+import { validateProductForm, productErrorText } from '../../utils/product.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useBusy } from '../../context/BusyContext.jsx';
 import {
   Plus,
   Edit2,
@@ -83,6 +85,7 @@ export function AdminProductsPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const PAGE_SIZE = 20;
   const { showToast } = useToast();
+  const { runBusy, busy: saving } = useBusy();
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -255,7 +258,16 @@ export function AdminProductsPage() {
       }
     }
     const emptyColors = formData.colors.filter(c => !formData.sizes.some(sz => cellFilled(formData.variant_stock[comboKey(c, sz)])));
-    try {
+    // Pre-flight mirrors the backend guards so fixable input mistakes show a
+    // named message without a wasted round trip.
+    const preflight = validateProductForm(formData);
+    if (!preflight.ok) {
+      showToast(productErrorText(preflight.code), 'error');
+      return;
+    }
+    // Blocking loader for the whole save: no clicks elsewhere, no double
+    // submit, no duplicate-creating retry while the request is in flight.
+    await runBusy(async () => {
       const payload = {
         ...formData,
         price: Number(formData.price),
@@ -276,9 +288,9 @@ export function AdminProductsPage() {
 
       setIsModalOpen(false);
       fetchProducts();
-    } catch (err) {
-      showToast(err.message || '저장 실패', 'error');
-    }
+    }, isEditMode ? '상품 수정 중...' : '상품 등록 중...').catch((err) => {
+      showToast(productErrorText(err?.message), 'error');
+    });
   };
 
   const handleToggleStatus = async (id, currentStatus) => {
@@ -1259,11 +1271,11 @@ export function AdminProductsPage() {
 
                 {/* Submit Action Buttons */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #e4e4e7' }}>
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary" disabled={saving}>
                     취소
                   </button>
-                  <button type="submit" className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)' }}>
-                    {isEditMode ? '수정 내용 저장하기' : '새 상품 등록 완료'}
+                  <button type="submit" className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)', opacity: saving ? 0.65 : 1 }} disabled={saving}>
+                    {saving ? '저장 중...' : isEditMode ? '수정 내용 저장하기' : '새 상품 등록 완료'}
                   </button>
                 </div>
               </form>

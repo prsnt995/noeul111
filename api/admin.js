@@ -686,22 +686,54 @@ export function registerAdminRoutes(app, ctx) {
       if (!Number.isInteger(price) || price <= 0) return error(res, 400, 'INVALID_PRICE');
       if (discount !== null && (!Number.isInteger(discount) || discount <= 0 || discount >= price)) return error(res, 400, 'INVALID_DISCOUNT');
       const sku = String(b.sku || `NE-${Date.now().toString().slice(-6)}`).toUpperCase().slice(0, 60);
-      const { data: created, error: e } = await database().from('products').insert({
-        slug: slugify(b.name_en || b.name_ko), sku,
-        category_id: Number(b.category_id),
-        name_ko: String(b.name_ko).slice(0, 200), name_en: String(b.name_en || b.name_ko).slice(0, 200),
-        description_ko: String(b.description_ko || ''), description_en: String(b.description_en || ''),
-        material_ko: String(b.material_ko || '').slice(0, 200), material_en: String(b.material_en || '').slice(0, 200),
-        price, discount_price: discount, gender: ['men', 'women', 'unisex'].includes(b.gender) ? b.gender : 'women',
-        best_rank: (b.best_rank === '' || b.best_rank == null) ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null),
-        is_active: (b.status || 'active') === 'active', is_new: !!b.is_new, is_best: !!b.is_best,
-      }).select().maybeSingle();
-      if (e || !created) throw e || new Error('CREATE_FAILED');
-      await syncVariants(created.id, sku, b);
-      await syncMedia(created.id, b.images);
+      // Duplicate SKUs are the classic retry trap: an earlier attempt may have
+      // inserted the row before failing at variants/media, so every retry with
+      // the same SKU would otherwise die with a generic 503. Name it instead.
+      const { data: skuTaken } = await database().from('products').select('id').eq('sku', sku).maybeSingle().then(r => r, () => ({ data: null }));
+      if (skuTaken) return error(res, 409, 'SKU_EXISTS');
+      let created = null;
+      try {
+        const { data, error: e } = await database().from('products').insert({
+          slug: slugify(b.name_en || b.name_ko), sku,
+          category_id: Number(b.category_id),
+          name_ko: String(b.name_ko).slice(0, 200), name_en: String(b.name_en || b.name_ko).slice(0, 200),
+          description_ko: String(b.description_ko || ''), description_en: String(b.description_en || ''),
+          material_ko: String(b.material_ko || '').slice(0, 200), material_en: String(b.material_en || '').slice(0, 200),
+          price, discount_price: discount, gender: ['men', 'women', 'unisex'].includes(b.gender) ? b.gender : 'women',
+          best_rank: (b.best_rank === '' || b.best_rank == null) ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null),
+          is_active: (b.status || 'active') === 'active', is_new: !!b.is_new, is_best: !!b.is_best,
+        }).select().maybeSingle();
+        if (e || !data) throw e || new Error('CREATE_FAILED');
+        created = data;
+      } catch (e) {
+        // Name the integrity failure instead of a blanket 503: unique-SKU
+        // races and dangling category FKs are the two realistic cases here.
+        const msg = String(e?.message || '');
+        if (e?.code === '23505' || /duplicate|unique/i.test(msg)) return error(res, 409, 'SKU_EXISTS');
+        if (e?.code === '23503' || /foreign key|violates/i.test(msg)) return error(res, 400, 'CATEGORY_INVALID');
+        throw e;
+      }
+      // Staged writes below run after the row exists (no transaction by design):
+      // report WHICH stage failed so the UI can tell the admin the product may
+      // already be in the list instead of inviting a duplicate-creating retry.
+      try {
+        await syncVariants(created.id, sku, b);
+      } catch (e) {
+        console.error('PRODUCT_CREATE variants failed for product', created.id, e?.message);
+        return error(res, 503, 'VARIANT_FAILED');
+      }
+      try {
+        await syncMedia(created.id, b.images);
+      } catch (e) {
+        console.error('PRODUCT_CREATE media failed for product', created.id, e?.message);
+        return error(res, 503, 'MEDIA_FAILED');
+      }
       await auditLog(req, 'PRODUCT_CREATE', { table: 'products', id: created.id });
       res.status(201).json({ success: true, data: await composeAdminProduct(created) });
-    } catch (err) { error(res, err?.status === 409 ? 409 : 503, 'PRODUCT_CREATE_FAILED'); }
+    } catch (err) {
+      console.error('PRODUCT_CREATE_FAILED', err?.message);
+      error(res, err?.status === 409 ? 409 : 503, 'PRODUCT_CREATE_FAILED');
+    }
   });
 
   app.put('/api/v1/admin/products/:id', ...need(R.catalog), async (req, res) => {

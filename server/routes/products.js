@@ -1,5 +1,6 @@
 import express from 'express';
 import { query } from '../db/database.js';
+import { rankRelated } from '../../api/related.js';
 
 const router = express.Router();
 
@@ -232,20 +233,30 @@ router.get('/products/:id', (req, res) => {
     // Increment view count asynchronously
     query.run('UPDATE products SET views = views + 1 WHERE id = ?', product.id);
 
-    // Get related products in same category
-    const relatedRows = query.all(`
+    // Get related products: scored pool (same category + best sellers),
+    // in-stock first, sold-out fills last with badge.
+    const poolRows = query.all(`
       SELECT p.*, c.slug as category_slug, c.name_ko as category_name_ko, c.name_en as category_name_en
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE p.category_id = ? AND p.id != ? AND p.status = 'active'
+      WHERE (p.category_id = ? OR p.is_best = 1) AND p.id != ? AND p.status = 'active'
       ORDER BY p.sales_count DESC, p.views DESC
-      LIMIT 4
+      LIMIT 24
     `, product.category_id, product.id);
+
+    const pool = poolRows.map(parseProduct);
+    let related = [];
+    try {
+      related = rankRelated(parseProduct(product), pool, { limit: 4 });
+    } catch {
+      related = [];
+    }
+    if (!related.length) related = pool.slice(0, 4);
 
     res.json({
       success: true,
       data: parseProduct(product),
-      related: relatedRows.map(parseProduct)
+      related
     });
   } catch (error) {
     console.error('Product detail fetch error:', error);
