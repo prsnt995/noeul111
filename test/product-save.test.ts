@@ -145,4 +145,11 @@ describe('Product save — backend/frontend contract', () => {
     expect(page.includes('setSchemaIssue'), 'diagnosis state').toBe(true);
     expect(page.includes('missingMigrations'), 'banner names files').toBe(true);
   });
+
+  it('category can never be a phantom id: no fallback, exists-check, empty-list warning', () => {
+    const page = read('src/pages/admin/AdminProductsPage.jsx');
+    expect(page.includes('categories[0]?.id || 1'), 'no phantom fallback').toBe(false);
+    expect(page.includes('categories.some('), 'exists-check before save').toBe(true);
+    expect(page.includes('카테고리 없음'), 'empty-list warning option').toBe(true);
+  });
 });

@@ -127,6 +127,21 @@ export function AdminProductsPage() {
   // Custom color draft (name + hex picker) appended to presets
   const [newColor, setNewColor] = useState({ name_ko: '', name_en: '', hex: '#18181b' });
 
+  // Standalone category refresh: the save guard and the add-modal call this
+  // when the list is empty/stale, instead of trusting a phantom fallback id.
+  const fetchCategories = async () => {
+    try {
+      const res = await adminApi.get('/admin/categories');
+      if (res.success) {
+        setCategories(res.data || []);
+        return res.data || [];
+      }
+    } catch (err) {
+      console.error('Fetch categories failed:', err?.message);
+    }
+    return [];
+  };
+
   const fetchProducts = async () => {
     setLoading(true);
     try {
@@ -144,7 +159,7 @@ export function AdminProductsPage() {
 
       const [prodRes, catRes] = await Promise.all([
         adminApi.get(`/admin/products${qs}`),
-        categories.length ? Promise.resolve({ success: false }) : adminApi.get('/admin/categories'),
+        categories.length ? Promise.resolve({ success: false }) : fetchCategories().then((data) => ({ success: true, data })),
       ]);
 
       if (prodRes.success) {
@@ -182,9 +197,12 @@ export function AdminProductsPage() {
     setIsEditMode(false);
     setEditingId(null);
     setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
+    // Never fall back to a phantom id: an empty string fails pre-flight with
+    // a named message instead of dying on the category FK server-side.
+    if (!categories.length) fetchCategories();
     setFormData({
       sku: `NE-${Date.now().toString().slice(-6)}`,
-      category_id: categories[0]?.id || 1,
+      category_id: categories[0]?.id ?? '',
       name_ko: '',
       name_en: '',
       description_ko: '',
@@ -313,6 +331,13 @@ export function AdminProductsPage() {
     const preflight = validateProductForm(formData);
     if (!preflight.ok) {
       showToast(productErrorText(preflight.code), 'error');
+      return;
+    }
+    // The dropdown can hold a stale id (category deleted after selection, or
+    // list reloaded mid-edit) — catch it here, not on the FK server-side.
+    if (!categories.some((c) => String(c.id) === String(formData.category_id))) {
+      fetchCategories();
+      showToast(productErrorText('CATEGORY_INVALID'), 'error');
       return;
     }
     // Blocking loader for the whole save: no clicks elsewhere, no double
@@ -915,7 +940,11 @@ export function AdminProductsPage() {
                       value={formData.category_id}
                       onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                       className="form-select"
+                      required
                     >
+                      {categories.length === 0 && (
+                        <option value="">카테고리 없음 — 먼저 카테고리를 등록하세요</option>
+                      )}
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>{c.name_ko} ({c.name_en})</option>
                       ))}
