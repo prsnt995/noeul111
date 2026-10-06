@@ -108,6 +108,13 @@ describe('Product save — backend/frontend contract', () => {
     expect(block.includes('42501'), 'postgres insufficient_privilege').toBe(true);
   });
 
+  it('detects PostgREST-shaped drift and denial (schema cache, JWT/RLS wording)', () => {
+    expect(block.includes('PGRST204'), 'postgrest missing-column code').toBe(true);
+    expect(block.includes('schema cache'), 'postgrest schema-cache wording').toBe(true);
+    expect(block.includes('could not find the'), 'postgrest column wording').toBe(true);
+    expect(block.includes('DB_PERMISSION'), 'denial code present').toBe(true);
+  });
+
   it('frontend pre-flights and maps every backend code the route can emit', () => {
     const page = read('src/pages/admin/AdminProductsPage.jsx');
     expect(page.includes('validateProductForm(formData)'), 'pre-flight call').toBe(true);

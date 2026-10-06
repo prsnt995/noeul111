@@ -787,14 +787,20 @@ export function registerAdminRoutes(app, ctx) {
         // races and dangling category FKs are the two realistic cases here.
         // 42703/42501 mean the live DB itself is behind (missing migration)
         // or denies writes (RLS/anon key) — both undiagnosable from the UI
-        // unless named, so they get their own codes.
+        // unless named, so they get their own codes. Note PostgREST reports
+        // schema drift in its own words ("Could not find the 'x' column ...
+        // in the schema cache", PGRST204) rather than raw PG codes.
         const msg = String(e?.message || '');
-        if (e?.code === '42703' || /column .* does not exist|undefined_column/i.test(msg)) {
-          console.error('PRODUCT_CREATE schema mismatch', msg);
+        const code = String(e?.code || '');
+        if (code === '42703' || code === 'PGRST204'
+          || /column .* does not exist|undefined_column/i.test(msg)
+          || /could not find the .* column|schema cache/i.test(msg)) {
+          console.error('PRODUCT_CREATE schema mismatch', code, msg.slice(0, 200));
           return error(res, 503, 'SCHEMA_MISMATCH');
         }
-        if (e?.code === '42501' || /permission denied|row-level security|not allowed by|policy/i.test(msg)) {
-          console.error('PRODUCT_CREATE permission denied', msg);
+        if (code === '42501' || e?.status === 401 || e?.status === 403
+          || /permission denied|row-level security|\brls\b|not allowed by|policy|jwt|expired|unauthorized/i.test(msg)) {
+          console.error('PRODUCT_CREATE permission denied', code, msg.slice(0, 200));
           return error(res, 503, 'DB_PERMISSION');
         }
         if (e?.code === '23505' || /duplicate|unique/i.test(msg)) return error(res, 409, 'SKU_EXISTS');
