@@ -8,6 +8,7 @@ import { ProductCard } from '../components/common/ProductCard.jsx';
 import { SizeGuideModal } from '../components/common/SizeGuideModal.jsx';
 import { CommercePolicyNotice } from '../components/common/CommercePolicyNotice.jsx';
 import { ProductReviews } from '../components/common/ProductReviews.jsx';
+import { DetailContentBand } from '../components/product/DetailContentBand.jsx';
 import {
   Heart,
   Plus,
@@ -657,7 +658,7 @@ export function ProductDetailPage() {
         {/* =========================================================
             PRODUCT INFORMATION TABS (Description, Material, Shipping, Reviews)
             ========================================================= */}
-        <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: '36px', marginBottom: '80px' }}>
+        <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: '36px', marginBottom: (product?.detail_blocks || []).length ? '24px' : '80px' }}>
           <div style={{ display: 'flex', gap: '28px', borderBottom: '1px solid #f0f0f1', marginBottom: '28px' }}>
             <button
               type="button"
@@ -775,6 +776,9 @@ export function ProductDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Rich content band (admin-managed detail_blocks) — below tabs */}
+        <DetailContentBand blocks={product?.detail_blocks || []} />
 
         {/* Related Products Recommendation */}
         {related.length > 0 && (

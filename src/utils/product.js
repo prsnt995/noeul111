@@ -21,6 +21,14 @@ const PRODUCT_ERROR_TEXT = {
     ko: '선택한 카테고리가 존재하지 않습니다. 카테고리를 다시 선택하세요.',
     en: 'The selected category does not exist. Pick another category.',
   },
+  SCHEMA_MISMATCH: {
+    ko: '상품 테이블에 필요한 컬럼이 없습니다 (DB 마이그레이션 필요). 아래 안내를 호스트 담당자에게 전달하세요.',
+    en: 'The products table is missing required columns (DB migration needed). Forward the details below to your host.',
+  },
+  DB_PERMISSION: {
+    ko: 'DB 쓰기 권한이 없습니다. 서버 키 설정 또는 RLS 정책을 확인해야 합니다.',
+    en: 'No database write permission. The server key or RLS policy needs checking.',
+  },
   VARIANT_FAILED: {
     ko: '옵션(색상×사이즈) 저장에 실패했습니다. 상품이 생성되었을 수 있으니 목록을 먼저 확인하세요.',
     en: 'Failed to save options. The product may already exist — check the list first.',
@@ -32,6 +40,10 @@ const PRODUCT_ERROR_TEXT = {
   PRODUCT_CREATE_FAILED: {
     ko: '상품 등록에 실패했습니다. 목록에 상품이 생겼는지 확인한 뒤, 없으면 다시 시도하세요.',
     en: 'Failed to create the product. Check whether it appears in the list before retrying.',
+  },
+  INVALID_DETAIL_BLOCKS: {
+    ko: '상세 콘텐츠 블록이 올바르지 않습니다. 제목/텍스트/이미지 블록의 길이와 개수를 확인하세요.',
+    en: 'The detail content blocks are invalid. Check block types, lengths, and counts.',
   },
 };
 

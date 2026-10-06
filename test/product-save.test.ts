@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { validateProductForm, productErrorText } from '../src/utils/product.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
 
 const GOOD_FORM = { name_ko: '노을 니트', category_id: 3, price: '89000', discount_price: '' };
 
@@ -98,9 +98,14 @@ describe('Product save — backend/frontend contract', () => {
   });
 
   it('reports each failure stage distinctly instead of one blanket 503', () => {
-    for (const code of ['SKU_EXISTS', 'CATEGORY_INVALID', 'VARIANT_FAILED', 'MEDIA_FAILED', 'PRODUCT_CREATE_FAILED']) {
+    for (const code of ['SKU_EXISTS', 'CATEGORY_INVALID', 'VARIANT_FAILED', 'MEDIA_FAILED', 'PRODUCT_CREATE_FAILED', 'SCHEMA_MISMATCH', 'DB_PERMISSION']) {
       expect(block.includes(`'${code}'`), code).toBe(true);
     }
+  });
+
+  it('detects live-DB drift (undefined column) and denied writes (RLS) by code', () => {
+    expect(block.includes('42703'), 'postgres undefined_column').toBe(true);
+    expect(block.includes('42501'), 'postgres insufficient_privilege').toBe(true);
   });
 
   it('frontend pre-flights and maps every backend code the route can emit', () => {
@@ -108,8 +113,29 @@ describe('Product save — backend/frontend contract', () => {
     expect(page.includes('validateProductForm(formData)'), 'pre-flight call').toBe(true);
     expect(page.includes('productErrorText('), 'mapped toasts').toBe(true);
     const util = read('src/utils/product.js');
-    for (const code of ['NAME_CATEGORY_PRICE_REQUIRED', 'INVALID_PRICE', 'INVALID_DISCOUNT', 'SKU_EXISTS', 'CATEGORY_INVALID', 'VARIANT_FAILED', 'MEDIA_FAILED', 'PRODUCT_CREATE_FAILED']) {
+    for (const code of ['NAME_CATEGORY_PRICE_REQUIRED', 'INVALID_PRICE', 'INVALID_DISCOUNT', 'SKU_EXISTS', 'CATEGORY_INVALID', 'VARIANT_FAILED', 'MEDIA_FAILED', 'PRODUCT_CREATE_FAILED', 'SCHEMA_MISMATCH', 'DB_PERMISSION']) {
       expect(util.includes(code), `mapped: ${code}`).toBe(true);
     }
+  });
+
+  it('self-diagnosis endpoint probes the migrated columns and names the files', () => {
+    const admin = read('api/admin.js');
+    const marker = "app.get('/api/v1/admin/health/schema'";
+    const idx = admin.indexOf(marker);
+    expect(idx, 'health route').toBeGreaterThan(-1);
+    const next = admin.indexOf('\n  app.', idx + marker.length);
+    const route = admin.slice(idx, next === -1 ? undefined : next);
+    for (const col of ['material_ko', 'best_rank', 'detail_blocks']) {
+      expect(route.includes(col), `probes ${col}`).toBe(true);
+    }
+    expect(route.includes('202610050001_product_detail_blocks.sql'), 'names migration').toBe(true);
+    expect(route.includes('missingMigrations'), 'reports files').toBe(true);
+  });
+
+  it('products page auto-diagnoses environment failures into a banner', () => {
+    const page = read('src/pages/admin/AdminProductsPage.jsx');
+    expect(page.includes("adminApi.get('/admin/health/schema')"), 'health call').toBe(true);
+    expect(page.includes('setSchemaIssue'), 'diagnosis state').toBe(true);
+    expect(page.includes('missingMigrations'), 'banner names files').toBe(true);
   });
 });

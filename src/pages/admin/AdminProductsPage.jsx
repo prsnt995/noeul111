@@ -93,6 +93,9 @@ export function AdminProductsPage() {
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [deleteBlocked, setDeleteBlocked] = useState(false);
+  // Self-diagnosis payload from /admin/health/schema — set when a save fails
+  // with SCHEMA_MISMATCH/DB_PERMISSION so the banner can name the cause.
+  const [schemaIssue, setSchemaIssue] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -117,6 +120,8 @@ export function AdminProductsPage() {
     colors: [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }],
     // Color×Size combo stock: key `${color}|||${size}`, value '' = not offered.
     variant_stock: {},
+    // Rich blocks rendered in the PDP band below the tabs.
+    detail_blocks: [],
   });
 
   // Custom color draft (name + hex picker) appended to presets
@@ -198,6 +203,7 @@ export function AdminProductsPage() {
       sizes: ['S', 'M', 'L', 'XL'],
       colors: [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }],
       variant_stock: {},
+      detail_blocks: [],
     });
     setIsModalOpen(true);
   };
@@ -236,8 +242,37 @@ export function AdminProductsPage() {
       sizes: p.sizes?.length > 0 ? p.sizes : ['FREE'],
       colors: p.colors?.length > 0 ? p.colors : [{ name_ko: '블랙', name_en: 'Black', hex: '#111' }],
       variant_stock,
+      detail_blocks: Array.isArray(p.detail_blocks) ? p.detail_blocks : [],
     });
     setIsModalOpen(true);
+  };
+
+  // --- Detail content block editor (rendered by DetailContentBand on PDP) ---
+  const addDetailBlock = (type) => {
+    const blank = type === 'heading' || type === 'text'
+      ? { type, text: { ko: '', en: '' } }
+      : type === 'image'
+        ? { type, url: '', alt: '', caption: { ko: '', en: '' } }
+        : { type, images: [] };
+    setFormData((fd) => ({ ...fd, detail_blocks: [...fd.detail_blocks, blank] }));
+  };
+  const updateDetailBlock = (i, patch) => {
+    setFormData((fd) => ({
+      ...fd,
+      detail_blocks: fd.detail_blocks.map((b, idx) => (idx === i ? { ...b, ...patch } : b)),
+    }));
+  };
+  const removeDetailBlock = (i) => {
+    setFormData((fd) => ({ ...fd, detail_blocks: fd.detail_blocks.filter((_, idx) => idx !== i) }));
+  };
+  const moveDetailBlock = (i, dir) => {
+    setFormData((fd) => {
+      const next = [...fd.detail_blocks];
+      const j = i + dir;
+      if (j < 0 || j >= next.length) return fd;
+      [next[i], next[j]] = [next[j], next[i]];
+      return { ...fd, detail_blocks: next };
+    });
   };
 
   const handleSaveProduct = async (e) => {
@@ -258,6 +293,21 @@ export function AdminProductsPage() {
       }
     }
     const emptyColors = formData.colors.filter(c => !formData.sizes.some(sz => cellFilled(formData.variant_stock[comboKey(c, sz)])));
+    // Detail blocks: mirror backend caps so fixable mistakes never round trip.
+    const blocks = formData.detail_blocks || [];
+    if (blocks.length > 50) {
+      showToast('상세 블록은 최대 50개까지 저장할 수 있습니다.', 'error');
+      return;
+    }
+    const emptyBlock = blocks.find(b => (
+      (b.type === 'heading' || b.type === 'text') ? !String(b.text?.ko || '').trim() && !String(b.text?.en || '').trim()
+        : b.type === 'image' ? !b.url
+          : !(b.images || []).length
+    ));
+    if (emptyBlock) {
+      showToast('비어 있는 상세 블록이 있습니다 — 내용을 채우거나 삭제하세요.', 'error');
+      return;
+    }
     // Pre-flight mirrors the backend guards so fixable input mistakes show a
     // named message without a wasted round trip.
     const preflight = validateProductForm(formData);
@@ -289,7 +339,16 @@ export function AdminProductsPage() {
       setIsModalOpen(false);
       fetchProducts();
     }, isEditMode ? '상품 수정 중...' : '상품 등록 중...').catch((err) => {
-      showToast(productErrorText(err?.message), 'error');
+      const code = err?.message;
+      showToast(productErrorText(code), 'error');
+      // Environment-class failures need evidence, not retries: pull the
+      // read-only schema diagnosis so the banner below can name it.
+      if (code === 'SCHEMA_MISMATCH' || code === 'DB_PERMISSION') {
+        adminApi.get('/admin/health/schema').then(
+          (res) => setSchemaIssue({ code, ...(res || {}) }),
+          () => setSchemaIssue({ code, ok: false, probeError: 'UNREACHABLE' })
+        );
+      }
     });
   };
 
@@ -659,6 +718,32 @@ export function AdminProductsPage() {
         />
         <ErrorBanner message={errorMsg ? `상품 로드 실패: ${errorMsg}` : ''} onRetry={fetchProducts} />
 
+        {schemaIssue && !schemaIssue.ok && (
+          <div className="adm-error" role="alert" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <strong>
+                {schemaIssue.code === 'DB_PERMISSION'
+                  ? 'DB 쓰기 권한이 없습니다 — 서버 키 / RLS 설정을 확인해야 합니다.'
+                  : '상품 테이블 스키마가 코드보다 뒤처져 있습니다 — 아래 마이그레이션을 적용해야 합니다.'}
+              </strong>
+              <button type="button" className="adm-btn" onClick={() => setSchemaIssue(null)} style={{ marginLeft: 'auto' }}>
+                닫기 Dismiss
+              </button>
+            </div>
+            {(schemaIssue.missingColumns?.length > 0) && (
+              <div style={{ fontSize: '0.82rem' }}>
+                <div>누락 컬럼 Missing columns: <strong>{schemaIssue.missingColumns.join(', ')}</strong></div>
+                <div>적용할 파일 Migrations to apply (순서대로): <strong>{(schemaIssue.missingMigrations || []).join(', ')}</strong></div>
+              </div>
+            )}
+            {schemaIssue.probeError && !(schemaIssue.missingColumns?.length) && (
+              <div style={{ fontSize: '0.82rem' }}>
+                스키마 확인 자체가 실패했습니다 ({schemaIssue.probeError}) — DB 연결 또는 권한을 확인하세요.
+              </div>
+            )}
+          </div>
+        )}
+
         <Filters
           searchValue={search}
           onSearch={(v) => listParams.set({ search: v })}
@@ -942,7 +1027,101 @@ export function AdminProductsPage() {
                   </div>
                 </div>
 
-                {/* 5. Sizes & Colors Multi-Selection */}
+                {/* 5. Detail Content Blocks — rich blocks rendered in the PDP band below the tabs. */}
+                <div style={{ backgroundColor: '#fbfbfb', padding: '16px', borderRadius: '8px', border: '1px solid #f0f0f2' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-sunset)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                    3. 상세 페이지 콘텐츠 블록 (Detail Content Blocks)
+                  </span>
+                  <p style={{ fontSize: '0.75rem', color: '#71717a', marginBottom: '12px', lineHeight: 1.5 }}>
+                    상품 페이지 탭 영역 아래에 별도 밴드로 표시됩니다. 설명 아래에 텍스트·이미지 블록을 자유롭게 쌓으세요. (첫 블록부터 순서대로 노출)
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    <button type="button" className="btn-secondary" onClick={() => addDetailBlock('heading')}>+ 제목</button>
+                    <button type="button" className="btn-secondary" onClick={() => addDetailBlock('text')}>+ 텍스트</button>
+                    <button type="button" className="btn-secondary" onClick={() => addDetailBlock('image')}>+ 이미지</button>
+                    <button type="button" className="btn-secondary" onClick={() => addDetailBlock('image_grid')}>+ 이미지 그리드</button>
+                  </div>
+
+                  {formData.detail_blocks.length === 0 && (
+                    <p style={{ fontSize: '0.8125rem', color: '#a1a1aa', textAlign: 'center', padding: '20px', border: '1px dashed #d4d4d8', borderRadius: '8px', backgroundColor: '#fff' }}>
+                      아직 블록이 없습니다 — 위 버튼으로 제목/텍스트/이미지를 추가하세요.
+                    </p>
+                  )}
+
+                  {formData.detail_blocks.map((block, i) => {
+                    const typeLabel = { heading: '제목', text: '텍스트', image: '이미지', image_grid: '이미지 그리드' }[block.type] || block.type;
+                    return (
+                      <div key={i} style={{ border: '1px solid #e4e4e7', borderRadius: '8px', padding: '12px', marginBottom: '10px', backgroundColor: '#ffffff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '0.6875rem', fontWeight: 800, backgroundColor: '#18181b', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>
+                            {i + 1}. {typeLabel}
+                          </span>
+                          <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+                            <button type="button" onClick={() => moveDetailBlock(i, -1)} disabled={i === 0} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', opacity: i === 0 ? 0.4 : 1 }}>↑</button>
+                            <button type="button" onClick={() => moveDetailBlock(i, 1)} disabled={i === formData.detail_blocks.length - 1} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', opacity: i === formData.detail_blocks.length - 1 ? 0.4 : 1 }}>↓</button>
+                            <button type="button" onClick={() => removeDetailBlock(i)} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#dc2626', borderColor: '#fecaca' }}>삭제</button>
+                          </span>
+                        </div>
+
+                        {(block.type === 'heading' || block.type === 'text') && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label">한글 {block.type === 'heading' ? '제목' : '텍스트'}</label>
+                              {block.type === 'heading' ? (
+                                <input type="text" maxLength={300} className="form-input" value={block.text?.ko || ''} placeholder="예: 소재 디테일" onChange={(e) => updateDetailBlock(i, { text: { ...block.text, ko: e.target.value } })} />
+                              ) : (
+                                <textarea rows={4} maxLength={4000} className="form-textarea" value={block.text?.ko || ''} placeholder="한글 본문을 입력하세요." onChange={(e) => updateDetailBlock(i, { text: { ...block.text, ko: e.target.value } })} />
+                              )}
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label">English {block.type === 'heading' ? 'Heading' : 'Text'}</label>
+                              {block.type === 'heading' ? (
+                                <input type="text" maxLength={300} className="form-input" value={block.text?.en || ''} placeholder="e.g. Fabric Detail" onChange={(e) => updateDetailBlock(i, { text: { ...block.text, en: e.target.value } })} />
+                              ) : (
+                                <textarea rows={4} maxLength={4000} className="form-textarea" value={block.text?.en || ''} placeholder="Enter English body text." onChange={(e) => updateDetailBlock(i, { text: { ...block.text, en: e.target.value } })} />
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {block.type === 'image' && (
+                          <div>
+                            <ImageUploader
+                              mode="block"
+                              maxImages={1}
+                              label="블록 이미지"
+                              images={block.url ? [{ url: block.url, color: null }] : []}
+                              onChange={(imgs) => updateDetailBlock(i, { url: imgs[0]?.url || '' })}
+                            />
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px' }}>
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">한글 캡션 (선택)</label>
+                                <input type="text" maxLength={300} className="form-input" value={block.caption?.ko || ''} placeholder="이미지 아래에 표시되는 설명" onChange={(e) => updateDetailBlock(i, { caption: { ...block.caption, ko: e.target.value } })} />
+                              </div>
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">English caption (optional)</label>
+                                <input type="text" maxLength={300} className="form-input" value={block.caption?.en || ''} placeholder="Caption shown under the image" onChange={(e) => updateDetailBlock(i, { caption: { ...block.caption, en: e.target.value } })} />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {block.type === 'image_grid' && (
+                          <ImageUploader
+                            mode="block"
+                            maxImages={6}
+                            label="그리드 이미지 (2열로 표시)"
+                            images={(block.images || []).map((im) => ({ url: im.url, color: null }))}
+                            onChange={(imgs) => updateDetailBlock(i, { images: imgs.map((im) => ({ url: im.url, alt: '' })) })}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 6. Sizes & Colors Multi-Selection */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   {/* Sizes */}
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1091,12 +1270,12 @@ export function AdminProductsPage() {
                   </div>
                 </div>
 
-                {/* 6. Variant Stock Matrix — Color × Size mini table.
+                {/* 7. Variant Stock Matrix — Color × Size mini table.
                     Blank cell = combo not offered; 0 = offered but sold out. */}
                 <div style={{ backgroundColor: '#fbfbfb', padding: '16px', borderRadius: '8px', border: '1px solid #f0f0f2' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '4px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-sunset)', textTransform: 'uppercase' }}>
-                      6. 옵션별 재고 (Color × Size Stock)
+                      4. 옵션별 재고 (Color × Size Stock)
                     </span>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button type="button" onClick={fillAllBlankWithZero} style={{ padding: '5px 10px', fontSize: '0.6875rem', fontWeight: 700, backgroundColor: '#ffffff', border: '1px solid #e4e4e7', borderRadius: '4px', cursor: 'pointer', color: '#52525b' }}>
@@ -1204,15 +1383,15 @@ export function AdminProductsPage() {
                   )}
                 </div>
 
-                {/* 7. Product Image Manager — reorder plan: each image can be linked to a color (e.g., 2 blue, 3 green). On storefront, selecting blue reorders that color's images first, still shows all 5. */}
+                {/* 8. Product Image Manager — reorder plan: each image can be linked to a color (e.g., 2 blue, 3 green). On storefront, selecting blue reorders that color's images first, still shows all 5. */}
                 <ImageUploader
                   images={formData.images}
                   onChange={(imgs) => setFormData({ ...formData, images: imgs })}
-                  label="상품 이미지 관리 (Product Photos - 첫 번째 사진이 메인, 색상 지정 시 해당 색상 선택 시 먼저 표시)"
+                  label="5. 상품 이미지 관리 (Product Photos - 첫 번째 사진이 메인, 색상 지정 시 해당 색상 선택 시 먼저 표시)"
                   availableColors={formData.colors}
                 />
 
-                {/* 8. Badges & Visibility Status Flags */}
+                {/* 9. Badges & Visibility Status Flags */}
                 <div style={{ display: 'flex', gap: '20px', padding: '16px', backgroundColor: '#f4f4f6', borderRadius: '8px', flexWrap: 'wrap' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
                     <input

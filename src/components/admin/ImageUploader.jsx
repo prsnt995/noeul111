@@ -23,7 +23,7 @@ function normalizeImages(images) {
   });
 }
 
-export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE_MAX, label = '상품 사진 (Product Images)', availableColors = [] }) {
+export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE_MAX, label = '상품 사진 (Product Images)', availableColors = [], mode = 'gallery' }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(null);
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
@@ -241,7 +241,7 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
                 />
 
                 {/* Main / Primary Badge */}
-                {idx === 0 ? (
+                {mode === 'gallery' && (idx === 0 ? (
                   <div
                     style={{
                       position: 'absolute',
@@ -277,7 +277,7 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
                   >
                     대표로 설정
                   </button>
-                )}
+                ))}
 
                 {/* Delete Button */}
                 <button
@@ -339,23 +339,25 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
                 </div>
               </div>
 
-              {/* Color assignment per image — reorder plan */}
-              <div style={{ padding: '6px', backgroundColor: '#fff', borderTop: '1px solid #e4e4e7' }}>
-                <select
-                  value={item.color || ''}
-                  onChange={(e) => handleColorChange(idx, e.target.value || null)}
-                  style={{ width: '100%', padding: '4px 6px', fontSize: '0.6875rem', border: '1px solid #e4e4e7', borderRadius: '4px', backgroundColor: '#fff' }}
-                  title="이 사진을 특정 색상에 연결하면 해당 색상 선택 시 이 이미지가 먼저 표시됩니다. 비워두면 모든 색상에서 표시."
-                >
-                  <option value="">모든 색상 (공용)</option>
-                  {availableColors.map((c, i) => (
-                    <option key={i} value={c.name_en || c.name || c.name_ko}>
-                      {c.name_ko || c.name_en} ({c.name_en || c.name})
-                    </option>
-                  ))}
-                </select>
-                {item.color && <span style={{ fontSize: '0.625rem', color: 'var(--accent-sunset)', marginTop: 4, display: 'block' }}>→ {item.color} 전용</span>}
-              </div>
+              {/* Color assignment per image — reorder plan (gallery mode only) */}
+              {mode === 'gallery' && (
+                <div style={{ padding: '6px', backgroundColor: '#fff', borderTop: '1px solid #e4e4e7' }}>
+                  <select
+                    value={item.color || ''}
+                    onChange={(e) => handleColorChange(idx, e.target.value || null)}
+                    style={{ width: '100%', padding: '4px 6px', fontSize: '0.6875rem', border: '1px solid #e4e4e7', borderRadius: '4px', backgroundColor: '#fff' }}
+                    title="이 사진을 특정 색상에 연결하면 해당 색상 선택 시 이 이미지가 먼저 표시됩니다. 비워두면 모든 색상에서 표시."
+                  >
+                    <option value="">모든 색상 (공용)</option>
+                    {availableColors.map((c, i) => (
+                      <option key={i} value={c.name_en || c.name || c.name_ko}>
+                        {c.name_ko || c.name_en} ({c.name_en || c.name})
+                      </option>
+                    ))}
+                  </select>
+                  {item.color && <span style={{ fontSize: '0.625rem', color: 'var(--accent-sunset)', marginTop: 4, display: 'block' }}>→ {item.color} 전용</span>}
+                </div>
+              )}
             </div>
           ))}
         </div>

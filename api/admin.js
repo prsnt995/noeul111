@@ -449,6 +449,45 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'STAFF_UNAVAILABLE'); }
   });
   // ---------- Products (legacy shape over variant-first schema) ----------
+  // Rich content blocks for the PDP band below the tabs. Strict: unknown
+  // types / oversized payloads are rejected (400) so a bad client can't
+  // store garbage the renderer would choke on.
+  const DETAIL_BLOCK_MAX = 50;
+  const detailBlockTypes = new Set(['heading', 'text', 'image', 'image_grid']);
+  function sanitizeDetailBlocks(raw) {
+    if (raw === undefined) return undefined;
+    if (!Array.isArray(raw) || raw.length > DETAIL_BLOCK_MAX) return null;
+    const clean = [];
+    for (const b of raw) {
+      if (!b || typeof b !== 'object' || !detailBlockTypes.has(b.type)) return null;
+      if (b.type === 'heading' || b.type === 'text') {
+        const t = b.text;
+        const cap = b.type === 'heading' ? 300 : 4000;
+        if (!t || typeof t !== 'object') return null;
+        const ko = String(t.ko || ''), en = String(t.en || '');
+        if (ko.length > cap || en.length > cap) return null;
+        clean.push({ type: b.type, text: { ko, en } });
+      } else if (b.type === 'image') {
+        if (typeof b.url !== 'string' || !b.url || b.url.length > 500) return null;
+        const cap = b.caption;
+        if (cap !== undefined && (typeof cap !== 'object' || cap === null)) return null;
+        const ko = String(cap?.ko || ''), en = String(cap?.en || '');
+        if (ko.length > 300 || en.length > 300) return null;
+        clean.push({ type: 'image', url: b.url, alt: String(b.alt || '').slice(0, 200), caption: { ko, en } });
+      } else {
+        const imgs = b.images;
+        if (!Array.isArray(imgs) || imgs.length === 0 || imgs.length > 6) return null;
+        const images = [];
+        for (const it of imgs) {
+          if (!it || typeof it !== 'object' || typeof it.url !== 'string' || !it.url || it.url.length > 500) return null;
+          images.push({ url: it.url, alt: String(it.alt || '').slice(0, 200) });
+        }
+        clean.push({ type: 'image_grid', images });
+      }
+    }
+    return clean;
+  }
+
   async function composeAdminProduct(p) {
     const [{ data: variants }, { data: media }, { data: cat }] = await Promise.all([
       database().from('product_variants').select('*').eq('product_id', p.id),
@@ -561,6 +600,41 @@ export function registerAdminRoutes(app, ctx) {
       if (error) throw error;
     }
   }
+
+  // Read-only schema self-diagnosis for the product surface: probes the
+  // columns recent migrations add, one at a time, so the admin UI can name
+  // exactly which migration the live DB is missing. Never writes.
+  app.get('/api/v1/admin/health/schema', ...need(R.catalog), async (req, res) => {
+    try {
+      const probes = [
+        { column: 'material_ko', migration: '202610050002_product_material.sql' },
+        { column: 'best_rank', migration: '202610050003_best_rank.sql' },
+        { column: 'detail_blocks', migration: '202610050001_product_detail_blocks.sql' },
+      ];
+      const missingColumns = [];
+      const missingMigrations = [];
+      let probeError = null;
+      for (const p of probes) {
+        const r = await database().from('products').select(p.column).limit(1)
+          .then((ok) => ok, (err) => ({ error: err }));
+        const msg = String(r?.error?.message || '');
+        if (!r?.error) continue;
+        if (r.error?.code === '42703' || /column .* does not exist|undefined_column/i.test(msg)) {
+          missingColumns.push(p.column);
+          missingMigrations.push(p.migration);
+        } else {
+          probeError = r.error?.code || msg || 'PROBE_FAILED';
+        }
+      }
+      res.json({
+        success: true,
+        ok: missingColumns.length === 0 && !probeError,
+        missingColumns,
+        missingMigrations: [...new Set(missingMigrations)],
+        probeError,
+      });
+    } catch { error(res, 503, 'SCHEMA_CHECK_FAILED'); }
+  });
 
   app.get('/api/v1/admin/products', ...need(R.catalog), async (req, res) => {
     try {
@@ -686,6 +760,8 @@ export function registerAdminRoutes(app, ctx) {
       if (!Number.isInteger(price) || price <= 0) return error(res, 400, 'INVALID_PRICE');
       if (discount !== null && (!Number.isInteger(discount) || discount <= 0 || discount >= price)) return error(res, 400, 'INVALID_DISCOUNT');
       const sku = String(b.sku || `NE-${Date.now().toString().slice(-6)}`).toUpperCase().slice(0, 60);
+      const detailBlocks = sanitizeDetailBlocks(b.detail_blocks);
+      if (detailBlocks === null) return error(res, 400, 'INVALID_DETAIL_BLOCKS');
       // Duplicate SKUs are the classic retry trap: an earlier attempt may have
       // inserted the row before failing at variants/media, so every retry with
       // the same SKU would otherwise die with a generic 503. Name it instead.
@@ -702,13 +778,25 @@ export function registerAdminRoutes(app, ctx) {
           price, discount_price: discount, gender: ['men', 'women', 'unisex'].includes(b.gender) ? b.gender : 'women',
           best_rank: (b.best_rank === '' || b.best_rank == null) ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null),
           is_active: (b.status || 'active') === 'active', is_new: !!b.is_new, is_best: !!b.is_best,
+          detail_blocks: detailBlocks || [],
         }).select().maybeSingle();
         if (e || !data) throw e || new Error('CREATE_FAILED');
         created = data;
       } catch (e) {
         // Name the integrity failure instead of a blanket 503: unique-SKU
         // races and dangling category FKs are the two realistic cases here.
+        // 42703/42501 mean the live DB itself is behind (missing migration)
+        // or denies writes (RLS/anon key) — both undiagnosable from the UI
+        // unless named, so they get their own codes.
         const msg = String(e?.message || '');
+        if (e?.code === '42703' || /column .* does not exist|undefined_column/i.test(msg)) {
+          console.error('PRODUCT_CREATE schema mismatch', msg);
+          return error(res, 503, 'SCHEMA_MISMATCH');
+        }
+        if (e?.code === '42501' || /permission denied|row-level security|not allowed by|policy/i.test(msg)) {
+          console.error('PRODUCT_CREATE permission denied', msg);
+          return error(res, 503, 'DB_PERMISSION');
+        }
         if (e?.code === '23505' || /duplicate|unique/i.test(msg)) return error(res, 409, 'SKU_EXISTS');
         if (e?.code === '23503' || /foreign key|violates/i.test(msg)) return error(res, 400, 'CATEGORY_INVALID');
         throw e;
@@ -765,6 +853,11 @@ export function registerAdminRoutes(app, ctx) {
       if (b.is_best !== undefined) patch.is_best = !!b.is_best;
       if (b.best_rank !== undefined) patch.best_rank = (b.best_rank === null || b.best_rank === '') ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null);
       if (b.sku !== undefined) patch.sku = String(b.sku).toUpperCase().slice(0, 60);
+      if (b.detail_blocks !== undefined) {
+        const blocks = sanitizeDetailBlocks(b.detail_blocks);
+        if (blocks === null) return error(res, 400, 'INVALID_DETAIL_BLOCKS');
+        patch.detail_blocks = blocks;
+      }
       if (Object.keys(patch).length) {
         const { error: e } = await database().from('products').update(patch).eq('id', p.id);
         if (e) throw e;
