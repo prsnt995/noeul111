@@ -21,6 +21,11 @@ export function ShopPage() {
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Storefront paging: first 24, "load more" adds 24. Limit stays out of the
+  // URL so share-links remain clean; any URL change restarts paging.
+  const [limit, setLimit] = useState(24);
+  const [total, setTotal] = useState(0);
+  const PAGE_BATCH = 24;
 
   // Fetch products via canonical api wrapper (credentials + CSRF handled)
   useEffect(() => {
@@ -36,16 +41,19 @@ export function ShopPage() {
         if (activeFilter === 'best') params.append('is_best', 'true');
         if (activeFilter === 'sale') params.append('is_sale', 'true');
         if (sortBy) params.append('sort', sortBy);
+        params.append('limit', String(limit));
 
         const json = await api.get(`/catalog/products?${params.toString()}`);
         if (cancelled) return;
         if (json.success && Array.isArray(json.data)) {
           setProducts(json.data);
+          setTotal(Number(json.total ?? json.data.length) || 0);
         } else {
           setProducts([]);
+          setTotal(0);
         }
       } catch (err) {
-        if (!cancelled) setProducts([]);
+        if (!cancelled) { setProducts([]); setTotal(0); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -53,11 +61,13 @@ export function ShopPage() {
 
     fetchProducts();
     return () => { cancelled = true; };
-  }, [selectedGender, selectedCategory, searchQuery, activeFilter, sortBy]);
+  }, [selectedGender, selectedCategory, searchQuery, activeFilter, sortBy, limit]);
 
   // Update URL helper — filter is cleared when category changes,
   // otherwise preserved so a filtered sort/view stays coherent.
+  // Any navigation restarts paging at the first batch.
   const updateUrl = (newGender, newCategory, newFilter, newSearch, newSort) => {
+    setLimit(24);
     const g = newGender !== undefined ? newGender : selectedGender;
     const c = newCategory !== undefined ? newCategory : selectedCategory;
     const f = newFilter !== undefined ? newFilter : activeFilter;
@@ -236,6 +246,7 @@ export function ShopPage() {
           const params = new URLSearchParams(searchParams.toString());
           if (slug === 'all') { params.delete('category'); } else { params.set('category', slug); }
           const qs = params.toString();
+          setLimit(24);
           setSearchParams(qs ? qs : '');
         }}
       />
@@ -306,16 +317,40 @@ export function ShopPage() {
             )}
           </div>
            ) : (
-          <div className="noeul-product-grid product-grid">
-            {products.map((prod, i) => (
-              <ProductCard
-                key={prod.id}
-                product={prod}
-                variant="overlay"
-                eager={i < 3}
-              />
-            ))}
-          </div>
+          <>
+            <div className="noeul-product-grid product-grid">
+              {products.map((prod, i) => (
+                <ProductCard
+                  key={prod.id}
+                  product={prod}
+                  variant="overlay"
+                  eager={i < 3}
+                />
+              ))}
+            </div>
+            {products.length < total && (
+              <div style={{ textAlign: 'center', padding: '8px 20px 0' }}>
+                <button
+                  type="button"
+                  onClick={() => setLimit((l) => l + PAGE_BATCH)}
+                  disabled={loading}
+                  style={{
+                    padding: '12px 32px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    backgroundColor: loading ? '#a1a1aa' : '#18181b',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '9999px',
+                    cursor: loading ? 'wait' : 'pointer',
+                  }}
+                >
+                  {loading ? t('home.loading') : `${t('shop.load_more')} (${products.length}/${total})`}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>

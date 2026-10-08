@@ -20,6 +20,10 @@ export function HomePage() {
   const [bestProducts, setBestProducts] = useState([]);
   const [bestLoading, setBestLoading] = useState(true);
   const [liveCategories, setLiveCategories] = useState([]);
+  // Storefront paging: first 24, "load more" adds 24. Backend caps at 100.
+  const [limit, setLimit] = useState(24);
+  const [total, setTotal] = useState(0);
+  const PAGE_BATCH = 24;
 
   // Active filter state from URL
   const [selectedGender, setSelectedGender] = useState('all');
@@ -27,7 +31,7 @@ export function HomePage() {
   const [activeFilter, setActiveFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 1. Sync state with URL query parameters
+  // 1. Sync state with URL query parameters (any filter change restarts paging)
   useEffect(() => {
     const sp = new URLSearchParams(search);
     const g = sp.get('gender') || 'all';
@@ -39,6 +43,7 @@ export function HomePage() {
     setSelectedCategory(c.toLowerCase());
     setActiveFilter(f.toLowerCase());
     setSearchQuery(s);
+    setLimit(24);
   }, [search]);
 
   // 2. Live categories (frontend-only, falls back to hardcoded list)
@@ -81,7 +86,7 @@ export function HomePage() {
     return [...seen.values()];
   }, [selectedGender, liveCategories]);
 
-  // 3. Fetch BEST items (top 6, follows gender + category so each
+  // 3. Fetch BEST items (top 10, follows gender + category so each
   // category has its own strip — fully controlled by admin is_best flag)
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +100,7 @@ export function HomePage() {
         const json = await api.get(`/catalog/products?${params.toString()}`);
         if (!cancelled) {
           if (json.success && Array.isArray(json.data)) {
-            setBestProducts(json.data.slice(0, 6));
+            setBestProducts(json.data.slice(0, 10));
           } else {
             setBestProducts([]);
           }
@@ -123,16 +128,19 @@ export function HomePage() {
         if (activeFilter === 'best') params.append('is_best', 'true');
         if (activeFilter === 'sale') params.append('is_sale', 'true');
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
+        params.append('limit', String(limit));
 
         const json = await api.get(`/catalog/products?${params.toString()}`);
         if (cancelled) return;
         if (json.success && Array.isArray(json.data)) {
           setProducts(json.data);
+          setTotal(Number(json.total ?? json.data.length) || 0);
         } else {
           setProducts([]);
+          setTotal(0);
         }
       } catch (err) {
-        if (!cancelled) setProducts([]);
+        if (!cancelled) { setProducts([]); setTotal(0); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -140,7 +148,7 @@ export function HomePage() {
 
     loadProducts();
     return () => { cancelled = true; };
-  }, [selectedGender, selectedCategory, activeFilter, searchQuery]);
+  }, [selectedGender, selectedCategory, activeFilter, searchQuery, limit]);
 
   // Handle switching gender filter smoothly — single source of truth via wouter
   const handleGenderSwitch = (gender) => {
@@ -426,16 +434,40 @@ export function HomePage() {
             </button>
           </div>
         ) : (
-          <div key={`${selectedGender}-${selectedCategory}-${activeFilter}`} className="product-grid noeul-product-grid home-grid-animated">
-            {products.map((prod, i) => (
-              <ProductCard
-                key={prod.id}
-                product={prod}
-                variant="overlay"
-                eager={i < 3}
-              />
-            ))}
-          </div>
+          <>
+            <div key={`${selectedGender}-${selectedCategory}-${activeFilter}-${limit}`} className="product-grid noeul-product-grid home-grid-animated">
+              {products.map((prod, i) => (
+                <ProductCard
+                  key={prod.id}
+                  product={prod}
+                  variant="overlay"
+                  eager={i < 3}
+                />
+              ))}
+            </div>
+            {products.length < total && (
+              <div style={{ textAlign: 'center', padding: '8px 20px 0' }}>
+                <button
+                  type="button"
+                  onClick={() => setLimit((l) => l + PAGE_BATCH)}
+                  disabled={loading}
+                  style={{
+                    padding: '12px 32px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    backgroundColor: loading ? '#a1a1aa' : '#18181b',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '9999px',
+                    cursor: loading ? 'wait' : 'pointer',
+                  }}
+                >
+                  {loading ? t('home.loading') : `${t('shop.load_more')} (${products.length}/${total})`}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
