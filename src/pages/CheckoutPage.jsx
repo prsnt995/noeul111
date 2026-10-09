@@ -171,7 +171,7 @@ export function CheckoutPage() {
         {quote ? <dl>
           <dt>상품금액</dt><dd>{quote.subtotal.toLocaleString('ko-KR')}원</dd>
           <dt>할인</dt><dd>−{quote.discount.toLocaleString('ko-KR')}원</dd>
-          <dt>배송비</dt><dd>{quote.shipping.toLocaleString('ko-KR')}원</dd>
+          <dt>배송비</dt><dd>{quote.shipping === 0 ? '무료 (0원)' : `${quote.shipping.toLocaleString('ko-KR')}원`}</dd>
           <dt><strong>총 결제금액 (부가세 포함)</strong></dt><dd><strong>{quote.amount.toLocaleString('ko-KR')}원</strong></dd>
         </dl> : <p role="status">{quoteError || (isLoggedIn ? '주문금액 확인 중…' : '로그인 후 주문금액을 확인할 수 있습니다.')}</p>}
         {quoteError && <button type="button" onClick={() => setQuoteRetry(n => n + 1)}>주문금액 다시 확인</button>}

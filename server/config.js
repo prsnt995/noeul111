@@ -23,7 +23,7 @@ export const CONFIG = {
   JWT_EXPIRES_IN: '7d',
   DB_PATH: path.join(__dirname, 'db', 'noeul.db'),
   STORE_NAME: 'NOEUL 노을',
-  FREE_SHIPPING_THRESHOLD: 70000,
-  DEFAULT_SHIPPING_FEE: 3000,
+  FREE_SHIPPING_THRESHOLD: 0,
+  DEFAULT_SHIPPING_FEE: 0,
   NODE_ENV: process.env.NODE_ENV || 'development',
 };

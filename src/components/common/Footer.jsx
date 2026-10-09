@@ -4,7 +4,7 @@ import { business as verifiedBusiness } from '../../config/business.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ChevronDown, Phone, Mail, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
 
-function InstagramIcon({ size = 15, color = '#ffffff' }) {
+function InstagramIcon({ size = 13, color = '#ffffff' }) {
   return (
     <svg
       width={size}
@@ -23,7 +23,7 @@ function InstagramIcon({ size = 15, color = '#ffffff' }) {
   );
 }
 
-function EmailIcon({ size = 14, color = 'currentColor' }) {
+function EmailIcon({ size = 12, color = 'currentColor' }) {
   return (
     <svg
       width={size}
@@ -42,10 +42,9 @@ export function Footer() {
 
   // Mobile accordion states
   const [openAccordion, setOpenAccordion] = useState({
-    shop: false,
-    cs: false,
     business: false,
-    legal: false,
+    cs: false,
+    shop: false,
   });
 
   const toggleAccordion = (key) => {
@@ -55,39 +54,38 @@ export function Footer() {
     }));
   };
 
-
   return (
     <footer
       style={{
-        backgroundColor: '#0b0b0c',
+        backgroundColor: '#080808',
         color: '#8e8e93',
-        paddingTop: '64px',
-        paddingBottom: '40px',
-        borderTop: '1px solid #1a1a1e',
-        fontSize: '0.8125rem',
-        lineHeight: 1.7,
+        paddingTop: '36px',
+        paddingBottom: '24px',
+        borderTop: '1px solid #161619',
+        fontSize: '0.75rem',
+        lineHeight: 1.55,
         fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', system-ui, sans-serif",
       }}
     >
       <div className="container" style={{ maxWidth: '1380px', margin: '0 auto', padding: '0 24px' }}>
         
-        {/* Main 4-Column Grid */}
+        {/* Main 4-Column Grid: Brand | Business Info | Customer Service | Shop Navigation */}
         <div className="footer-grid">
           
           {/* ============================================================
-              1. BRAND SECTION
+              1. NOEUL BRAND SECTION
              ============================================================ */}
           <div className="footer-col brand-col">
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <Link
                   href="/"
                   style={{
                     fontFamily: "'Cormorant Garamond', Georgia, serif, 'Pretendard'",
-                    fontSize: '2rem',
+                    fontSize: '1.625rem',
                     fontWeight: 700,
                     color: '#ffffff',
-                    letterSpacing: '0.24em',
+                    letterSpacing: '0.22em',
                     textTransform: 'uppercase',
                     lineHeight: 1,
                     textDecoration: 'none',
@@ -97,50 +95,49 @@ export function Footer() {
                 </Link>
                 <span
                   style={{
-                    width: '5px',
-                    height: '5px',
+                    width: '4px',
+                    height: '4px',
                     borderRadius: '50%',
-                    backgroundColor: '#e05638',
+                    backgroundColor: '#ff4d2d',
                     display: 'inline-block',
                   }}
                 />
               </div>
 
-              <div style={{ color: '#ffffff', fontWeight: 600, fontSize: '0.875rem', marginBottom: '6px' }}>
+              <div style={{ color: '#ffffff', fontWeight: 600, fontSize: '0.8125rem', marginBottom: '4px' }}>
                 Premium Fashion & Everyday Essentials
               </div>
 
               <p
                 style={{
-                  color: '#a1a1a6',
-                  fontSize: '0.8125rem',
-                  lineHeight: 1.65,
-                  maxWidth: '320px',
-                  marginBottom: '16px',
+                  color: '#9ca3af',
+                  fontSize: '0.75rem',
+                  lineHeight: 1.5,
+                  maxWidth: '300px',
+                  marginBottom: '10px',
                   fontWeight: 300,
                 }}
               >
                 A modern clothing brand for men and women inspired by contemporary Korean aesthetics.
               </p>
 
-
               <div style={{ fontSize: '0.75rem', color: '#6e6e73' }}>
                 A business by{' '}
                 <a
-                  href="https://rozena.co.kr/"
+                  href="https://www.noeulenterprises.com/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: '#d1d1d6', fontWeight: 600, textDecoration: 'underline' }}
                 >
-                  ROZENA
+                  NOEUL ENTERPRISES
                 </a>
               </div>
             </div>
 
             {/* Social Link Button */}
-            <div style={{ marginTop: '16px' }}>
+            <div>
               <a
-                href="https://instagram.com"
+                href="https://www.instagram.com/noeul.me"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="NOEUL Instagram"
@@ -148,35 +145,124 @@ export function Footer() {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '6px',
                   color: '#d1d1d6',
-                  backgroundColor: '#161618',
-                  padding: '9px 16px',
+                  backgroundColor: '#121214',
+                  padding: '7px 14px',
                   borderRadius: '9999px',
-                  border: '1px solid #232328',
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  letterSpacing: '0.05em',
-                  transition: 'all 0.25s ease',
+                  border: '1px solid #1f1f23',
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  transition: 'all 0.2s ease',
                   textDecoration: 'none',
+                  width: 'fit-content',
                 }}
               >
-                <InstagramIcon size={15} color="#ffffff" />
+                <InstagramIcon size={13} color="#ffffff" />
                 <span>INSTAGRAM</span>
               </a>
             </div>
           </div>
 
           {/* ============================================================
-              2. CUSTOMER SERVICE SECTION (고객센터)
+              2. BUSINESS INFORMATION SECTION (사업자 정보)
              ============================================================ */}
-          <div className="footer-col accordion-col">
+          <div className="footer-col business-col accordion-col">
+            <div className="accordion-header" onClick={() => toggleAccordion('business')}>
+              <h3 className="section-title">
+                사업자 정보 (Business Info)
+              </h3>
+              <ChevronDown
+                size={15}
+                className={`accordion-chevron ${openAccordion.business ? 'open' : ''}`}
+              />
+            </div>
+
+            <div className={`accordion-content ${openAccordion.business ? 'expanded' : ''}`}>
+              <div
+                style={{
+                  color: '#8e8e93',
+                  fontSize: '0.75rem',
+                  lineHeight: 1.6,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  marginBottom: '10px',
+                }}
+              >
+                <div>
+                  <span style={{ color: '#636366' }}>상호: </span>
+                  <span style={{ color: '#ffffff', fontWeight: 600 }}>{verifiedBusiness.companyName}</span>
+                </div>
+
+                <div>
+                  <span style={{ color: '#636366' }}>대표자: </span>
+                  <span style={{ color: '#d1d1d6', fontWeight: 500 }}>{verifiedBusiness.representative}</span>
+                </div>
+
+                <div>
+                  <span style={{ color: '#636366' }}>사업자등록번호: </span>
+                  <span style={{ color: '#d1d1d6', fontFamily: 'monospace', letterSpacing: '0.02em', fontWeight: 600 }}>
+                    {verifiedBusiness.businessNumber}
+                  </span>
+                </div>
+
+                <div>
+                  <span style={{ color: '#636366' }}>법인등록번호: </span>
+                  <span style={{ color: '#d1d1d6', fontFamily: 'monospace' }}>{verifiedBusiness.corporationNumber}</span>
+                </div>
+
+                <div>
+                  <span style={{ color: '#636366' }}>주소: </span>
+                  <span style={{ color: '#a1a1a6', wordBreak: 'keep-all' }}>{verifiedBusiness.address}</span>
+                </div>
+
+                <div>
+                  <span style={{ color: '#636366' }}>통신판매업 신고번호: </span>
+                  <span style={{ color: '#8e8e93', fontFamily: 'monospace' }}>{verifiedBusiness.ecommerceNumber}</span>
+                  {' '}
+                  <a
+                    href={verifiedBusiness.businessLookupUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#d1d1d6', textDecoration: 'underline', fontSize: '0.6875rem' }}
+                  >
+                    사업자정보 확인
+                  </a>
+                </div>
+              </div>
+
+              <div>
+                <Link
+                  href="/business-info"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    color: '#ff4d2d',
+                    fontSize: '0.6875rem',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                  }}
+                >
+                  <ShieldCheck size={13} />
+                  <span>사업자 정보 상세 보기</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================
+              3. CUSTOMER SERVICE SECTION (고객센터)
+             ============================================================ */}
+          <div className="footer-col cs-col accordion-col">
             <div className="accordion-header" onClick={() => toggleAccordion('cs')}>
               <h3 className="section-title">
                 고객센터 (Customer Service)
               </h3>
               <ChevronDown
-                size={16}
+                size={15}
                 className={`accordion-chevron ${openAccordion.cs ? 'open' : ''}`}
               />
             </div>
@@ -184,38 +270,38 @@ export function Footer() {
             <div className={`accordion-content ${openAccordion.cs ? 'expanded' : ''}`}>
               <div
                 style={{
-                  backgroundColor: '#141416',
-                  borderRadius: '10px',
-                  padding: '16px',
-                  border: '1px solid #1f1f23',
-                  marginBottom: '16px',
+                  backgroundColor: '#111113',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  border: '1px solid #1a1a1e',
+                  marginBottom: '10px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '10px',
+                  gap: '7px',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Phone size={14} color="#e05638" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <Phone size={13} color="#ff4d2d" />
                   <a
                     href={`tel:${verifiedBusiness.phone}`}
-                    style={{ color: '#ffffff', fontWeight: 700, fontSize: '0.9375rem', textDecoration: 'none', letterSpacing: '0.02em' }}
+                    style={{ color: '#ffffff', fontWeight: 700, fontSize: '0.8125rem', textDecoration: 'none', letterSpacing: '0.02em' }}
                   >
                     Phone: {verifiedBusiness.phoneFormatted}
                   </a>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Mail size={14} color="#8e8e93" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <Mail size={13} color="#8e8e93" />
                   <a
                     href={`mailto:${verifiedBusiness.email}`}
-                    style={{ color: '#d1d1d6', fontSize: '0.75rem', textDecoration: 'none', fontFamily: 'monospace' }}
+                    style={{ color: '#d1d1d6', fontSize: '0.6875rem', textDecoration: 'none', fontFamily: 'monospace' }}
                   >
                     Email: {verifiedBusiness.email}
                   </a>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', borderTop: '1px solid #1c1c20', paddingTop: '8px', color: '#8e8e93', fontSize: '0.75rem' }}>
-                  <Clock size={14} color="#e05638" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', borderTop: '1px solid #1a1a1e', paddingTop: '6px', color: '#8e8e93', fontSize: '0.6875rem' }}>
+                  <Clock size={13} color="#ff4d2d" style={{ marginTop: '1px', flexShrink: 0 }} />
                   <span>운영시간: {verifiedBusiness.businessHours}</span>
                 </div>
               </div>
@@ -235,9 +321,9 @@ export function Footer() {
                     href="mailto:noeulenterprises@gmail.com"
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                   >
-                    <EmailIcon size={14} color="#fee500" />
+                    <EmailIcon size={12} color="#fee500" />
                     <span>이메일 상담 (Email)</span>
                   </a>
                 </li>
@@ -246,95 +332,15 @@ export function Footer() {
           </div>
 
           {/* ============================================================
-              3. BUSINESS INFORMATION SECTION (사업자 정보)
-             ============================================================ */}
-          <div className="footer-col business-col accordion-col">
-            <div className="accordion-header" onClick={() => toggleAccordion('business')}>
-              <h3 className="section-title">
-                사업자 정보 (Business Information)
-              </h3>
-              <ChevronDown
-                size={16}
-                className={`accordion-chevron ${openAccordion.business ? 'open' : ''}`}
-              />
-            </div>
-
-            <div className={`accordion-content ${openAccordion.business ? 'expanded' : ''}`}>
-              <div
-                style={{
-                  color: '#8e8e93',
-                  fontSize: '0.8125rem',
-                  lineHeight: 1.85,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  marginBottom: '16px',
-                }}
-              >
-                <div>
-                  <span style={{ color: '#6e6e73' }}>상호: </span>
-                  <span style={{ color: '#ffffff', fontWeight: 600 }}>{verifiedBusiness.companyName}</span>
-                </div>
-
-                <div>
-                  <span style={{ color: '#6e6e73' }}>대표자: </span>
-                  <span style={{ color: '#d1d1d6', fontWeight: 500 }}>{verifiedBusiness.representative}</span>
-                </div>
-
-                <div>
-                  <span style={{ color: '#6e6e73' }}>사업자등록번호: </span>
-                  <span style={{ color: '#d1d1d6', fontFamily: 'monospace', letterSpacing: '0.03em', fontWeight: 600 }}>
-                    {verifiedBusiness.businessNumber}
-                  </span>
-                </div>
-
-                <div>
-                  <span style={{ color: '#6e6e73' }}>법인등록번호: </span>
-                  <span style={{ color: '#d1d1d6' }}>{verifiedBusiness.corporationNumber}</span>
-                </div>
-
-                <div>
-                  <span style={{ color: '#6e6e73' }}>주소: </span>
-                  <span style={{ color: '#a1a1a6', wordBreak: 'keep-all' }}>{verifiedBusiness.address}</span>
-                </div>
-
-                <div>
-                  <span style={{ color: '#6e6e73' }}>통신판매업 신고번호: </span>
-                  <span style={{ color: '#8e8e93', fontFamily: 'monospace' }}>{verifiedBusiness.ecommerceNumber}</span>
-                  {' '}<a href={verifiedBusiness.businessLookupUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#d1d1d6', textDecoration: 'underline' }}>사업자정보 확인</a>
-                </div>
-              </div>
-
-              <div>
-                <Link
-                  href="/business-info"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    color: '#e05638',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    textDecoration: 'none',
-                  }}
-                >
-                  <ShieldCheck size={14} />
-                  <span>사업자 정보 상세 보기</span>
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* ============================================================
               4. SHOP & NAVIGATION LINKS
              ============================================================ */}
-          <div className="footer-col accordion-col">
+          <div className="footer-col shop-col accordion-col">
             <div className="accordion-header" onClick={() => toggleAccordion('shop')}>
               <h3 className="section-title">
                 쇼핑 (Shop Navigation)
               </h3>
               <ChevronDown
-                size={16}
+                size={15}
                 className={`accordion-chevron ${openAccordion.shop ? 'open' : ''}`}
               />
             </div>
@@ -368,12 +374,12 @@ export function Footer() {
         {/* Full-width Legal Policy Navigation Bar */}
         <div
           style={{
-            borderTop: '1px solid #1a1a1e',
-            marginTop: '48px',
-            paddingTop: '28px',
+            borderTop: '1px solid #161619',
+            marginTop: '28px',
+            paddingTop: '18px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '20px',
+            gap: '12px',
           }}
         >
           {/* Clickable Legal Links Bar */}
@@ -383,8 +389,8 @@ export function Footer() {
               alignItems: 'center',
               justifyContent: 'center',
               flexWrap: 'wrap',
-              gap: '12px 20px',
-              fontSize: '0.8125rem',
+              gap: '8px 16px',
+              fontSize: '0.75rem',
             }}
           >
             <Link href="/privacy" className="legal-nav-link highlight">
@@ -428,14 +434,14 @@ export function Footer() {
             <span style={{ color: '#2c2c30' }}>·</span>
 
             <a
-              href="https://instagram.com"
+              href="https://www.instagram.com/noeul.me"
               target="_blank"
               rel="noopener noreferrer"
               className="legal-nav-link"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
             >
               <span>Instagram</span>
-              <ExternalLink size={12} />
+              <ExternalLink size={11} />
             </a>
           </div>
 
@@ -443,20 +449,17 @@ export function Footer() {
           <div
             style={{
               display: 'flex',
-              justifyContent: 'space-between',
+              justifyContent: 'center',
               alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '12px',
-              color: '#68686d',
-              fontSize: '0.75rem',
-              paddingTop: '12px',
-              borderTop: '1px solid #141416',
+              textAlign: 'center',
+              color: '#636366',
+              fontSize: '0.6875rem',
+              paddingTop: '6px',
             }}
           >
             <div>
               © 2026 {verifiedBusiness.brandName} ({verifiedBusiness.companyName}). All rights reserved.
             </div>
-
           </div>
         </div>
 
@@ -466,8 +469,8 @@ export function Footer() {
       <style>{`
         .footer-grid {
           display: grid;
-          grid-template-columns: 1.4fr 1.1fr 1.2fr 1fr;
-          gap: 40px;
+          grid-template-columns: 1.25fr 1.35fr 1.15fr 0.9fr;
+          gap: 28px;
         }
 
         .footer-col {
@@ -477,11 +480,11 @@ export function Footer() {
 
         .section-title {
           color: #ffffff;
-          font-size: 0.8125rem;
+          font-size: 0.75rem;
           font-weight: 700;
-          letter-spacing: 0.12em;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
-          margin-bottom: 20px;
+          margin-bottom: 12px;
         }
 
         .footer-links {
@@ -490,15 +493,16 @@ export function Footer() {
           margin: 0;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 6px;
         }
 
         .footer-links a {
-          color: #c7c7cc;
+          color: #a1a1a6;
           text-decoration: none;
-          font-size: 0.8125rem;
-          transition: color 0.2s ease, transform 0.2s ease;
+          font-size: 0.75rem;
+          transition: color 0.18s ease, transform 0.18s ease;
           display: inline-block;
+          line-height: 1.45;
         }
 
         .footer-links a:hover {
@@ -507,10 +511,10 @@ export function Footer() {
         }
 
         .legal-nav-link {
-          color: #d1d1d6;
+          color: #8e8e93;
           text-decoration: none;
           font-weight: 500;
-          transition: color 0.2s ease;
+          transition: color 0.18s ease;
         }
 
         .legal-nav-link:hover {
@@ -519,15 +523,15 @@ export function Footer() {
         }
 
         .legal-nav-link.highlight {
-          color: #f4f2ed;
-          font-weight: 700;
+          color: #e5e5ea;
+          font-weight: 600;
         }
 
         .social-icon-btn:hover {
-          background-color: #232328 !important;
-          border-color: #383840 !important;
+          background-color: #1c1c20 !important;
+          border-color: #2c2c32 !important;
           color: #ffffff !important;
-          transform: translateY(-2px);
+          transform: translateY(-1px);
         }
 
         .accordion-header {
@@ -545,20 +549,20 @@ export function Footer() {
         @media (max-width: 1024px) {
           .footer-grid {
             grid-template-columns: 1fr 1fr;
-            gap: 36px;
+            gap: 24px;
           }
         }
 
         @media (max-width: 768px) {
           .footer-grid {
             grid-template-columns: 1fr;
-            gap: 20px;
+            gap: 12px;
           }
 
           .accordion-header {
             cursor: pointer;
-            padding: 14px 0;
-            border-bottom: 1px solid #1a1a1e;
+            padding: 10px 0;
+            border-bottom: 1px solid #161619;
             margin-bottom: 0;
           }
 
@@ -577,15 +581,15 @@ export function Footer() {
           .accordion-content {
             max-height: 0;
             overflow: hidden;
-            transition: max-height 0.3s cubic-bezier(0, 1, 0, 1), padding 0.3s ease;
+            transition: max-height 0.25s cubic-bezier(0, 1, 0, 1), padding 0.25s ease;
             padding-top: 0;
           }
 
           .accordion-content.expanded {
-            max-height: 600px;
-            padding-top: 16px;
-            padding-bottom: 12px;
-            transition: max-height 0.35s ease-in-out, padding 0.3s ease;
+            max-height: 500px;
+            padding-top: 10px;
+            padding-bottom: 8px;
+            transition: max-height 0.3s ease-in-out, padding 0.25s ease;
           }
         }
       `}</style>

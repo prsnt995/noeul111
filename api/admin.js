@@ -1378,16 +1378,9 @@ export function registerAdminRoutes(app, ctx) {
         discount = couponDiscount(subtotal, coupon);
         couponCode = coupon.code;
       }
-      let threshold = 70000;
-      let fee = 3000;
-      try {
-        const { data: shipRow } = await database().from('content').select('value').eq('key', 'shipping').eq('published', true).maybeSingle();
-        const policy = shipRow?.value || {};
-        const t = Number(policy.free_threshold ?? policy.threshold ?? 70000);
-        const f = Number(policy.fee ?? 3000);
-        if (Number.isFinite(t) && Number.isFinite(f) && t >= 0 && f >= 0) { threshold = t; fee = f; }
-      } catch {}
-      const shippingFee = subtotal - discount >= threshold ? 0 : fee;
+      let threshold = 0;
+      let fee = 0;
+      const shippingFee = 0;
       const amount = subtotal - discount + shippingFee;
       if (amount < 1) return error(res, 400, 'MINIMUM_AMOUNT');
       // Link to an existing member when possible; otherwise the admin owns

@@ -641,7 +641,7 @@ export function ProductDetailPage() {
                 <Truck size={16} color="#18181b" />
                 <span>
                   <strong>{lang === 'ko' ? '배송 정보' : 'Shipping'}:</strong>{' '}
-                  {lang === 'ko' ? '배송비와 공급 일정은 아래 배송 안내에서 확인해주세요.' : 'See shipping information below for fees and dispatch timing.'}
+                  {lang === 'ko' ? '전 상품 무료배송 (결제 후 1~3영업일 내 출고)' : 'Free Shipping on all orders (Ships within 1-3 business days)'}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

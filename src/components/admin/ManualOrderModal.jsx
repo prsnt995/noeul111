@@ -239,7 +239,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
 
   const subtotal = items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
   const couponDiscount = appliedCoupon?.discount || 0;
-  const shipping = items.length === 0 ? 0 : (subtotal - couponDiscount >= 70000 ? 0 : 3000);
+  const shipping = 0;
   const total = Math.max(0, subtotal - couponDiscount + shipping);
 
   const handleSubmit = async (e) => {

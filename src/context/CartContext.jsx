@@ -4,8 +4,8 @@ import { useLanguage } from './LanguageContext.jsx';
 
 const CartContext = createContext();
 
-const FREE_SHIPPING_THRESHOLD = 70000;
-const DEFAULT_SHIPPING_FEE = 3000;
+const FREE_SHIPPING_THRESHOLD = 0;
+const DEFAULT_SHIPPING_FEE = 0;
 const STORAGE_KEY = 'noeul_cart';
 const STORAGE_VERSION = 2;
 
@@ -142,21 +142,20 @@ export function CartProvider({ children }) {
   }, [items]);
 
   const shippingFee = useMemo(() => {
-    if (items.length === 0) return 0;
-    return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : DEFAULT_SHIPPING_FEE;
-  }, [subtotal, items.length]);
+    return 0;
+  }, []);
 
   const totalAmount = useMemo(() => {
-    return subtotal + shippingFee;
-  }, [subtotal, shippingFee]);
+    return subtotal;
+  }, [subtotal]);
 
   const freeShippingRemaining = useMemo(() => {
-    return Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal);
-  }, [subtotal]);
+    return 0;
+  }, []);
 
   const freeShippingProgress = useMemo(() => {
-    return Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100));
-  }, [subtotal]);
+    return 100;
+  }, []);
 
   return (
     <CartContext.Provider

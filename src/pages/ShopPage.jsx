@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
@@ -21,17 +21,22 @@ export function ShopPage() {
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  // Storefront paging: first 24, "load more" adds 24. Limit stays out of the
-  // URL so share-links remain clean; any URL change restarts paging.
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Storefront paging: first 24, infinite scroll loads next PAGE_BATCH as user scrolls down.
   const [limit, setLimit] = useState(24);
   const [total, setTotal] = useState(0);
   const PAGE_BATCH = 24;
+  const observerTarget = useRef(null);
 
   // Fetch products via canonical api wrapper (credentials + CSRF handled)
   useEffect(() => {
     let cancelled = false;
     async function fetchProducts() {
-      setLoading(true);
+      if (limit === 24 || products.length === 0) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       try {
         const params = new URLSearchParams();
         if (selectedGender !== 'all') params.append('gender', selectedGender);
@@ -55,7 +60,10 @@ export function ShopPage() {
       } catch (err) {
         if (!cancelled) { setProducts([]); setTotal(0); }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     }
 
@@ -63,10 +71,37 @@ export function ShopPage() {
     return () => { cancelled = true; };
   }, [selectedGender, selectedCategory, searchQuery, activeFilter, sortBy, limit]);
 
+  // Infinite scroll observer: as user scrolls down, automatically load more products
+  useEffect(() => {
+    if (loading || loadingMore) return;
+    if (products.length >= total || total === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setLimit((prev) => prev + PAGE_BATCH);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '400px',
+        threshold: 0,
+      }
+    );
+
+    const el = observerTarget.current;
+    if (el) observer.observe(el);
+
+    return () => {
+      if (el) observer.unobserve(el);
+    };
+  }, [loading, loadingMore, products.length, total]);
+
   // Update URL helper — filter is cleared when category changes,
   // otherwise preserved so a filtered sort/view stays coherent.
   // Any navigation restarts paging at the first batch.
   const updateUrl = (newGender, newCategory, newFilter, newSearch, newSort) => {
+    setProducts([]);
     setLimit(24);
     const g = newGender !== undefined ? newGender : selectedGender;
     const c = newCategory !== undefined ? newCategory : selectedCategory;
@@ -262,8 +297,9 @@ export function ShopPage() {
           overflowX: 'hidden',
         }}
       >
-        {loading ? (
+        {loading && products.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 0', color: '#888888' }}>
+            <div className="infinite-scroll-spinner" style={{ margin: '0 auto 12px' }} />
             <p style={{ fontSize: '0.875rem' }}>{t('home.loading')}</p>
           </div>
         ) : products.length === 0 ? (
@@ -316,7 +352,7 @@ export function ShopPage() {
               </button>
             )}
           </div>
-           ) : (
+        ) : (
           <>
             <div className="noeul-product-grid product-grid">
               {products.map((prod, i) => (
@@ -328,26 +364,24 @@ export function ShopPage() {
                 />
               ))}
             </div>
-            {products.length < total && (
-              <div style={{ textAlign: 'center', padding: '8px 20px 0' }}>
-                <button
-                  type="button"
-                  onClick={() => setLimit((l) => l + PAGE_BATCH)}
-                  disabled={loading}
-                  style={{
-                    padding: '12px 32px',
-                    fontSize: '0.8125rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.06em',
-                    backgroundColor: loading ? '#a1a1aa' : '#18181b',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '9999px',
-                    cursor: loading ? 'wait' : 'pointer',
-                  }}
-                >
-                  {loading ? t('home.loading') : `${t('shop.load_more')} (${products.length}/${total})`}
-                </button>
+
+            {/* Infinite Scroll Sentinel */}
+            <div ref={observerTarget} style={{ height: '20px', margin: '10px 0' }} />
+
+            {loadingMore && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '24px 0',
+                  gap: '10px',
+                }}
+              >
+                <div className="infinite-scroll-spinner" />
+                <span style={{ fontSize: '0.8125rem', color: '#71717a', fontWeight: 500 }}>
+                  {t('home.loading')}
+                </span>
               </div>
             )}
           </>

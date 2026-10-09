@@ -154,9 +154,9 @@ router.post('/orders', verifyToken, async (req, res) => {
       appliedCoupon = coupon;
     }
 
-    // 3. Compute Shipping Fee based on threshold (₩70,000) & Final Payable Total
+    // 3. Compute Shipping Fee (Free Delivery for all orders) & Final Payable Total
     const discountedSubtotal = Math.max(0, computedSubtotal - discount_amount);
-    const shipping_fee = computedSubtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : CONFIG.DEFAULT_SHIPPING_FEE;
+    const shipping_fee = 0;
     const total_amount = Math.max(0, discountedSubtotal + shipping_fee);
     const order_number = generateOrderNumber();
 

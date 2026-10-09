@@ -28,13 +28,13 @@ export function AdminSettingsPage() {
       bank_account: '우리은행 1002340390276 박기성'
     },
     shipping_policy: {
-      threshold: 70000,
-      fee: 3000
+      threshold: 0,
+      fee: 0
     },
     header_config: {
       announcement_enabled: true,
-      announcement_ko: '2026 S/S 신규 가입 시 10% 웰컴 쿠폰 & ₩70,000 이상 무료배송',
-      announcement_en: 'Spring 2026: Enjoy 10% off your first order & complimentary shipping over ₩70,000',
+      announcement_ko: '2026 S/S 신규 가입 시 10% 웰컴 쿠폰 & 전 상품 무료배송',
+      announcement_en: 'Spring 2026: Enjoy 10% off your first order & free shipping on all orders',
       announcement_bg: '#121213',
       announcement_color: '#ffffff'
     }
@@ -369,7 +369,7 @@ export function AdminSettingsPage() {
                   <label className="form-label">전국 무료배송 기준 금액 (KRW ₩) *</label>
                   <input
                     type="number"
-                    value={settings.shipping_policy?.threshold || 70000}
+                    value={settings.shipping_policy?.threshold ?? 0}
                     onChange={(e) => setSettings({
                       ...settings,
                       shipping_policy: { ...settings.shipping_policy, threshold: Number(e.target.value) }
@@ -382,7 +382,7 @@ export function AdminSettingsPage() {
                   <label className="form-label">기본 배송비 (KRW ₩) *</label>
                   <input
                     type="number"
-                    value={settings.shipping_policy?.fee || 3000}
+                    value={settings.shipping_policy?.fee ?? 0}
                     onChange={(e) => setSettings({
                       ...settings,
                       shipping_policy: { ...settings.shipping_policy, fee: Number(e.target.value) }
