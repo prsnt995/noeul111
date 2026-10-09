@@ -78,10 +78,6 @@ export function AdminProductsPage() {
   const page = Number(pv.page) || 1;
   const search = pv.search || '';
   const sort = { key: pv.sort || 'id', dir: pv.order === 'asc' ? 'asc' : 'desc' };
-  const selectedCatObj = categories.find((c) => String(c.id) === String(pv.category) || String(c.slug) === String(pv.category));
-  const selectedCategory = selectedCatObj ? String(selectedCatObj.id) : (pv.category === 'all' || !pv.category ? 'all' : pv.category);
-  const stockFilter = pv.stockStatus || 'all';
-  const specialFilter = pv.filterType || 'all';
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +89,11 @@ export function AdminProductsPage() {
   const PAGE_SIZE = 20;
   const { showToast } = useToast();
   const { runBusy, busy: saving } = useBusy();
+
+  const selectedCatObj = categories.find((c) => String(c.id) === String(pv.category) || String(c.slug) === String(pv.category));
+  const selectedCategory = selectedCatObj ? String(selectedCatObj.id) : (pv.category === 'all' || !pv.category ? 'all' : pv.category);
+  const stockFilter = pv.stockStatus || 'all';
+  const specialFilter = pv.filterType || 'all';
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);

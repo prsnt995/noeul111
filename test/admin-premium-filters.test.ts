@@ -178,6 +178,11 @@ describe('Category filter & All Categories reliability', () => {
     expect(src.includes("'전체 카테고리'"), 'has all categories option').toBe(true);
     expect(src.includes('selectedCatObj'), 'resolves category slug/id safely').toBe(true);
     expect(src.includes('fetchCategories();'), 'prefetches categories on mount').toBe(true);
+    const catStateIdx = src.indexOf('const [categories, setCategories] = useState');
+    const selectedCatIdx = src.indexOf('const selectedCatObj = categories.find');
+    expect(catStateIdx, 'categories state declared').toBeGreaterThan(-1);
+    expect(selectedCatIdx, 'selectedCatObj declared').toBeGreaterThan(-1);
+    expect(catStateIdx, 'categories declared before selectedCatObj').toBeLessThan(selectedCatIdx);
   });
 
   it('api/admin.js supports all-category variations and multi-attribute lookup', () => {
