@@ -1,6 +1,6 @@
 // Business details are shared by the footer and customer policies.
 export const business = Object.freeze({
-  brandName: 'NOEUL', website: 'https://noeul.me', websiteShort: 'noeul.me',
+  brandName: 'NOEUL', website: 'https://www.noeul.me', websiteShort: 'www.noeul.me',
   companyName: '주식회사 로제나', representative: '김종성',
   businessNumber: '548-87-03441', corporationNumber: '285011-0061832',
   address: '인천 남동구 논고개로 123번길, 45, 609호',
