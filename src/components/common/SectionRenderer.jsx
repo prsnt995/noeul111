@@ -7,7 +7,7 @@ import { safeHttpUrl } from '../../utils/imageHelper.js';
 import { ArrowRight, Truck, ShieldCheck, RefreshCw, Sparkles, Tag, Camera, ChevronRight } from 'lucide-react';
 
 export function SectionRenderer({ section }) {
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,8 +43,8 @@ export function SectionRenderer({ section }) {
     }
   }, [section.type, content.filter_type, content.limit, content.category_id]);
 
-  const title = lang === 'ko' ? section.title_ko : (section.title_en || section.title_ko);
-  const subtitle = lang === 'ko' ? section.subtitle_ko : (section.subtitle_en || section.subtitle_ko);
+  const title = section.title_ko || section.title || section.title_en;
+  const subtitle = section.subtitle_ko || section.subtitle || section.subtitle_en;
 
   switch (section.type) {
     // 1. KOREAN SPLIT HERO COLLAGE (Matches 66girls hero photo layout)
@@ -379,7 +379,7 @@ export function SectionRenderer({ section }) {
                     transition: 'border-color 0.2s ease',
                   }}
                 >
-                  <h3 style={{ fontSize: '1rem', fontWeight: 800 }}>{lang === 'ko' ? cat.name_ko : cat.name_en}</h3>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800 }}>{cat.name_ko || cat.name || cat.name_en}</h3>
                   <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>{cat.product_count || 0} ITEMS</span>
                 </Link>
               ))}
@@ -414,7 +414,7 @@ export function SectionRenderer({ section }) {
             )}
             <div>
               <Link href={safeHttpUrl(content.button_link) || '/shop'} className="btn-primary" style={{ backgroundColor: 'var(--accent-sunset)', padding: '12px 28px', fontSize: '0.875rem' }}>
-                {lang === 'ko' ? (content.button_text_ko || t('home.claim_offer')) : (content.button_text_en || content.button_text_ko || t('home.claim_offer'))}
+                {content.button_text_ko || content.button_text || content.button_text_en || t('home.claim_offer')}
               </Link>
             </div>
           </div>

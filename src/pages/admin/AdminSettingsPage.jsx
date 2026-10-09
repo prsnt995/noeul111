@@ -75,7 +75,18 @@ export function AdminSettingsPage() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      await adminApi.put('/admin/content/settings', { settings });
+      const payload = {
+        ...settings,
+        payment_info: {
+          ...settings.payment_info,
+          payment_instructions_en: settings.payment_info?.payment_instructions_ko || '',
+        },
+        header_config: {
+          ...settings.header_config,
+          announcement_en: settings.header_config?.announcement_ko || '',
+        },
+      };
+      await adminApi.put('/admin/content/settings', { settings: payload });
       showToast('쇼핑몰 설정이 성공적으로 저장되었습니다.', 'success');
     } catch (err) {
       showToast('설정 저장 실패', 'error');
@@ -95,24 +106,23 @@ export function AdminSettingsPage() {
   }
 
   const tabs = [
-    { id: 'payment', ko: '무통장 입금 계좌', en: 'Bank Transfer', icon: CreditCard },
-    { id: 'business', ko: '사업자 & 고객센터 연락처', en: 'Business', icon: Building },
-    { id: 'shipping', ko: '배송비 규정', en: 'Shipping', icon: Truck },
-    { id: 'general', ko: '헤더 띠배너 공지', en: 'Announcement', icon: Layout },
+    { id: 'payment', ko: '무통장 입금 계좌', icon: CreditCard },
+    { id: 'business', ko: '사업자 & 고객센터 연락처', icon: Building },
+    { id: 'shipping', ko: '배송비 규정', icon: Truck },
+    { id: 'general', ko: '헤더 띠배너 공지', icon: Layout },
   ];
 
   return (
     <AdminLayout activePage="settings">
       <PageHeader
         ko="쇼핑몰 환경 & 결제 계좌 설정"
-        en="Store Settings"
         desc="공식 입금 계좌, 사업자/고객센터 연락처, 배송 정책 및 공지 띠배너를 관리합니다."
       />
 
       <ErrorBanner message={errorMsg ? `설정 로드 실패: ${errorMsg}` : ''} onRetry={fetchSettings} />
 
       {/* Tab Navigation */}
-      <div className="adm-card adm-filter-bar" role="tablist" aria-label="Settings sections">
+      <div className="adm-card adm-filter-bar" role="tablist" aria-label="설정 메뉴">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = activeTab === t.id;
@@ -126,7 +136,7 @@ export function AdminSettingsPage() {
               className={`adm-btn${active ? ' adm-btn-primary' : ''}`}
             >
               <Icon size={16} aria-hidden />
-              <span>{t.ko} ({t.en})</span>
+              <span>{t.ko}</span>
             </button>
           );
         })}
@@ -139,7 +149,7 @@ export function AdminSettingsPage() {
             <div className="adm-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div style={{ borderBottom: '1px solid #f0f0f2', paddingBottom: '12px' }}>
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#18181b' }}>
-                  공식 무통장 입금 계좌 설정 (Official Bank Account)
+                  공식 무통장 입금 계좌 설정
                 </h3>
                 <p style={{ fontSize: '0.8125rem', color: '#71717a', marginTop: '2px' }}>
                   결제 페이지 및 주문 완료 페이지에 고객에게 안내되는 공식 계좌 정보입니다.
@@ -148,7 +158,7 @@ export function AdminSettingsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">은행명 (Bank Name) *</label>
+                  <label className="form-label">은행명 *</label>
                   <input
                     type="text"
                     required
@@ -157,13 +167,13 @@ export function AdminSettingsPage() {
                       ...settings,
                       payment_info: { ...settings.payment_info, bank_name: e.target.value }
                     })}
-                    placeholder="우리은행 (Woori Bank)"
+                    placeholder="우리은행"
                     className="form-input"
                   />
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">예금주 (Account Holder) *</label>
+                  <label className="form-label">예금주 *</label>
                   <input
                     type="text"
                     required
@@ -172,7 +182,7 @@ export function AdminSettingsPage() {
                       ...settings,
                       payment_info: { ...settings.payment_info, account_holder: e.target.value }
                     })}
-                    placeholder="박기삼"
+                    placeholder="박기성"
                     className="form-input"
                   />
                 </div>
@@ -180,7 +190,7 @@ export function AdminSettingsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">계좌번호 (Account Number) *</label>
+                  <label className="form-label">계좌번호 *</label>
                   <input
                     type="text"
                     required
@@ -196,10 +206,10 @@ export function AdminSettingsPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">화폐 단위 (Currency)</label>
+                  <label className="form-label">화폐 단위</label>
                   <input
                     type="text"
-                    value={settings.payment_info?.currency || 'KRW (₩)'}
+                    value={settings.payment_info?.currency || 'KRW (원)'}
                     readOnly
                     className="form-input"
                     style={{ backgroundColor: '#f4f4f5' }}
@@ -208,26 +218,13 @@ export function AdminSettingsPage() {
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">입금 안내 문구 (한글)</label>
+                <label className="form-label">입금 안내 문구</label>
                 <textarea
                   rows={3}
                   value={settings.payment_info?.payment_instructions_ko || ''}
                   onChange={(e) => setSettings({
                     ...settings,
                     payment_info: { ...settings.payment_info, payment_instructions_ko: e.target.value }
-                  })}
-                  className="form-textarea"
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">입금 안내 문구 (영문 - English Instructions)</label>
-                <textarea
-                  rows={2}
-                  value={settings.payment_info?.payment_instructions_en || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_info: { ...settings.payment_info, payment_instructions_en: e.target.value }
                   })}
                   className="form-textarea"
                 />
@@ -240,7 +237,7 @@ export function AdminSettingsPage() {
             <div className="adm-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div style={{ borderBottom: '1px solid #f0f0f2', paddingBottom: '12px' }}>
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#18181b' }}>
-                  사업자 정보 및 고객센터 연락처 (Business Information)
+                  사업자 정보 및 고객센터 연락처
                 </h3>
                 <p style={{ fontSize: '0.8125rem', color: '#71717a', marginTop: '2px' }}>
                   웹사이트 하단 푸터 및 고객센터 페이지에 표기되는 공식 정보입니다.
@@ -249,7 +246,7 @@ export function AdminSettingsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">법인/상호명 (Company Name) *</label>
+                  <label className="form-label">법인/상호명 *</label>
                   <input
                     type="text"
                     required
@@ -263,7 +260,7 @@ export function AdminSettingsPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">대표자명 (CEO) *</label>
+                  <label className="form-label">대표자명 *</label>
                   <input
                     type="text"
                     required
@@ -272,7 +269,7 @@ export function AdminSettingsPage() {
                       ...settings,
                       business_info: { ...settings.business_info, ceo: e.target.value }
                     })}
-                    placeholder="박기삼"
+                    placeholder="박기성"
                     className="form-input"
                   />
                 </div>
@@ -280,7 +277,7 @@ export function AdminSettingsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">공식 비즈니스 / 고객센터 이메일 (Business Email) *</label>
+                  <label className="form-label">공식 비즈니스 / 고객센터 이메일 *</label>
                   <input
                     type="email"
                     required
@@ -289,13 +286,13 @@ export function AdminSettingsPage() {
                       ...settings,
                       business_info: { ...settings.business_info, cs_email: e.target.value }
                     })}
-                    placeholder="noeulenterprise@gmail.com"
+                    placeholder="noeulenterprises@gmail.com"
                     className="form-input"
                   />
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">고객센터 대표전화 / 핸드폰 (Business Phone) *</label>
+                  <label className="form-label">고객센터 대표전화 / 연락처 *</label>
                   <input
                     type="text"
                     required
@@ -304,14 +301,14 @@ export function AdminSettingsPage() {
                       ...settings,
                       business_info: { ...settings.business_info, cs_phone: e.target.value }
                     })}
-                    placeholder="010-1234-5678"
+                    placeholder="010-8361-5305"
                     className="form-input"
                   />
                 </div>
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">사업장 소재지 주소 (Business Address) *</label>
+                <label className="form-label">사업장 소재지 주소 *</label>
                 <input
                   type="text"
                   required
@@ -320,7 +317,7 @@ export function AdminSettingsPage() {
                     ...settings,
                     business_info: { ...settings.business_info, address: e.target.value }
                   })}
-                  placeholder="서울특별시 강남구 압구정로 165 노을 빌딩 4층"
+                  placeholder="경기도 파주시 송학2길 62-3, 1층(야당동)"
                   className="form-input"
                 />
               </div>
@@ -366,7 +363,7 @@ export function AdminSettingsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">전국 무료배송 기준 금액 (KRW ₩) *</label>
+                  <label className="form-label">전국 무료배송 기준 금액 (원) *</label>
                   <input
                     type="number"
                     value={settings.shipping_policy?.threshold ?? 0}
@@ -379,7 +376,7 @@ export function AdminSettingsPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">기본 배송비 (KRW ₩) *</label>
+                  <label className="form-label">기본 배송비 (원) *</label>
                   <input
                     type="number"
                     value={settings.shipping_policy?.fee ?? 0}
@@ -412,26 +409,13 @@ export function AdminSettingsPage() {
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">한글 띠배너 공지 문구</label>
+                <label className="form-label">띠배너 공지 문구</label>
                 <input
                   type="text"
                   value={settings.header_config?.announcement_ko || ''}
                   onChange={(e) => setSettings({
                     ...settings,
                     header_config: { ...settings.header_config, announcement_ko: e.target.value }
-                  })}
-                  className="form-input"
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">영문 띠배너 공지 문구 (English Announcement)</label>
-                <input
-                  type="text"
-                  value={settings.header_config?.announcement_en || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    header_config: { ...settings.header_config, announcement_en: e.target.value }
                   })}
                   className="form-input"
                 />
@@ -450,7 +434,7 @@ export function AdminSettingsPage() {
             }}
           >
             <Save size={16} aria-hidden />
-            <span>설정 저장하기 Save settings</span>
+            <span>설정 저장하기</span>
           </button>
         </form>
     </AdminLayout>

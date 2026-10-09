@@ -9,7 +9,7 @@ import { CATEGORIES_BY_GENDER } from '../data/products.js';
 import { api } from '../utils/api.js';
 
 export function HomePage() {
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
   const [, setLocation] = useLocation();
   // useSearch subscribes to query changes (useLocation only sees the
   // pathname, so query-only pill navigation would never re-sync state).
@@ -235,7 +235,7 @@ export function HomePage() {
     setLocation(qs ? `/?${qs}` : '/');
   };
 
-  const categoryLabel = (c) => (lang === 'ko' ? (c.label_ko || c.label) : (c.label || c.label_ko));
+  const categoryLabel = (c) => (c.label_ko || c.label);
 
   return (
     <div

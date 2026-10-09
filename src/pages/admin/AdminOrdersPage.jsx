@@ -19,7 +19,6 @@ import { useListParams } from '../../hooks/useListParams.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { toCsv, downloadCsv, csvFilename } from '../../utils/csv.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ORDER_SOURCES, sourceLabel } from '../../utils/orderSources.js';
 import {
   Truck,
@@ -84,7 +83,6 @@ export function AdminOrdersPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const { showToast } = useToast();
-  const { lang } = useLanguage();
 
   // Order Details Drawer
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -293,7 +291,7 @@ export function AdminOrdersPage() {
               color: (ord.order_source && ord.order_source !== 'website') ? '#5b21b6' : '#52525b',
             }}
           >
-            {sourceLabel(ord.order_source || 'website', 'ko')} · {sourceLabel(ord.order_source || 'website', 'en')}
+            {sourceLabel(ord.order_source || 'website', 'ko')}
           </span>
           {ord.source_detail && (
             <span style={{ fontSize: '0.6875rem', color: '#71717a', display: 'block', marginTop: '2px' }}>{ord.source_detail}</span>
@@ -403,11 +401,11 @@ export function AdminOrdersPage() {
           <>
             <button type="button" className="adm-btn" onClick={handleExportCsv} disabled={exporting}>
               <Download size={15} aria-hidden />
-              <span>{exporting ? '내보내는 중…' : 'CSV 다운로드 Export'}</span>
+              <span>{exporting ? '내보내는 중…' : 'CSV 다운로드'}</span>
             </button>
             <button type="button" className="adm-btn adm-btn-primary" onClick={() => setShowManual(true)}>
               <Plus size={16} aria-hidden />
-              <span>{lang === 'en' ? 'New Manual Order' : '외부 주문 등록'}</span>
+              <span>외부 주문 등록</span>
             </button>
           </>
         )}
@@ -419,26 +417,26 @@ export function AdminOrdersPage() {
         searchValue={search}
         onSearch={(v) => listParams.set({ search: v })}
         onReset={listParams.reset}
-        searchPlaceholder="주문번호, 고객명, 입금자명, 연락처 Search…"
+        searchPlaceholder="주문번호, 고객명, 입금자명, 연락처 검색…"
         selects={[
           {
-            name: 'source', value: selectedSource, onChange: (v) => listParams.set({ source: v }), ariaLabel: '주문 채널 Channel', label: '채널 Channel',
-            options: [{ value: 'all', label: lang === 'en' ? 'All channels' : '전체 채널' },
-              ...ORDER_SOURCES.map((s) => ({ value: s, label: `${sourceLabel(s, 'ko')} (${sourceLabel(s, 'en')})` }))],
+            name: 'source', value: selectedSource, onChange: (v) => listParams.set({ source: v }), ariaLabel: '주문 채널', label: '주문 채널',
+            options: [{ value: 'all', label: '전체 채널' },
+              ...ORDER_SOURCES.map((s) => ({ value: s, label: sourceLabel(s, 'ko') }))],
           },
           {
-            name: 'payment_status', value: selectedPaymentStatus, onChange: (v) => listParams.set({ payment_status: v }), ariaLabel: '결제 상태 Payment status', label: '결제 상태 Payment',
+            name: 'payment_status', value: selectedPaymentStatus, onChange: (v) => listParams.set({ payment_status: v }), ariaLabel: '결제 상태', label: '결제 상태',
             options: [
-              { value: 'all', label: '전체 결제 상태 All' },
+              { value: 'all', label: '전체 결제 상태' },
               { value: 'under_review', label: '⭐ 입금 확인 요청 (검수 대기중)' },
-              { value: 'pending_payment', label: '입금 대기 Pending' },
-              { value: 'paid', label: '입금 확인 완료 Paid' },
+              { value: 'pending_payment', label: '입금 대기' },
+              { value: 'paid', label: '입금 확인 완료' },
             ],
           },
           {
-            name: 'status', value: selectedStatus, onChange: (v) => listParams.set({ status: v }), ariaLabel: '주문 상태 Order status', label: '주문 상태 Status',
+            name: 'status', value: selectedStatus, onChange: (v) => listParams.set({ status: v }), ariaLabel: '주문 상태', label: '주문 상태',
             options: [
-              { value: 'all', label: '전체 주문 상태 All' },
+              { value: 'all', label: '전체 주문 상태' },
               { value: 'pending_verification', label: '검수 대기' },
               { value: 'confirmed', label: '결제 완료' },
               { value: 'processing', label: '상품준비중' },
@@ -452,7 +450,7 @@ export function AdminOrdersPage() {
 
       {selectedIds.size > 0 && (
         <div className="adm-card adm-filter-bar" role="toolbar" aria-label="Bulk actions">
-          <strong style={{ fontSize: '0.85rem' }}>{selectedIds.size}개 선택됨 Selected</strong>
+          <strong style={{ fontSize: '0.85rem' }}>{selectedIds.size}개 선택됨</strong>
           <button type="button" className="adm-btn" onClick={() => setBulkAction('processing')}>
             상품준비중으로 이동 ({bulkEligible('paid')}건 가능)
           </button>

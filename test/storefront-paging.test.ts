@@ -23,11 +23,10 @@ describe('Storefront paging — load more', () => {
     expect(src.includes('setTotal'), `${file} tracks total`).toBe(true);
   });
 
-  it.each(GRID_PAGES)('%s renders a counted load-more button only while items remain', (file) => {
+  it.each(GRID_PAGES)('%s renders infinite scroll sentinel and loading indicator', (file) => {
     const src = read(file);
-    expect(src.includes('load_more'), `${file} button copy`).toBe(true);
-    expect(src.includes('products.length < total'), `${file} hides at end`).toBe(true);
-    expect(src.includes('disabled={loading}'), `${file} disables mid-fetch`).toBe(true);
+    expect(src.includes('observerTarget') || src.includes('IntersectionObserver'), `${file} sentinel target`).toBe(true);
+    expect(src.includes('loadingMore'), `${file} tracks loadingMore`).toBe(true);
   });
 
   it.each(GRID_PAGES)('%s restarts paging when filters change', (file) => {
@@ -35,8 +34,8 @@ describe('Storefront paging — load more', () => {
     expect(src.includes('setLimit(24)'), `${file} resets to first batch`).toBe(true);
   });
 
-  it('load-more copy exists in both locales', () => {
-    for (const f of ['src/locales/ko.json', 'src/locales/en.json']) {
+  it('load-more copy exists in ko locale', () => {
+    for (const f of ['src/locales/ko.json']) {
       const json = JSON.parse(read(f));
       expect(json.shop.load_more, `${f} load_more`).toBeTruthy();
     }

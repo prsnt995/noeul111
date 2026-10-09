@@ -21,7 +21,7 @@ import {
 
 export function CustomerAuthPage() {
   const { isLoggedIn, loginWithGoogle, login, register, resetPassword } = useAuth();
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -56,9 +56,7 @@ export function CustomerAuthPage() {
       const user = await loginWithGoogle();
       if (user) {
         showToast(
-          lang === 'ko'
-            ? `환영합니다, ${user.name || user.full_name || '고객'}님! Google 로그인 완료.`
-            : `Welcome back, ${user.name || user.full_name || 'Customer'}!`,
+          `환영합니다, ${user.name || user.full_name || '고객'}님! Google 로그인 완료.`,
           'success'
         );
         setLocation('/account');
@@ -76,7 +74,7 @@ export function CustomerAuthPage() {
   const handleEmailLogin = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      setErrorMsg(lang === 'ko' ? '이메일과 비밀번호를 모두 입력해주세요.' : 'Please enter email and password.');
+      setErrorMsg('이메일과 비밀번호를 모두 입력해주세요.');
       return;
     }
 
@@ -85,10 +83,7 @@ export function CustomerAuthPage() {
 
     try {
       await login(email.trim(), password);
-      showToast(
-        lang === 'ko' ? '로그인되었습니다. 환영합니다!' : 'Signed in successfully. Welcome back!',
-        'success'
-      );
+      showToast('로그인되었습니다. 환영합니다!', 'success');
       setLocation('/account');
     } catch (err) {
       setErrorMsg(err.message || '로그인에 실패했습니다.');
@@ -101,12 +96,12 @@ export function CustomerAuthPage() {
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password.trim() || !name.trim()) {
-      setErrorMsg(lang === 'ko' ? '이름, 이메일, 비밀번호는 필수 입력 항목입니다.' : 'Name, email and password are required.');
+      setErrorMsg('이름, 이메일, 비밀번호는 필수 입력 항목입니다.');
       return;
     }
 
     if (password.length < 6) {
-      setErrorMsg(lang === 'ko' ? '비밀번호는 6자리 이상이어야 합니다.' : 'Password must be at least 6 characters.');
+      setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
       return;
     }
 
@@ -121,9 +116,7 @@ export function CustomerAuthPage() {
         phone: phone.trim(),
       });
       showToast(
-        lang === 'ko'
-          ? '회원가입이 완료되었습니다! 10% 웰컴 쿠폰이 즉시 지급되었습니다.'
-          : 'Account created! 10% welcome coupon added.',
+        '회원가입이 완료되었습니다! 10% 웰컴 쿠폰이 즉시 지급되었습니다.',
         'success'
       );
       setLocation('/account');
@@ -138,19 +131,15 @@ export function CustomerAuthPage() {
   const handleSendPasswordReset = async (e) => {
     e.preventDefault();
     if (!resetEmail.trim()) {
-      showToast(lang === 'ko' ? '이메일 주소를 입력해주세요.' : 'Please enter your email.', 'error');
+      showToast('이메일 주소를 입력해주세요.', 'error');
       return;
     }
 
     setFormLoading(true);
     try {
       await resetPassword(resetEmail.trim());
-      setSuccessMsg(
-        lang === 'ko'
-          ? '비밀번호 재설정 이메일이 발송되었습니다. 수신함을 확인해주세요.'
-          : 'Password reset link sent to your email.'
-      );
-      showToast(lang === 'ko' ? '재설정 메일이 발송되었습니다.' : 'Reset email sent.', 'success');
+      setSuccessMsg('비밀번호 재설정 이메일이 발송되었습니다. 수신함을 확인해주세요.');
+      showToast('재설정 메일이 발송되었습니다.', 'success');
       setTimeout(() => {
         setResetModalOpen(false);
         setSuccessMsg('');

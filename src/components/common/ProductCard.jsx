@@ -4,7 +4,7 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { getOptimizedImageUrl, getProductImages } from '../../utils/imageHelper.js';
 
 export function ProductCard({ product, variant = 'classic', eager = false }) {
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
   const [, setLocation] = useLocation();
   const cardRef = useRef(null);
   const [index, setIndex] = useState(0); const [visible, setVisible] = useState(false); const [paused, setPaused] = useState(false);
@@ -22,7 +22,7 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
     const others = baseImages.filter(url => !colorUrls.includes(url));
     return [...colorUrls, ...others].slice(0, 3);
   }, [baseImages, swatchColor, product]);
-  const name = lang === 'ko' ? (product?.name_ko || product?.name_en) : (product?.name_en || product?.name_ko);
+  const name = product?.name_ko || product?.name || product?.name_en || '';
   const swatches = Array.isArray(product.colors) ? product.colors : [];
   const colorCount = swatches.length;
   const colorSuffix = colorCount >= 2 ? t('product.color_count', { count: colorCount }) : '';

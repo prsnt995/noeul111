@@ -1,54 +1,34 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import koTranslations from '../locales/ko.json';
-import enTranslations from '../locales/en.json';
 import { formatKRW } from '../utils/formatters.js';
 
 const LanguageContext = createContext();
 
-const translations = {
-  ko: koTranslations,
-  en: enTranslations,
-};
-
 export function LanguageProvider({ children }) {
-  const [lang, setLangState] = useState(() => {
-    return localStorage.getItem('noeul_lang') || 'ko';
-  });
+  const lang = 'ko';
 
   useEffect(() => {
-    localStorage.setItem('noeul_lang', lang);
-    document.documentElement.lang = lang;
-  }, [lang]);
+    localStorage.setItem('noeul_lang', 'ko');
+    document.documentElement.lang = 'ko';
+  }, []);
 
-  const setLang = (newLang) => {
-    if (newLang === 'ko' || newLang === 'en') {
-      setLangState(newLang);
-    }
+  const setLang = () => {
+    // Korean-only: language is permanently locked to 'ko'
   };
 
   /**
-   * Translate key with optional parameter substitution
+   * Translate key with optional parameter substitution from Korean dictionary
    * Example: t('nav.shop') or t('home.hero_title')
    */
   const t = (key, params = {}) => {
     const keys = key.split('.');
-    let current = translations[lang];
+    let current = koTranslations;
 
     for (const k of keys) {
       if (current && current[k] !== undefined) {
         current = current[k];
       } else {
-        // Fallback to Korean if key missing
-        let fallback = translations['ko'];
-        for (const fbKey of keys) {
-          if (fallback && fallback[fbKey] !== undefined) {
-            fallback = fallback[fbKey];
-          } else {
-            return key;
-          }
-        }
-        current = fallback;
-        break;
+        return key;
       }
     }
 

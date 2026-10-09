@@ -119,11 +119,17 @@ export function AdminBannersPage() {
   const handleSaveBanner = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        title_en: formData.title_en || formData.title_ko,
+        subtitle_en: formData.subtitle_en || formData.subtitle_ko || '',
+        button_text_en: formData.button_text_en || formData.button_text_ko || '',
+      };
       if (isEditMode) {
-        await adminApi.put(`/admin/content/banners/${editingId}`, formData);
+        await adminApi.put(`/admin/content/banners/${editingId}`, payload);
         showToast('배너가 수정되었습니다.', 'success');
       } else {
-        await adminApi.post('/admin/content/banners', formData);
+        await adminApi.post('/admin/content/banners', payload);
         showToast('새 배너가 추가되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -270,9 +276,9 @@ export function AdminBannersPage() {
 
       <ConfirmModal
         open={!!deleteId}
-        title="배너 삭제 Delete banner"
+        title="배너 삭제"
         desc="이 배너를 삭제하시겠습니까? 쇼핑몰에서 즉시 제거됩니다."
-        confirmLabel="삭제하기 Delete"
+        confirmLabel="삭제"
         onConfirm={() => handleDelete(deleteId)}
         onClose={() => setDeleteId(null)}
       />
@@ -281,73 +287,50 @@ export function AdminBannersPage() {
       {isModalOpen && (
         <>
           <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
-          <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '배너 정보 수정 Edit banner' : '새 배너 등록 New banner'} style={{ maxWidth: 620 }}>
+          <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '배너 정보 수정' : '새 배너 등록'} style={{ maxWidth: 620 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <h2>
-                {isEditMode ? '배너 정보 수정 Edit banner' : '새 배너 등록 New banner'}
+                {isEditMode ? '배너 정보 수정' : '새 배너 등록'}
               </h2>
-              <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog">
+              <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="닫기">
                 <X size={16} />
               </button>
             </div>
 
               <form onSubmit={handleSaveBanner} style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">배너 구분 (Type)</label>
+                  <label className="form-label">배너 구분</label>
                   <select
                     value={formData.type}
                     onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                     className="form-select"
                   >
-                    <option value="hero">메인 히어로 배너 (Hero Banner)</option>
-                    <option value="promo">중간 프로모션 배너 (Promo Banner)</option>
-                    <option value="announcement">상단 띠배너 (Top Announcement)</option>
-                    <option value="popup">팝업 배너 (Modal Popup)</option>
+                    <option value="hero">메인 히어로 배너</option>
+                    <option value="promo">중간 프로모션 배너</option>
+                    <option value="announcement">상단 띠배너</option>
+                    <option value="popup">팝업 배너</option>
                   </select>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">한글 제목 *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.title_ko}
-                      onChange={(e) => setFormData({ ...formData, title_ko: e.target.value })}
-                      className="form-input"
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">영문 제목 *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.title_en}
-                      onChange={(e) => setFormData({ ...formData, title_en: e.target.value })}
-                      className="form-input"
-                    />
-                  </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">배너 제목 *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.title_ko}
+                    onChange={(e) => setFormData({ ...formData, title_ko: e.target.value, title_en: e.target.value })}
+                    className="form-input"
+                  />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">한글 부제목 (선택)</label>
-                    <input
-                      type="text"
-                      value={formData.subtitle_ko}
-                      onChange={(e) => setFormData({ ...formData, subtitle_ko: e.target.value })}
-                      className="form-input"
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">영문 부제목 (선택)</label>
-                    <input
-                      type="text"
-                      value={formData.subtitle_en}
-                      onChange={(e) => setFormData({ ...formData, subtitle_en: e.target.value })}
-                      className="form-input"
-                    />
-                  </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">부제목 (선택)</label>
+                  <input
+                    type="text"
+                    value={formData.subtitle_ko}
+                    onChange={(e) => setFormData({ ...formData, subtitle_ko: e.target.value, subtitle_en: e.target.value })}
+                    className="form-input"
+                  />
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -394,20 +377,11 @@ export function AdminBannersPage() {
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">버튼 텍스트 (한글)</label>
+                    <label className="form-label">버튼 텍스트</label>
                     <input
                       type="text"
                       value={formData.button_text_ko}
-                      onChange={(e) => setFormData({ ...formData, button_text_ko: e.target.value })}
-                      className="form-input"
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">버튼 텍스트 (영문)</label>
-                    <input
-                      type="text"
-                      value={formData.button_text_en}
-                      onChange={(e) => setFormData({ ...formData, button_text_en: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, button_text_ko: e.target.value, button_text_en: e.target.value })}
                       className="form-input"
                     />
                   </div>

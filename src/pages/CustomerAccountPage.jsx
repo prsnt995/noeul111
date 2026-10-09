@@ -25,7 +25,7 @@ import {
 
 export function CustomerAccountPage() {
   const { user, isLoggedIn, logout, updateProfile } = useAuth();
-  const { lang, t, formatKRW } = useLanguage();
+  const { t, formatKRW } = useLanguage();
   const { wishlist, toggleWishlist } = useWishlist();
   const { addToCart } = useCart();
   const { showToast } = useToast();
@@ -117,7 +117,7 @@ export function CustomerAccountPage() {
     setSavingProfile(true);
     try {
       await updateProfile({ name });
-      showToast(lang === 'ko' ? '회원 정보가 수정되었습니다.' : 'Profile updated successfully.', 'success');
+      showToast('회원 정보가 수정되었습니다.', 'success');
     } catch (err) {
       showToast(err.message || '수정 실패', 'error');
     } finally {
@@ -156,7 +156,7 @@ export function CustomerAccountPage() {
         if (res.success) setAddresses(list => [res.data, ...list]);
       }
       resetAddressForm();
-      showToast(lang === 'ko' ? '배송지가 저장되었습니다.' : 'Address saved.', 'success');
+      showToast('배송지가 저장되었습니다.', 'success');
     } catch (err) {
       showToast(err.message || '배송지 저장 실패', 'error');
     } finally {
@@ -186,7 +186,7 @@ export function CustomerAccountPage() {
 
   const handleLogout = () => {
     logout();
-    showToast(lang === 'ko' ? '로그아웃되었습니다.' : 'Logged out.', 'info');
+    showToast('로그아웃되었습니다.', 'info');
     setLocation('/');
   };
 
@@ -343,14 +343,14 @@ export function CustomerAccountPage() {
           <div>
             {loadingOrders ? (
               <div style={{ textAlign: 'center', padding: '60px', backgroundColor: '#ffffff', borderRadius: '12px' }}>
-                <p style={{ color: 'var(--text-muted)' }}>{lang === 'ko' ? '주문 내역을 불러오는 중...' : 'Loading order history...'}</p>
+                <p style={{ color: 'var(--text-muted)' }}>주문 내역을 불러오는 중...</p>
               </div>
             ) : orders.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '80px 20px', backgroundColor: '#ffffff', borderRadius: '12px' }}>
                 <Package size={48} strokeWidth={1} style={{ margin: '0 auto 16px', opacity: 0.4 }} />
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '6px' }}>{t('account.no_orders')}</h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '24px' }}>
-                  {lang === 'ko' ? '노을의 새로운 컬렉션을 둘러보세요.' : 'Discover our new season collection.'}
+                  노을의 새로운 컬렉션을 둘러보세요.
                 </p>
                 <Link href="/shop" className="btn-primary">
                   {t('cart.continue_shopping')}
@@ -397,7 +397,7 @@ export function CustomerAccountPage() {
                             fontWeight: 700,
                           }}
                         >
-                          {lang === 'ko' ? statusInfo.ko : statusInfo.en}
+                          {statusInfo.ko || statusInfo.en}
                         </span>
                       </div>
 
@@ -443,7 +443,7 @@ export function CustomerAccountPage() {
                                       color: isCurrent ? 'var(--accent-sunset)' : isCurrentOrPassed ? 'var(--text-primary)' : 'var(--text-muted)',
                                     }}
                                   >
-                                    {lang === 'ko' ? stepLabel.ko : stepLabel.en}
+                                    {stepLabel.ko || stepLabel.en}
                                   </p>
                                 </div>
                               );
@@ -463,7 +463,7 @@ export function CustomerAccountPage() {
                             />
                             <div style={{ flex: 1 }}>
                               <h4 style={{ fontSize: '0.9375rem', fontWeight: 600 }}>
-                                {lang === 'ko' ? item.product_name_ko : item.product_name_en}
+                                {item.product_name_ko || item.product_name_en}
                               </h4>
                               <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                                 {item.size} / {item.color} • {item.quantity}개
@@ -557,7 +557,7 @@ export function CustomerAccountPage() {
                         <div style={{ backgroundColor: '#fafafa', borderRadius: '6px', padding: '12px 16px', marginBottom: '16px', fontSize: '0.8125rem', border: '1px solid #f0f0f2' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#52525b', fontWeight: 700, marginBottom: '4px' }}>
                             <MapPin size={14} color="var(--accent-sunset)" />
-                            <span>배송지 정보 (Shipping Address)</span>
+                            <span>배송지 정보</span>
                           </div>
                           <p style={{ color: '#18181b', lineHeight: 1.4 }}>
                             <strong>{order.address?.recipient || order.customer_name}</strong> ({order.address?.phone || order.customer_phone})<br />
@@ -570,7 +570,7 @@ export function CustomerAccountPage() {
                       {/* Order Footer Total */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
                         <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                          {lang === 'ko' ? '총 결제 금액' : 'Total Amount'}
+                          총 결제 금액
                         </span>
                         <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                           {formatKRW(order.amount)}
@@ -591,10 +591,10 @@ export function CustomerAccountPage() {
               <div style={{ textAlign: 'center', padding: '80px 20px', backgroundColor: '#ffffff', borderRadius: '12px' }}>
                 <Heart size={48} strokeWidth={1} style={{ margin: '0 auto 16px', opacity: 0.4 }} />
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '6px' }}>
-                  {lang === 'ko' ? '위시리스트가 비어 있습니다.' : 'Your wishlist is empty.'}
+                  위시리스트가 비어 있습니다.
                 </h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '24px' }}>
-                  {lang === 'ko' ? '마음에 드는 상품의 하트 아이콘을 눌러 담아보세요.' : 'Click the heart icon on any item to save it here.'}
+                  마음에 드는 상품의 하트 아이콘을 눌러 담아보세요.
                 </p>
                 <Link href="/shop" className="btn-primary">
                   {t('cart.continue_shopping')}
@@ -623,14 +623,14 @@ export function CustomerAccountPage() {
                     <Link href={`/product/${item.slug || item.id}`} style={{ display: 'block', aspectRatio: '3 / 4' }}>
                       <img
                         src={item.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
-                        alt={item.name_ko}
+                        alt={item.name_ko || item.name}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     </Link>
                     <div style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <div>
                         <h4 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '4px' }}>
-                          {lang === 'ko' ? item.name_ko : item.name_en}
+                          {item.name_ko || item.name || item.name_en}
                         </h4>
                         <p style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-sunset)' }}>
                           {formatKRW(item.discount_price || item.price)}

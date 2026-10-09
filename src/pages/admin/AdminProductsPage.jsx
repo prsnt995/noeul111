@@ -102,11 +102,8 @@ export function AdminProductsPage() {
     sku: '',
     category_id: '',
     name_ko: '',
-    name_en: '',
     description_ko: '',
-    description_en: '',
     material_ko: '',
-    material_en: '',
     price: '',
     discount_price: '',
     gender: 'women',
@@ -117,7 +114,7 @@ export function AdminProductsPage() {
     status: 'active',
     images: [],
     sizes: ['S', 'M', 'L'],
-    colors: [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }],
+    colors: [{ name_ko: '블랙', hex: '#111112' }],
     // Color×Size combo stock: key `${color}|||${size}`, value '' = not offered.
     variant_stock: {},
     // Rich blocks rendered in the PDP band below the tabs.
@@ -125,7 +122,7 @@ export function AdminProductsPage() {
   });
 
   // Custom color draft (name + hex picker) appended to presets
-  const [newColor, setNewColor] = useState({ name_ko: '', name_en: '', hex: '#18181b' });
+  const [newColor, setNewColor] = useState({ name_ko: '', hex: '#18181b' });
 
   // Standalone category refresh: the save guard and the add-modal call this
   // when the list is empty/stale, instead of trusting a phantom fallback id.
@@ -204,11 +201,8 @@ export function AdminProductsPage() {
       sku: `NE-${Date.now().toString().slice(-6)}`,
       category_id: categories[0]?.id ?? '',
       name_ko: '',
-      name_en: '',
       description_ko: '',
-      description_en: '',
       material_ko: '100% 코튼',
-      material_en: '100% Cotton',
       price: '',
       discount_price: '',
       gender: 'women',
@@ -219,7 +213,7 @@ export function AdminProductsPage() {
       status: 'active',
       images: [],
       sizes: ['S', 'M', 'L', 'XL'],
-      colors: [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }],
+      colors: [{ name_ko: '블랙', hex: '#111112' }],
       variant_stock: {},
       detail_blocks: [],
     });
@@ -229,7 +223,7 @@ export function AdminProductsPage() {
   const openEditModal = (p) => {
     setIsEditMode(true);
     setEditingId(p.id);
-    setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
+    setNewColor({ name_ko: '', hex: '#18181b' });
     // Preserve per-image color mapping for reorder plan (media has color, images is fallback)
     const mediaWithColor = Array.isArray(p.media) && p.media.length
       ? p.media.map(m => ({ url: m.url, color: m.color || null, variant_id: m.variant_id || null }))
@@ -237,17 +231,14 @@ export function AdminProductsPage() {
     // Prefill combo stock from existing variants (blank = combo not offered)
     const variant_stock = {};
     (p.variants || []).forEach(v => {
-      variant_stock[comboKey({ name_en: v.color }, v.size)] = String(v.stock ?? 0);
+      variant_stock[comboKey({ name_ko: v.color, name_en: v.color }, v.size)] = String(v.stock ?? 0);
     });
     setFormData({
       sku: p.sku || '',
       category_id: p.category_id,
-      name_ko: p.name_ko || '',
-      name_en: p.name_en || '',
-      description_ko: p.description_ko || '',
-      description_en: p.description_en || '',
+      name_ko: p.name_ko || p.name || '',
+      description_ko: p.description_ko || p.description || '',
       material_ko: p.material_ko || p.material || '',
-      material_en: p.material_en || '',
       price: p.price || '',
       discount_price: p.discount_price || '',
       gender: ['men', 'women', 'unisex'].includes(p.gender) ? p.gender : 'women',
@@ -258,7 +249,7 @@ export function AdminProductsPage() {
       status: p.status || 'active',
       images: mediaWithColor,
       sizes: p.sizes?.length > 0 ? p.sizes : ['FREE'],
-      colors: p.colors?.length > 0 ? p.colors : [{ name_ko: '블랙', name_en: 'Black', hex: '#111' }],
+      colors: p.colors?.length > 0 ? p.colors : [{ name_ko: '블랙', hex: '#111' }],
       variant_stock,
       detail_blocks: Array.isArray(p.detail_blocks) ? p.detail_blocks : [],
     });
@@ -345,6 +336,14 @@ export function AdminProductsPage() {
     await runBusy(async () => {
       const payload = {
         ...formData,
+        name_en: formData.name_ko,
+        description_en: formData.description_ko || '',
+        material_en: formData.material_ko || '',
+        colors: formData.colors.map((c) => ({
+          ...c,
+          name_ko: c.name_ko || c.name || c.name_en,
+          name_en: c.name_en || c.name_ko || c.name,
+        })),
         price: Number(formData.price),
         discount_price: formData.discount_price ? Number(formData.discount_price) : null,
         variant_stock,
@@ -513,9 +512,10 @@ export function AdminProductsPage() {
 
   const toggleColorSelection = (colorObj) => {
     const current = [...formData.colors];
-    const exists = current.some((c) => c.name_en === colorObj.name_en);
+    const key = colorObj.name_ko || colorObj.name_en;
+    const exists = current.some((c) => (c.name_ko || c.name_en) === key);
     if (exists) {
-      const next = current.filter((c) => c.name_en !== colorObj.name_en);
+      const next = current.filter((c) => (c.name_ko || c.name_en) !== key);
       setFormData({ ...formData, colors: next.length > 0 ? next : [colorObj] });
     } else {
       setFormData({ ...formData, colors: [...current, colorObj] });
@@ -523,18 +523,17 @@ export function AdminProductsPage() {
   };
 
   const addCustomColor = () => {
-    const name_en = newColor.name_en.trim();
-    const name_ko = newColor.name_ko.trim() || name_en;
-    if (!name_en) {
-      showToast('영문 색상명을 입력하세요 (예: Dusty Blue)', 'error');
+    const name_ko = newColor.name_ko.trim();
+    if (!name_ko) {
+      showToast('색상명을 입력하세요 (예: 더스티 블루)', 'error');
       return;
     }
-    if (formData.colors.some((c) => c.name_en === name_en)) {
+    if (formData.colors.some((c) => (c.name_ko || c.name_en) === name_ko)) {
       showToast('이미 존재하는 색상입니다.', 'error');
       return;
     }
-    setFormData({ ...formData, colors: [...formData.colors, { name_ko, name_en, hex: newColor.hex }] });
-    setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
+    setFormData({ ...formData, colors: [...formData.colors, { name_ko, name_en: name_ko, hex: newColor.hex }] });
+    setNewColor({ name_ko: '', hex: '#18181b' });
   };
 
   const setComboCell = (color, size, value) => {
@@ -563,7 +562,7 @@ export function AdminProductsPage() {
   const columns = [
     {
       key: 'product',
-      label: '상품 정보 Product Info',
+      label: '상품 정보',
       render: (p) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', opacity: p.status === 'hidden' ? 0.6 : 1 }}>
           <img
@@ -572,8 +571,7 @@ export function AdminProductsPage() {
             style={{ width: '48px', height: '62px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #e4e4e7' }}
           />
           <div>
-            <p style={{ fontWeight: 700, color: '#18181b', fontSize: '0.9375rem', margin: 0 }}>#{p.id} {p.name_ko}</p>
-            <p style={{ fontSize: '0.75rem', color: '#71717a', margin: 0 }}>{p.name_en}</p>
+            <p style={{ fontWeight: 700, color: '#18181b', fontSize: '0.9375rem', margin: 0 }}>#{p.id} {p.name_ko || p.name || p.name_en}</p>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
               <span style={{ fontSize: '0.6875rem', fontFamily: 'monospace', color: '#999' }}>SKU: {p.sku}</span>
               {p.material_ko && (
@@ -588,17 +586,16 @@ export function AdminProductsPage() {
     },
     {
       key: 'category',
-      label: '카테고리 Category',
+      label: '카테고리',
       render: (p) => (
         <div style={{ color: '#52525b', fontWeight: 500 }}>
-          {p.category_name_ko}
-          <span style={{ fontSize: '0.6875rem', color: '#a1a1aa', display: 'block' }}>{p.category_name_en}</span>
+          {p.category_name_ko || p.category_name || p.category_name_en}
         </div>
       ),
     },
     {
       key: 'price',
-      label: '판매가 Price',
+      label: '판매가',
       sortable: true,
       render: (p) => (
         <div>
@@ -613,7 +610,7 @@ export function AdminProductsPage() {
     },
     {
       key: 'stock',
-      label: '재고 Stock',
+      label: '재고',
       render: (p) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span
@@ -773,30 +770,30 @@ export function AdminProductsPage() {
           searchValue={search}
           onSearch={(v) => listParams.set({ search: v })}
           onReset={listParams.reset}
-          searchPlaceholder="상품명, SKU, ID 검색 Search…"
+          searchPlaceholder="상품명, SKU, ID 검색..."
           selects={[
             {
-              name: 'category', value: selectedCategory, onChange: (v) => listParams.set({ category: v }), ariaLabel: '카테고리 Category', label: '카테고리 Category',
+              name: 'category', value: selectedCategory, onChange: (v) => listParams.set({ category: v }), ariaLabel: '카테고리', label: '카테고리',
               options: [
-                { value: 'all', label: '전체 카테고리 (All Categories)' },
-                ...categories.map((c) => ({ value: String(c.id), label: `${c.name_ko} (${c.name_en})` })),
+                { value: 'all', label: '전체 카테고리' },
+                ...categories.map((c) => ({ value: String(c.id), label: c.name_ko || c.name || c.name_en })),
               ],
             },
             {
-              name: 'special', value: specialFilter, onChange: (v) => listParams.set({ filterType: v }), ariaLabel: '특별 필터 Special filter', label: '필터 Filter',
+              name: 'special', value: specialFilter, onChange: (v) => listParams.set({ filterType: v }), ariaLabel: '필터', label: '필터',
               options: [
-                { value: 'all', label: '전체 필터 (All Items)' },
-                { value: 'new', label: '⭐ New Arrivals (신상품)' },
-                { value: 'best', label: '🔥 Best (베스트 — 홈페이지 상단 노출)' },
-                { value: 'sale', label: '🏷️ Sale (세일/할인 상품)' },
-                { value: 'in_stock', label: '✅ In Stock (재고 있음)' },
-                { value: 'out_of_stock', label: '❌ Out of Stock (품절 상품)' },
+                { value: 'all', label: '전체 상품' },
+                { value: 'new', label: '⭐ 신상품' },
+                { value: 'best', label: '🔥 베스트 (홈페이지 상단 노출)' },
+                { value: 'sale', label: '🏷️ 세일/할인' },
+                { value: 'in_stock', label: '✅ 재고 있음' },
+                { value: 'out_of_stock', label: '❌ 품절' },
               ],
             },
             {
-              name: 'stock', value: stockFilter, onChange: (v) => listParams.set({ stockStatus: v }), ariaLabel: '재고 수량 Stock level', label: '재고 Stock',
+              name: 'stock', value: stockFilter, onChange: (v) => listParams.set({ stockStatus: v }), ariaLabel: '재고 수량', label: '재고 수량',
               options: [
-                { value: 'all', label: '전체 수량 필터 All' },
+                { value: 'all', label: '전체 수량' },
                 { value: 'in', label: '재고 원활 (> 15개)' },
                 { value: 'low', label: '품절 임박 (1 ~ 15개)' },
                 { value: 'out', label: '품절 (0개)' },
@@ -806,11 +803,11 @@ export function AdminProductsPage() {
         />
 
         {selectedIds.size > 0 && (
-          <div className="adm-card adm-filter-bar" role="toolbar" aria-label="Bulk actions 일괄 작업">
-            <strong style={{ fontSize: '0.85rem' }}>{selectedIds.size}개 선택됨 Selected</strong>
-            <button type="button" className="adm-btn" onClick={() => setBulkAction('publish')}>공개하기 Publish</button>
-            <button type="button" className="adm-btn" onClick={() => setBulkAction('hide')}>숨기기 Hide</button>
-            <button type="button" className="adm-btn" onClick={() => setBulkAction('delete')}>삭제하기 Delete</button>
+          <div className="adm-card adm-filter-bar" role="toolbar" aria-label="일괄 작업">
+            <strong style={{ fontSize: '0.85rem' }}>{selectedIds.size}개 선택됨</strong>
+            <button type="button" className="adm-btn" onClick={() => setBulkAction('publish')}>공개</button>
+            <button type="button" className="adm-btn" onClick={() => setBulkAction('hide')}>숨김</button>
+            <button type="button" className="adm-btn" onClick={() => setBulkAction('delete')}>삭제</button>
             <button type="button" className="adm-btn" onClick={() => setSelectedIds(new Set())}>선택 해제</button>
           </div>
         )}
@@ -819,7 +816,7 @@ export function AdminProductsPage() {
           columns={columns}
           rows={products}
           loading={loading}
-          emptyTitle="조건에 일치하는 상품이 없습니다 No products found"
+          emptyTitle="조건에 일치하는 상품이 없습니다"
           emptyDesc="필터를 조정하거나 새 상품을 등록하세요."
           emptyAction={(
             <button type="button" className="adm-btn adm-btn-primary" onClick={openAddModal}>
@@ -891,7 +888,7 @@ export function AdminProductsPage() {
               {/* Modal Header */}
               <div style={{ padding: '20px 24px', borderBottom: '1px solid #e4e4e7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fafafa' }}>
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#18181b' }}>
-                  {isEditMode ? '상품 정보 수정 (Edit Product)' : '새 상품 등록 (Add New Product)'}
+                  {isEditMode ? '상품 정보 수정' : '새 상품 등록'}
                 </h3>
                 <button onClick={() => setIsModalOpen(false)} style={{ color: '#71717a', background: 'none', border: 'none', cursor: 'pointer' }}>
                   <X size={20} />
@@ -900,36 +897,17 @@ export function AdminProductsPage() {
 
               {/* Modal Body Form */}
               <form onSubmit={handleSaveProduct} style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {/* 1. Language Management: Names */}
-                <div style={{ backgroundColor: '#fbfbfb', padding: '16px', borderRadius: '8px', border: '1px solid #f0f0f2' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-sunset)', textTransform: 'uppercase', display: 'block', marginBottom: '12px' }}>
-                    1. 언어 설정 - 상품명 (Product Names in KO & EN)
-                  </span>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">한글 상품명 (Korean Name) *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.name_ko}
-                        onChange={(e) => setFormData({ ...formData, name_ko: e.target.value })}
-                        placeholder="예: 노을 케이블 니트 가디건"
-                        className="form-input"
-                      />
-                    </div>
-
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">영문 상품명 (English Name) *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.name_en}
-                        onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
-                        placeholder="e.g. NOEUL Cable Knit Cardigan"
-                        className="form-input"
-                      />
-                    </div>
-                  </div>
+                {/* 1. Product Name */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">상품명 *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name_ko}
+                    onChange={(e) => setFormData({ ...formData, name_ko: e.target.value })}
+                    placeholder="예: 노을 케이블 니트 가디건"
+                    className="form-input"
+                  />
                 </div>
 
                 {/* 2. Category, Gender & SKU */}
@@ -946,21 +924,21 @@ export function AdminProductsPage() {
                         <option value="">카테고리 없음 — 먼저 카테고리를 등록하세요</option>
                       )}
                       {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name_ko} ({c.name_en})</option>
+                        <option key={c.id} value={c.id}>{c.name_ko || c.name || c.name_en}</option>
                       ))}
                     </select>
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">성별 (Gender) *</label>
+                    <label className="form-label">성별 *</label>
                     <select
                       value={formData.gender}
                       onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
                       className="form-select"
                     >
-                      <option value="women">여성 (Women)</option>
-                      <option value="men">남성 (Men)</option>
-                      <option value="unisex">공용 (Unisex)</option>
+                      <option value="women">여성</option>
+                      <option value="men">남성</option>
+                      <option value="unisex">남녀공용</option>
                     </select>
                   </div>
 
@@ -979,7 +957,7 @@ export function AdminProductsPage() {
                 {/* 3. Pricing */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">정상 판매가 (KRW ₩) *</label>
+                    <label className="form-label">정상 판매가 (원) *</label>
                     <input
                       type="number"
                       required
@@ -991,7 +969,7 @@ export function AdminProductsPage() {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">할인가 (Sale Price, 선택)</label>
+                    <label className="form-label">할인가 (선택)</label>
                     <input
                       type="number"
                       value={formData.discount_price}
@@ -1002,64 +980,35 @@ export function AdminProductsPage() {
                   </div>
                 </div>
 
-                {/* 4. Language Management: Materials & Descriptions */}
-                <div style={{ backgroundColor: '#fbfbfb', padding: '16px', borderRadius: '8px', border: '1px solid #f0f0f2' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-sunset)', textTransform: 'uppercase', display: 'block', marginBottom: '12px' }}>
-                    2. 언어 설정 - 소재 및 설명 (Material & Description)
-                  </span>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '12px' }}>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">한글 소재 (Korean Material)</label>
-                      <input
-                        type="text"
-                        value={formData.material_ko}
-                        onChange={(e) => setFormData({ ...formData, material_ko: e.target.value })}
-                        placeholder="예: 코튼 100%, 울 80% 나일론 20%"
-                        className="form-input"
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">영문 소재 (English Material)</label>
-                      <input
-                        type="text"
-                        value={formData.material_en}
-                        onChange={(e) => setFormData({ ...formData, material_en: e.target.value })}
-                        placeholder="e.g. 100% Cotton, 80% Wool"
-                        className="form-input"
-                      />
-                    </div>
+                {/* 4. Material & Description */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">소재 (선택)</label>
+                    <input
+                      type="text"
+                      value={formData.material_ko}
+                      onChange={(e) => setFormData({ ...formData, material_ko: e.target.value })}
+                      placeholder="예: 코튼 100%, 울 80% 나일론 20%"
+                      className="form-input"
+                    />
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">한글 상세 설명</label>
-                      <textarea
-                        rows={3}
-                        value={formData.description_ko}
-                        onChange={(e) => setFormData({ ...formData, description_ko: e.target.value })}
-                        placeholder="상품의 디자인, 핏, 특장점을 작성하세요."
-                        className="form-textarea"
-                      />
-                    </div>
-
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">영문 상세 설명 (English Description)</label>
-                      <textarea
-                        rows={3}
-                        value={formData.description_en}
-                        onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
-                        placeholder="Enter detailed English description for international customers."
-                        className="form-textarea"
-                      />
-                    </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">상세 설명</label>
+                    <textarea
+                      rows={4}
+                      value={formData.description_ko}
+                      onChange={(e) => setFormData({ ...formData, description_ko: e.target.value })}
+                      placeholder="상품의 디자인, 핏, 특장점을 작성하세요."
+                      className="form-textarea"
+                    />
                   </div>
                 </div>
 
                 {/* 5. Detail Content Blocks — rich blocks rendered in the PDP band below the tabs. */}
                 <div style={{ backgroundColor: '#fbfbfb', padding: '16px', borderRadius: '8px', border: '1px solid #f0f0f2' }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-sunset)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                    3. 상세 페이지 콘텐츠 블록 (Detail Content Blocks)
+                    3. 상세 페이지 콘텐츠 블록
                   </span>
                   <p style={{ fontSize: '0.75rem', color: '#71717a', marginBottom: '12px', lineHeight: 1.5 }}>
                     상품 페이지 탭 영역 아래에 별도 밴드로 표시됩니다. 설명 아래에 텍스트·이미지 블록을 자유롭게 쌓으세요. (첫 블록부터 순서대로 노출)
@@ -1094,23 +1043,13 @@ export function AdminProductsPage() {
                         </div>
 
                         {(block.type === 'heading' || block.type === 'text') && (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label">한글 {block.type === 'heading' ? '제목' : '텍스트'}</label>
-                              {block.type === 'heading' ? (
-                                <input type="text" maxLength={300} className="form-input" value={block.text?.ko || ''} placeholder="예: 소재 디테일" onChange={(e) => updateDetailBlock(i, { text: { ...block.text, ko: e.target.value } })} />
-                              ) : (
-                                <textarea rows={4} maxLength={4000} className="form-textarea" value={block.text?.ko || ''} placeholder="한글 본문을 입력하세요." onChange={(e) => updateDetailBlock(i, { text: { ...block.text, ko: e.target.value } })} />
-                              )}
-                            </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label">English {block.type === 'heading' ? 'Heading' : 'Text'}</label>
-                              {block.type === 'heading' ? (
-                                <input type="text" maxLength={300} className="form-input" value={block.text?.en || ''} placeholder="e.g. Fabric Detail" onChange={(e) => updateDetailBlock(i, { text: { ...block.text, en: e.target.value } })} />
-                              ) : (
-                                <textarea rows={4} maxLength={4000} className="form-textarea" value={block.text?.en || ''} placeholder="Enter English body text." onChange={(e) => updateDetailBlock(i, { text: { ...block.text, en: e.target.value } })} />
-                              )}
-                            </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">{block.type === 'heading' ? '제목' : '본문 내용'}</label>
+                            {block.type === 'heading' ? (
+                              <input type="text" maxLength={300} className="form-input" value={block.text?.ko || ''} placeholder="예: 소재 디테일" onChange={(e) => updateDetailBlock(i, { text: { ko: e.target.value, en: e.target.value } })} />
+                            ) : (
+                              <textarea rows={4} maxLength={4000} className="form-textarea" value={block.text?.ko || ''} placeholder="한글 본문을 입력하세요." onChange={(e) => updateDetailBlock(i, { text: { ko: e.target.value, en: e.target.value } })} />
+                            )}
                           </div>
                         )}
 
@@ -1123,15 +1062,9 @@ export function AdminProductsPage() {
                               images={block.url ? [{ url: block.url, color: null }] : []}
                               onChange={(imgs) => updateDetailBlock(i, { url: imgs[0]?.url || '' })}
                             />
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px' }}>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">한글 캡션 (선택)</label>
-                                <input type="text" maxLength={300} className="form-input" value={block.caption?.ko || ''} placeholder="이미지 아래에 표시되는 설명" onChange={(e) => updateDetailBlock(i, { caption: { ...block.caption, ko: e.target.value } })} />
-                              </div>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">English caption (optional)</label>
-                                <input type="text" maxLength={300} className="form-input" value={block.caption?.en || ''} placeholder="Caption shown under the image" onChange={(e) => updateDetailBlock(i, { caption: { ...block.caption, en: e.target.value } })} />
-                              </div>
+                            <div className="form-group" style={{ marginTop: '8px', marginBottom: 0 }}>
+                              <label className="form-label">캡션 (선택)</label>
+                              <input type="text" maxLength={300} className="form-input" value={block.caption?.ko || ''} placeholder="이미지 아래에 표시되는 설명" onChange={(e) => updateDetailBlock(i, { caption: { ko: e.target.value, en: e.target.value } })} />
                             </div>
                           </div>
                         )}
@@ -1154,7 +1087,7 @@ export function AdminProductsPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   {/* Sizes */}
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">가능한 사이즈 (Available Sizes)</label>
+                    <label className="form-label">선택 가능한 사이즈</label>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                       {COMMON_SIZES.map((sz) => {
                         const selected = formData.sizes.includes(sz);
@@ -1183,13 +1116,13 @@ export function AdminProductsPage() {
 
                   {/* Colors */}
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">가능한 색상 (Available Colors)</label>
+                    <label className="form-label">선택 가능한 색상</label>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
                       {PRESET_COLORS.map((cObj) => {
-                        const selected = formData.colors.some((c) => c.name_en === cObj.name_en);
+                        const selected = formData.colors.some((c) => (c.name_ko === cObj.name_ko) || (c.name_en === cObj.name_en));
                         return (
                           <button
-                            key={cObj.name_en}
+                            key={cObj.name_ko || cObj.name_en}
                             type="button"
                             onClick={() => toggleColorSelection(cObj)}
                             style={{
@@ -1215,7 +1148,7 @@ export function AdminProductsPage() {
                                 border: '1px solid #ccc',
                               }}
                             />
-                            <span>{cObj.name_ko} ({cObj.name_en})</span>
+                            <span>{cObj.name_ko}</span>
                           </button>
                         );
                       })}
@@ -1226,18 +1159,10 @@ export function AdminProductsPage() {
                       <input
                         type="text"
                         value={newColor.name_ko}
-                        onChange={(e) => setNewColor({ ...newColor, name_ko: e.target.value })}
-                        placeholder="한글명 (더스티 블루)"
+                        onChange={(e) => setNewColor({ ...newColor, name_ko: e.target.value, name_en: e.target.value })}
+                        placeholder="색상명 (예: 더스티 블루)"
                         className="form-input"
-                        style={{ width: '130px', padding: '6px 8px', fontSize: '0.75rem' }}
-                      />
-                      <input
-                        type="text"
-                        value={newColor.name_en}
-                        onChange={(e) => setNewColor({ ...newColor, name_en: e.target.value })}
-                        placeholder="English (Dusty Blue)"
-                        className="form-input"
-                        style={{ width: '140px', padding: '6px 8px', fontSize: '0.75rem' }}
+                        style={{ width: '160px', padding: '6px 8px', fontSize: '0.75rem' }}
                       />
                       <input
                         type="color"
@@ -1265,11 +1190,11 @@ export function AdminProductsPage() {
                     </div>
 
                     {/* Custom colors added beyond presets (removable) */}
-                    {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en)).length > 0 && (
+                    {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en || p.name_ko === c.name_ko)).length > 0 && (
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-                        {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en)).map((cObj) => (
+                        {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en || p.name_ko === c.name_ko)).map((cObj) => (
                           <span
-                            key={cObj.name_en}
+                            key={cObj.name_ko || cObj.name_en}
                             style={{
                               padding: '4px 8px',
                               borderRadius: '4px',
@@ -1283,11 +1208,11 @@ export function AdminProductsPage() {
                             }}
                           >
                             <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: cObj.hex, border: '1px solid #ccc' }} />
-                            <span>{cObj.name_ko} ({cObj.name_en})</span>
+                            <span>{cObj.name_ko || cObj.name_en}</span>
                             <button
                               type="button"
                               onClick={() => toggleColorSelection(cObj)}
-                              aria-label={`${cObj.name_en} 삭제`}
+                              aria-label={`${cObj.name_ko || cObj.name_en} 삭제`}
                               style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: 0, fontSize: '0.875rem', lineHeight: 1 }}
                             >
                               ×
@@ -1428,11 +1353,11 @@ export function AdminProductsPage() {
                       checked={formData.is_new}
                       onChange={(e) => setFormData({ ...formData, is_new: e.target.checked })}
                     />
-                    <span>⭐ New Arrival (신상품 뱃지)</span>
+                    <span>⭐ 신상품 (NEW 뱃지)</span>
                   </label>
 
                   <span
-                    title="SALE 뱃지는 할인가 입력 시 자동으로 표시됩니다"
+                    title="세일 뱃지는 할인가 입력 시 자동으로 표시됩니다"
                     style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem', fontWeight: 600, color: Number(formData.discount_price) > 0 ? '#18181b' : '#a1a1aa' }}
                   >
                     <span
@@ -1441,7 +1366,7 @@ export function AdminProductsPage() {
                         backgroundColor: Number(formData.discount_price) > 0 ? '#dc2626' : '#e4e4e7',
                       }}
                     />
-                    <span>🏷️ Sale (할인가 입력 시 자동 표시)</span>
+                    <span>🏷️ 세일 (할인가 입력 시 자동 표시)</span>
                   </span>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
@@ -1450,7 +1375,7 @@ export function AdminProductsPage() {
                       checked={formData.is_best}
                       onChange={(e) => setFormData({ ...formData, is_best: e.target.checked })}
                     />
-                    <span>🔥 Best (홈페이지 상단 노출)</span>
+                    <span>🔥 베스트 (홈페이지 상단 노출)</span>
                   </label>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem', fontWeight: 600 }} title="숫자가 낮을수록 홈페이지 상단 먼저 노출 (비워두면 뒤로)">
@@ -1473,7 +1398,7 @@ export function AdminProductsPage() {
                       checked={formData.status === 'active'}
                       onChange={(e) => setFormData({ ...formData, status: e.target.checked ? 'active' : 'hidden' })}
                     />
-                    <span>👁️ 고객 웹사이트에 공개 (Show on Website)</span>
+                    <span>👁️ 웹사이트에 상품 공개</span>
                   </label>
                 </div>
 

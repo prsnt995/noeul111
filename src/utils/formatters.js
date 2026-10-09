@@ -22,15 +22,12 @@ export function formatKoreanPhone(value) {
 /**
  * Format date into localized display string
  */
-export function formatDate(dateString, lang = 'ko') {
+export function formatDate(dateString) {
   if (!dateString) return '';
   const d = new Date(dateString);
   if (isNaN(d.getTime())) return dateString;
 
-  if (lang === 'ko') {
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  }
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /**

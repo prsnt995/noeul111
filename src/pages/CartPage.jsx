@@ -34,18 +34,18 @@ export function CartPage() {
       const res = await api.post('/checkout/quote', { items: items.filter(i=>i.variant_id).map(i=>({ variant_id: i.variant_id, quantity: i.quantity })), coupon_code: code });
       if (res.success && res.data && typeof res.data.discount === 'number' && res.data.discount > 0) {
         setAppliedDiscount(res.data.discount);
-        showToast(lang === 'ko' ? `${code} 쿠폰이 적용되었습니다!` : `${code} applied!`, 'success');
+        showToast(`${code} 쿠폰이 적용되었습니다!`, 'success');
         return;
       }
-      showToast(lang === 'ko' ? '사용할 수 없는 쿠폰입니다.' : 'Coupon not applicable.', 'error');
+      showToast('사용할 수 없는 쿠폰입니다.', 'error');
     } catch {
       // Offline/demo fallback: preview 10% only
       if (code === 'WELCOME10' || code === 'NOEUL10') {
         const disc = Math.round(subtotal * 0.1);
         setAppliedDiscount(disc);
-        showToast(lang === 'ko' ? '10% 할인 미리보기 (서버 검증 필요)' : '10% preview (server validation required)', 'success');
+        showToast('10% 할인 미리보기 (서버 검증 필요)', 'success');
       } else {
-        showToast(lang === 'ko' ? '유효하지 않은 쿠폰 코드입니다.' : 'Invalid code.', 'error');
+        showToast('유효하지 않은 쿠폰 코드입니다.', 'error');
       }
     }
   };
@@ -112,7 +112,7 @@ export function CartPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--border-light)', marginBottom: '16px' }}>
               <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                {lang === 'ko' ? '상품 정보' : 'Product Details'}
+                상품 정보
               </span>
               <button
                 onClick={clearCart}
@@ -143,7 +143,7 @@ export function CartPage() {
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <Link href={`/product/${item.product_id}`} style={{ fontWeight: 600, fontSize: '1rem' }}>
-                          {lang === 'ko' ? item.name_ko : item.name_en}
+                          {item.name_ko || item.name || item.name_en}
                         </Link>
                         <button onClick={() => removeFromCart(item.id)} style={{ color: 'var(--text-muted)' }}>
                           <Trash2 size={16} />
@@ -155,7 +155,7 @@ export function CartPage() {
                           {item.size}
                         </span>
                         <span style={{ backgroundColor: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '3px' }}>
-                          {lang === 'ko' ? item.color_ko : item.color_en}
+                          {item.color_ko || item.color || item.color_en}
                         </span>
                       </div>
                     </div>
@@ -211,13 +211,13 @@ export function CartPage() {
                   type="text"
                   value={couponCode}
                   onChange={(e) => setCouponCode(e.target.value)}
-                  placeholder={lang === 'ko' ? '쿠폰 코드 (WELCOME10)' : 'Promo code (WELCOME10)'}
+                  placeholder="쿠폰 코드 (WELCOME10)"
                   className="form-input"
                   style={{ paddingLeft: '36px', textTransform: 'uppercase' }}
                 />
               </div>
               <button type="submit" className="btn-secondary" style={{ padding: '0 18px', whiteSpace: 'nowrap' }}>
-                {lang === 'ko' ? '적용' : 'Apply'}
+                적용
               </button>
             </form>
 
@@ -230,7 +230,7 @@ export function CartPage() {
 
               {appliedDiscount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9375rem', color: 'var(--accent-sunset)' }}>
-                  <span>{lang === 'ko' ? '쿠폰 할인 (10%)' : 'Coupon Discount'}</span>
+                  <span>쿠폰 할인 (10%)</span>
                   <span>-{formatKRW(appliedDiscount)}</span>
                 </div>
               )}

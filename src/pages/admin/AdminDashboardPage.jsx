@@ -8,7 +8,6 @@ import { adminApi } from '../../utils/api.js';
 import { formatKRW, ORDER_STATUS_MAP } from '../../utils/formatters.js';
 import { sourceLabel } from '../../utils/orderSources.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { useLanguage } from '../../context/LanguageContext.jsx';
 import { DashboardSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import {
   DollarSign,
@@ -26,8 +25,6 @@ export function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const { showToast } = useToast();
-  // Hooks must all run before any conditional early return (Rules of Hooks).
-  const { lang } = useLanguage();
 
   const fetchStats = async () => {
     try {
@@ -295,28 +292,28 @@ export function AdminDashboardPage() {
         <div className="adm-card" style={{ padding: '24px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>
-              {lang === 'en' ? 'Sales by Channel' : '채널별 매출 (Sales by Channel)'}
+              채널별 매출
             </h3>
             <Link href="/admin/reports" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
-              {lang === 'en' ? 'Full reports →' : '전체 리포트 →'}
+              전체 리포트 →
             </Link>
           </div>
           {salesBySource.length === 0 ? (
             <p style={{ fontSize: '0.85rem', color: '#71717a' }}>
-              {lang === 'en' ? 'No channel data yet.' : '아직 채널별 데이터가 없습니다.'}
+              아직 채널별 데이터가 없습니다.
             </p>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
               {salesBySource.map((row) => (
                 <div key={row.source} style={{ backgroundColor: '#fafafa', border: '1px solid #f0f0f2', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#52525b', display: 'block', marginBottom: '4px' }}>
-                    {sourceLabel(row.source, 'ko')} ({sourceLabel(row.source, 'en')})
+                    {sourceLabel(row.source, 'ko')}
                   </span>
                   <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#18181b', display: 'block' }}>
                     {formatKRW(row.revenue_paid)}
                   </span>
                   <span style={{ fontSize: '0.75rem', color: '#71717a', display: 'block', marginTop: '4px' }}>
-                    {row.order_count}{lang === 'en' ? ' orders' : '건'} · {row.paid_count}{lang === 'en' ? ' paid' : '건 결제'} · {row.unpaid_count}{lang === 'en' ? ' unpaid' : '건 미결제'}
+                    {row.order_count}건 · {row.paid_count}건 결제 · {row.unpaid_count}건 미결제
                   </span>
                 </div>
               ))}
@@ -329,7 +326,7 @@ export function AdminDashboardPage() {
           {/* Recent Orders Table */}
           <div className="adm-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>최근 접수된 주문 Recent orders</h3>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>최근 접수된 주문</h3>
               <Link href="/admin/orders" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
                 전체보기 →
               </Link>
@@ -366,14 +363,14 @@ export function AdminDashboardPage() {
                       </p>
                     </div>
 
-                    <Link href="/admin/orders" title="주문 관리에서 상태 변경 Manage in Orders">
-                      <StatusPill status={ord.order_status} label={`${info.ko} · ${info.en}`} />
+                    <Link href="/admin/orders" title="주문 관리에서 상태 변경">
+                      <StatusPill status={ord.order_status} label={info.ko} />
                     </Link>
                   </div>
                 );
               })}
               {recentOrders.length === 0 && (
-                <Empty title="최근 주문이 없습니다 No recent orders" desc="새 주문이 접수되면 여기에 표시됩니다." />
+                <Empty title="최근 주문이 없습니다" desc="새 주문이 접수되면 여기에 표시됩니다." />
               )}
             </div>
           </div>
@@ -383,7 +380,7 @@ export function AdminDashboardPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertTriangle size={18} color="#b45309" aria-hidden />
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>재고 부족 알림 Low stock ({lowStockItems.length})</h3>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>재고 부족 알림 ({lowStockItems.length})</h3>
               </div>
               <Link href="/admin/products" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
                 재고 관리 →

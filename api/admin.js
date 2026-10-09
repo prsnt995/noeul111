@@ -770,11 +770,11 @@ export function registerAdminRoutes(app, ctx) {
       let created = null;
       try {
         const { data, error: e } = await database().from('products').insert({
-          slug: slugify(b.name_en || b.name_ko), sku,
+          slug: slugify(b.sku || b.name_ko), sku,
           category_id: Number(b.category_id),
           name_ko: String(b.name_ko).slice(0, 200), name_en: String(b.name_en || b.name_ko).slice(0, 200),
-          description_ko: String(b.description_ko || ''), description_en: String(b.description_en || ''),
-          material_ko: String(b.material_ko || '').slice(0, 200), material_en: String(b.material_en || '').slice(0, 200),
+          description_ko: String(b.description_ko || ''), description_en: String(b.description_en || b.description_ko || ''),
+          material_ko: String(b.material_ko || '').slice(0, 200), material_en: String(b.material_en || b.material_ko || '').slice(0, 200),
           price, discount_price: discount, gender: ['men', 'women', 'unisex'].includes(b.gender) ? b.gender : 'women',
           best_rank: (b.best_rank === '' || b.best_rank == null) ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null),
           is_active: (b.status || 'active') === 'active', is_new: !!b.is_new, is_best: !!b.is_best,
@@ -836,11 +836,20 @@ export function registerAdminRoutes(app, ctx) {
       const { data: p } = await database().from('products').select('*').eq('id', req.params.id).maybeSingle();
       if (!p) return error(res, 404, 'PRODUCT_NOT_FOUND');
       const patch = {};
-      if (b.name_ko !== undefined) patch.name_ko = String(b.name_ko).slice(0, 200);
+      if (b.name_ko !== undefined) {
+        patch.name_ko = String(b.name_ko).slice(0, 200);
+        if (b.name_en === undefined) patch.name_en = String(b.name_ko).slice(0, 200);
+      }
       if (b.name_en !== undefined) patch.name_en = String(b.name_en).slice(0, 200);
-      if (b.description_ko !== undefined) patch.description_ko = String(b.description_ko);
+      if (b.description_ko !== undefined) {
+        patch.description_ko = String(b.description_ko);
+        if (b.description_en === undefined) patch.description_en = String(b.description_ko);
+      }
       if (b.description_en !== undefined) patch.description_en = String(b.description_en);
-      if (b.material_ko !== undefined) patch.material_ko = String(b.material_ko).slice(0, 200);
+      if (b.material_ko !== undefined) {
+        patch.material_ko = String(b.material_ko).slice(0, 200);
+        if (b.material_en === undefined) patch.material_en = String(b.material_ko).slice(0, 200);
+      }
       if (b.material_en !== undefined) patch.material_en = String(b.material_en).slice(0, 200);
       if (b.category_id !== undefined) patch.category_id = Number(b.category_id);
       if (b.price !== undefined) {
@@ -947,10 +956,10 @@ export function registerAdminRoutes(app, ctx) {
     try {
       const b = req.body || {};
       const slug = String(b.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
-      if (!slug || !b.name_ko || !b.name_en) return error(res, 400, 'SLUG_NAME_REQUIRED');
+      if (!slug || !b.name_ko) return error(res, 400, 'SLUG_NAME_REQUIRED');
       const { data, error: e } = await database().from('categories').insert({
-        slug, name_ko: String(b.name_ko).slice(0, 100), name_en: String(b.name_en).slice(0, 100),
-        description_ko: String(b.description_ko || '').slice(0, 500), description_en: String(b.description_en || '').slice(0, 500),
+        slug, name_ko: String(b.name_ko).slice(0, 100), name_en: String(b.name_en || b.name_ko).slice(0, 100),
+        description_ko: String(b.description_ko || '').slice(0, 500), description_en: String(b.description_en || b.description_ko || '').slice(0, 500),
         image_url: String(b.image_url || '').slice(0, 500),
         gender: ['unisex','men','women'].includes(b.gender) ? b.gender : 'unisex',
         is_active: b.is_active === undefined ? true : !!b.is_active,
@@ -974,9 +983,15 @@ export function registerAdminRoutes(app, ctx) {
         if (!slug) return error(res, 400, 'INVALID_SLUG');
         patch.slug = slug;
       }
-      if (b.name_ko !== undefined) patch.name_ko = String(b.name_ko).slice(0, 100);
+      if (b.name_ko !== undefined) {
+        patch.name_ko = String(b.name_ko).slice(0, 100);
+        if (b.name_en === undefined) patch.name_en = String(b.name_ko).slice(0, 100);
+      }
       if (b.name_en !== undefined) patch.name_en = String(b.name_en).slice(0, 100);
-      if (b.description_ko !== undefined) patch.description_ko = String(b.description_ko).slice(0, 500);
+      if (b.description_ko !== undefined) {
+        patch.description_ko = String(b.description_ko).slice(0, 500);
+        if (b.description_en === undefined) patch.description_en = String(b.description_ko).slice(0, 500);
+      }
       if (b.description_en !== undefined) patch.description_en = String(b.description_en).slice(0, 500);
       if (b.image_url !== undefined) patch.image_url = String(b.image_url).slice(0, 500);
       if (b.gender !== undefined) patch.gender = ['unisex','men','women'].includes(b.gender) ? b.gender : 'unisex';

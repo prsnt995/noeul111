@@ -219,8 +219,8 @@ describe('Manual / external orders — admin UI + i18n', () => {
     expect(read('src/components/admin/AdminLayout.jsx').includes('/admin/reports')).toBe(true);
   });
 
-  it('locales cover new admin strings in KR and EN', () => {
-    for (const f of ['src/locales/ko.json', 'src/locales/en.json']) {
+  it('locales cover new admin strings in KR', () => {
+    for (const f of ['src/locales/ko.json']) {
       const j = JSON.parse(read(f));
       for (const key of ['reports', 'manual_order', 'channel', 'sales_by_channel', 'channel_instagram', 'channel_tiktok']) {
         expect(j.admin[key], `${f} admin.${key}`).toBeTruthy();

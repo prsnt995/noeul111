@@ -121,11 +121,16 @@ export function AdminCategoriesPage() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        name_en: formData.name_en || formData.name_ko,
+        description_en: formData.description_en || formData.description_ko || '',
+      };
       if (isEditMode) {
-        await adminApi.put(`/admin/categories/${editingId}`, formData);
+        await adminApi.put(`/admin/categories/${editingId}`, payload);
         showToast('카테고리가 수정되었습니다.', 'success');
       } else {
-        await adminApi.post('/admin/categories', formData);
+        await adminApi.post('/admin/categories', payload);
         showToast('새 카테고리가 등록되었습니다.', 'success');
       }
       setIsModalOpen(false);
@@ -202,12 +207,11 @@ export function AdminCategoriesPage() {
     <AdminLayout activePage="categories">
       <PageHeader
         ko="카테고리 관리"
-        en="Category Management"
-        desc="상품 분류 카테고리 추가, 배너 이미지, 노출 순서 및 성별/활성 관리"
+        desc="상품 분류 카테고리 추가, 노출 순서 및 성별/활성 관리"
         actions={(
           <button type="button" className="adm-btn adm-btn-primary" onClick={openAddModal}>
             <Plus size={16} aria-hidden />
-            <span>새 카테고리 추가 New category</span>
+            <span>새 카테고리 추가</span>
           </button>
         )}
       />
@@ -239,23 +243,23 @@ export function AdminCategoriesPage() {
           searchValue={search}
           onSearch={(v) => listParams.set({ search: v })}
           onReset={listParams.reset}
-          searchPlaceholder="슬러그, 한글/영문명 검색 Search…"
+          searchPlaceholder="슬러그, 카테고리명 검색..."
           selects={[
             {
-              name: 'gender', value: genderFilter, onChange: (v) => listParams.set({ gender: v }), ariaLabel: '성별 Gender', label: '성별 Gender',
+              name: 'gender', value: genderFilter, onChange: (v) => listParams.set({ gender: v }), ariaLabel: '성별', label: '성별',
               options: [
-                { value: 'all', label: '전체 성별 All' },
-                { value: 'unisex', label: 'Unisex' },
-                { value: 'men', label: 'Men' },
-                { value: 'women', label: 'Women' },
+                { value: 'all', label: '전체 성별' },
+                { value: 'unisex', label: '남녀공용' },
+                { value: 'men', label: '남성' },
+                { value: 'women', label: '여성' },
               ],
             },
             {
-              name: 'status', value: statusFilter, onChange: (v) => listParams.set({ status: v }), ariaLabel: '상태 Status', label: '상태 Status',
+              name: 'status', value: statusFilter, onChange: (v) => listParams.set({ status: v }), ariaLabel: '상태', label: '상태',
               options: [
-                { value: 'all', label: '전체 상태 All' },
-                { value: 'active', label: '활성만 Active' },
-                { value: 'hidden', label: '숨김만 Hidden' },
+                { value: 'all', label: '전체 상태' },
+                { value: 'active', label: '활성' },
+                { value: 'hidden', label: '숨김' },
               ],
             },
           ]}
@@ -294,14 +298,11 @@ export function AdminCategoriesPage() {
                 <div style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
                     <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '2px' }}>
-                      {cat.name_ko} <span style={{ fontSize: '0.8125rem', color: '#71717a', fontWeight: 400 }}>({cat.name_en})</span>
+                      {cat.name_ko}
                     </h3>
                     <p style={{ fontSize: '0.75rem', color: '#71717a', lineHeight: 1.4, marginTop: '6px', minHeight: 32 }}>
                       {cat.description_ko || cat.description_en || '설명 없음 — 상품 분류용 카테고리입니다.'}
                     </p>
-                    {cat.description_en && cat.description_ko && (
-                      <p style={{ fontSize: '0.6875rem', color: '#a1a1aa', marginTop: 4 }}>{cat.description_en}</p>
-                    )}
                   </div>
 
                   {/* Available products in this category — B) 5 thumbs drawer on click, lazy 1 query per open */}
@@ -365,9 +366,9 @@ export function AdminCategoriesPage() {
         {/* Delete Confirmation */}
         <ConfirmModal
           open={!!deleteConfirmId}
-          title="카테고리 삭제 Delete category"
+          title="카테고리 삭제"
           desc="카테고리를 삭제하시겠습니까? 카테고리에 속한 상품이 있을 경우 삭제할 수 없습니다. 먼저 상품의 카테고리를 변경하세요."
-          confirmLabel="확인 및 삭제 Delete"
+          confirmLabel="삭제"
           onConfirm={() => handleDelete(deleteConfirmId)}
           onClose={() => setDeleteConfirmId(null)}
         />
@@ -376,37 +377,31 @@ export function AdminCategoriesPage() {
         {isModalOpen && (
           <>
             <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
-            <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '카테고리 수정 Edit category' : '새 카테고리 추가 New category'} style={{ maxWidth: 560 }}>
+            <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '카테고리 수정' : '새 카테고리 추가'} style={{ maxWidth: 560 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <h2>{isEditMode ? '카테고리 수정 Edit category' : '새 카테고리 추가 New category'}</h2>
-                <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog"><X size={16} /></button>
+                <h2>{isEditMode ? '카테고리 수정' : '새 카테고리 추가'}</h2>
+                <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="닫기"><X size={16} /></button>
               </div>
 
               <form onSubmit={handleSave} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">영문 슬러그 (Slug) * — URL에 사용</label>
-                  <input type="text" required value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })} placeholder="e.g. outerwear, knitwear" className="form-input" />
+                  <label className="form-label">영문 슬러그 (Slug) * — URL 주소용</label>
+                  <input type="text" required value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })} placeholder="예: knitwear, outerwear" className="form-input" />
                   <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>소문자, 숫자, -, _ 만 허용. 예: /shop?category={formData.slug || 'example'}</span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">한글 카테고리명 *</label>
-                    <input type="text" required value={formData.name_ko} onChange={(e) => setFormData({ ...formData, name_ko: e.target.value })} placeholder="예: 아우터" className="form-input" />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">영문 카테고리명 *</label>
-                    <input type="text" required value={formData.name_en} onChange={(e) => setFormData({ ...formData, name_en: e.target.value })} placeholder="e.g. Outerwear" className="form-input" />
-                  </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">카테고리명 *</label>
+                  <input type="text" required value={formData.name_ko} onChange={(e) => setFormData({ ...formData, name_ko: e.target.value, name_en: e.target.value })} placeholder="예: 니트 / 가디건" className="form-input" />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">성별 (Gender)</label>
+                    <label className="form-label">성별</label>
                     <select value={formData.gender} onChange={(e) => setFormData({ ...formData, gender: e.target.value })} className="form-select">
-                      <option value="unisex">Unisex (공용)</option>
-                      <option value="men">Men</option>
-                      <option value="women">Women</option>
+                      <option value="unisex">남녀공용</option>
+                      <option value="men">남성</option>
+                      <option value="women">여성</option>
                     </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -416,12 +411,8 @@ export function AdminCategoriesPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">한글 설명</label>
-                  <input type="text" value={formData.description_ko} onChange={(e) => setFormData({ ...formData, description_ko: e.target.value })} placeholder="카테고리 설명 (한글)" className="form-input" />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">영문 설명</label>
-                  <input type="text" value={formData.description_en} onChange={(e) => setFormData({ ...formData, description_en: e.target.value })} placeholder="Category description (EN)" className="form-input" />
+                  <label className="form-label">카테고리 설명 (선택)</label>
+                  <input type="text" value={formData.description_ko} onChange={(e) => setFormData({ ...formData, description_ko: e.target.value, description_en: e.target.value })} placeholder="카테고리 설명" className="form-input" />
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px', backgroundColor: formData.is_active ? '#f0fdf4' : '#fef2f2', borderRadius: 8, border: `1px solid ${formData.is_active ? '#bbf7d0' : '#fecaca'}` }}>
@@ -432,8 +423,8 @@ export function AdminCategoriesPage() {
                 </div>
 
                 <div className="adm-modal-actions">
-                  <button type="button" className="adm-btn" onClick={() => setIsModalOpen(false)}>취소 Cancel</button>
-                  <button type="submit" className="adm-btn adm-btn-primary">저장하기 Save</button>
+                  <button type="button" className="adm-btn" onClick={() => setIsModalOpen(false)}>취소</button>
+                  <button type="submit" className="adm-btn adm-btn-primary">저장하기</button>
                 </div>
               </form>
             </div>

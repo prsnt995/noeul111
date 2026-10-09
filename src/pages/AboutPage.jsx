@@ -4,7 +4,7 @@ import { useLanguage } from '../context/LanguageContext.jsx';
 import { Sparkles, MapPin, Clock, ArrowRight, ExternalLink } from 'lucide-react';
 
 export function AboutPage() {
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
 
   return (
     <div style={{ padding: '40px 0 100px' }}>
@@ -22,17 +22,15 @@ export function AboutPage() {
             margin: '16px 0 24px',
           }}
         >
-          {lang === 'ko' ? '서울의 황혼과 일상의 우아함' : 'The Seoul Twilight & Understated Elegance'}
+          서울의 황혼과 일상의 우아함
         </h1>
         <p style={{ fontSize: '1.125rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-          {lang === 'ko'
-            ? '노을(NOEUL)은 서울의 해질녘이 선사하는 차분하면서도 따뜻한 온도감에서 시작되었습니다. 빠르게 변화하는 유행을 좇기보다는, 시간이 흘러도 변치 않는 소재와 정교한 테일러링으로 옷장에 오랜 울림을 남기는 옷을 만듭니다.'
-            : 'NOEUL was founded on the calm warmth of twilight in Seoul. Rather than chasing transient trends, we design garments that offer architectural silhouettes, natural enduring fabrics, and timeless quiet luxury.'}
+          노을(NOEUL)은 서울의 해질녘이 선사하는 차분하면서도 따뜻한 온도감에서 시작되었습니다. 빠르게 변화하는 유행을 좇기보다는, 시간이 흘러도 변치 않는 소재와 정교한 테일러링으로 옷장에 오랜 울림을 남기는 옷을 만듭니다.
         </p>
 
         {/* Company attribution line */}
         <div style={{ marginTop: '16px', fontSize: '0.9375rem', color: 'var(--text-muted)' }}>
-          {lang === 'ko' ? 'A business by ' : 'A business by '}
+          A business by{' '}
           <a
             href="https://www.noeulenterprises.com"
             target="_blank"
@@ -90,36 +88,30 @@ export function AboutPage() {
             <div>
               <span style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent-sunset)' }}>01</span>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 600, margin: '12px 0 8px' }}>
-                {lang === 'ko' ? '절제된 미니멀리즘' : 'Architectural Minimalism'}
+                절제된 미니멀리즘
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', lineHeight: 1.7 }}>
-                {lang === 'ko'
-                  ? '과장된 디테일을 배제하고 신체의 곡선과 자연스럽게 조화를 이루는 유려한 드레이프와 핏을 추구합니다.'
-                  : 'We strip away superficial embellishments to focus on refined proportions, relaxed shoulders, and seamless fluid drape.'}
+                과장된 디테일을 배제하고 신체의 곡선과 자연스럽게 조화를 이루는 유려한 드레이프와 핏을 추구합니다.
               </p>
             </div>
 
             <div>
               <span style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent-sunset)' }}>02</span>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 600, margin: '12px 0 8px' }}>
-                {lang === 'ko' ? '엄선된 천연 소재' : 'Enduring Natural Fabrics'}
+                엄선된 천연 소재
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', lineHeight: 1.7 }}>
-                {lang === 'ko'
-                  ? '호주산 메리노 울, 키드 모헤어, 고밀도 컴팩트 코튼 등 피부에 닿는 감촉과 내구성을 최우선으로 검증합니다.'
-                  : 'From Australian Merino wool and kid mohair to compact Japanese selvedge denim, our textiles prioritize tactile comfort and longevity.'}
+                호주산 메리노 울, 키드 모헤어, 고밀도 컴팩트 코튼 등 피부에 닿는 감촉과 내구성을 최우선으로 검증합니다.
               </p>
             </div>
 
             <div>
               <span style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent-sunset)' }}>03</span>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 600, margin: '12px 0 8px' }}>
-                {lang === 'ko' ? '서울 아틀리에 테일러링' : 'Seoul Atelier Craftsmanship'}
+                서울 아틀리에 테일러링
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', lineHeight: 1.7 }}>
-                {lang === 'ko'
-                  ? '수십 년 경력의 서울 테일러 장인들과의 협업을 통해 봉제 마감 하나하나까지 엄격한 품질을 고집합니다.'
-                  : 'Crafted in collaboration with seasoned master tailors in Seoul, upholding meticulous standards from seam finishes to custom hardware.'}
+                수십 년 경력의 서울 테일러 장인들과의 협업을 통해 봉제 마감 하나하나까지 엄격한 품질을 고집합니다.
               </p>
             </div>
           </div>
@@ -146,7 +138,7 @@ export function AboutPage() {
               SEOUL SHOWROOM
             </span>
             <h2 className="font-serif" style={{ fontSize: '1.75rem', fontWeight: 600, margin: '8px 0 16px' }}>
-              {lang === 'ko' ? '노을 압구정 플래그십' : 'NOEUL Apgujeong Flagship'}
+              노을 압구정 플래그십
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '24px' }}>
               <p style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -159,7 +151,7 @@ export function AboutPage() {
               </p>
             </div>
             <Link href="/shop" className="btn-primary" style={{ padding: '12px 24px', fontSize: '0.875rem' }}>
-              <span>{lang === 'ko' ? '컬렉션 둘러보기' : 'Explore Collection'}</span>
+              <span>컬렉션 둘러보기</span>
               <ArrowRight size={15} />
             </Link>
           </div>
@@ -196,9 +188,7 @@ export function AboutPage() {
               NOEUL ENTERPRISES
             </h3>
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              {lang === 'ko'
-                ? '노을(NOEUL)은 NOEUL ENTERPRISES의 패션 및 라이프스타일 공식 브랜드를 운영하고 있습니다.'
-                : 'NOEUL is an official fashion brand operated by NOEUL ENTERPRISES.'}
+              노을(NOEUL)은 NOEUL ENTERPRISES의 패션 및 라이프스타일 공식 브랜드를 운영하고 있습니다.
             </p>
           </div>
 

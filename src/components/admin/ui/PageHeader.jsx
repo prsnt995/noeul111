@@ -7,7 +7,7 @@ export function PageHeader({ ko, en, desc, actions, breadcrumb }) {
       {breadcrumb ? <nav className="adm-crumbs" aria-label="Breadcrumb">{breadcrumb}</nav> : null}
       <div className="adm-page-head">
         <div>
-          <h1>{ko}{en ? <small>({en})</small> : null}</h1>
+          <h1>{ko}</h1>
           {desc ? <p>{desc}</p> : null}
         </div>
         {actions ? <div className="adm-page-actions">{actions}</div> : null}

@@ -7,7 +7,7 @@ import { useDialogFocus } from '../../utils/dialogFocus.js';
 
 export function ProductPreviewModal({ product, isOpen, onClose }) {
   const [, setLocation] = useLocation();
-  const { lang, formatKRW, t } = useLanguage();
+  const { formatKRW, t } = useLanguage();
   const dialogRef = useRef(null);
 
   // Lock body scroll and listen for Escape key
@@ -33,9 +33,7 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
   // Extract primary image dynamically
   const displayImage = getPrimaryProductImage(product);
 
-  const productName = lang === 'ko'
-    ? (product.name_ko || product.name_en)
-    : (product.name_en || product.name_ko);
+  const productName = product.name_ko || product.name || product.name_en || '';
 
   const finalPrice = product.discount_price || product.price;
 

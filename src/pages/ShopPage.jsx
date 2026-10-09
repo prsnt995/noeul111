@@ -11,7 +11,7 @@ import { api } from '../utils/api.js';
 import { SlidersHorizontal, X, ChevronRight } from 'lucide-react';
 
 export function ShopPage() {
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedGender = searchParams.get('gender') || 'all';
   const selectedCategory = searchParams.get('category') || 'all';
@@ -158,7 +158,7 @@ export function ShopPage() {
 
     if (selectedCategory !== 'all') {
       const catObj = availableCategories.find((c) => c.key === selectedCategory);
-      const catName = catObj ? (lang === 'ko' ? catObj.label_ko : catObj.label) : selectedCategory;
+      const catName = catObj ? (catObj.label_ko || catObj.label) : selectedCategory;
       return `${prefix} • ${catName}`;
     }
 
@@ -206,7 +206,7 @@ export function ShopPage() {
         {/* Selected Subcategory Indicator */}
         {selectedCategory !== 'all' && (() => {
           const catObj = availableCategories.find((c) => c.key === selectedCategory);
-          const catLabel = catObj ? `${catObj.label_ko} ${catObj.label}` : selectedCategory;
+          const catLabel = catObj ? (catObj.label_ko || catObj.label) : selectedCategory;
           return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#18181b', fontWeight: 600, flexShrink: 0 }}>
             <span>/</span>
@@ -251,7 +251,7 @@ export function ShopPage() {
                 key: 'category',
                 label: (() => {
                   const catObj = availableCategories.find((c) => c.key === selectedCategory);
-                  return catObj ? (lang === 'ko' ? catObj.label_ko : catObj.label) : selectedCategory;
+                  return catObj ? (catObj.label_ko || catObj.label) : selectedCategory;
                 })(),
                 onClear: () => updateUrl(undefined, 'all', undefined, undefined, undefined),
               }] : []),

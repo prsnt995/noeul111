@@ -20,7 +20,7 @@ export function CartDrawer() {
     removeFromCart,
   } = useCart();
 
-  const { lang, t, formatKRW } = useLanguage();
+  const { t, formatKRW } = useLanguage();
   const [, setLocation] = useLocation();
   const dialogRef = useRef(null);
   useDialogFocus(isCartOpen, dialogRef);
@@ -181,7 +181,7 @@ export function CartDrawer() {
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <h4 style={{ fontSize: '0.9375rem', fontWeight: 600, lineHeight: 1.3 }}>
-                          {lang === 'ko' ? item.name_ko : item.name_en}
+                          {item.name_ko || item.name || item.name_en}
                         </h4>
                         <button
                           onClick={() => removeFromCart(item.id)}
@@ -199,7 +199,7 @@ export function CartDrawer() {
                           {item.size}
                         </span>
                         <span style={{ backgroundColor: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '3px' }}>
-                          {lang === 'ko' ? item.color_ko : item.color_en}
+                          {item.color_ko || item.color || item.color_en}
                         </span>
                       </div>
                     </div>

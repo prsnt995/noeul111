@@ -2,14 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { useRoute, Link } from 'wouter';
 import { api } from '../utils/api.js';
-import { useLanguage } from '../context/LanguageContext.jsx';
 import { ArrowLeft } from 'lucide-react';
 import { safeHttpUrl } from '../utils/imageHelper.js';
 
 export function CustomPageView() {
   const [match, params] = useRoute('/p/:slug');
   const slug = params?.slug;
-  const { lang } = useLanguage();
   const [page, setPage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -49,8 +47,8 @@ export function CustomPageView() {
     );
   }
 
-  const title = lang === 'ko' ? page.title_ko : (page.title_en || page.title_ko);
-  const rawContent = lang === 'ko' ? page.content_ko : (page.content_en || page.content_ko);
+  const title = page.title_ko || page.title || page.title_en;
+  const rawContent = page.content_ko || page.content || page.content_en;
   // DOMPurify allowlist-sanitized admin HTML (the old regex strip was
   // bypassable via svg/iframe/srcdoc/entity vectors).
   const content = useMemo(() => DOMPurify.sanitize(String(rawContent || ''), { USE_PROFILES: { html: true } }), [rawContent]);

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useToast } from './ToastContext.jsx';
-import { useLanguage } from './LanguageContext.jsx';
 
 const CartContext = createContext();
 
@@ -27,7 +26,6 @@ export function CartProvider({ children }) {
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const { showToast } = useToast();
-  const { lang } = useLanguage();
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
@@ -99,9 +97,8 @@ export function CartProvider({ children }) {
       }
     });
 
-    const msg = lang === 'ko'
-      ? `[${product.name_ko}] 상품이 장바구니에 담겼습니다.`
-      : `[${product.name_en}] has been added to your cart.`;
+    const prodName = product.name_ko || product.name || product.name_en || '상품';
+    const msg = `[${prodName}] 상품이 장바구니에 담겼습니다.`;
     showToast(msg, 'success');
   };
 

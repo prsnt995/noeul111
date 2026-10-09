@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext.jsx';
 import { useToast } from './ToastContext.jsx';
-import { useLanguage } from './LanguageContext.jsx';
 import { api } from '../utils/api.js';
 
 const WishlistContext = createContext();
@@ -18,7 +17,6 @@ export function WishlistProvider({ children }) {
 
   const { isLoggedIn } = useAuth();
   const { showToast } = useToast();
-  const { lang } = useLanguage();
 
   // Sync with backend if logged in
   useEffect(() => {
@@ -52,12 +50,10 @@ export function WishlistProvider({ children }) {
 
     if (exists) {
       setWishlist((prev) => prev.filter((item) => item.id !== product.id));
-      const msg = lang === 'ko' ? '위시리스트에서 삭제되었습니다.' : 'Removed from your wishlist.';
-      showToast(msg, 'info');
+      showToast('위시리스트에서 삭제되었습니다.', 'info');
     } else {
       setWishlist((prev) => [...prev, product]);
-      const msg = lang === 'ko' ? '위시리스트에 담았습니다.' : 'Added to your wishlist.';
-      showToast(msg, 'success');
+      showToast('위시리스트에 담았습니다.', 'success');
     }
 
     if (isLoggedIn) {

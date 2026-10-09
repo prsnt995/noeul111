@@ -25,7 +25,7 @@ import {
 export function ProductDetailPage() {
   const [, params] = useRoute('/product/:id');
   const [, setLocation] = useLocation();
-  const { lang, t, formatKRW } = useLanguage();
+  const { t, formatKRW } = useLanguage();
   const { addToCart, openCart } = useCart();
   const { isWishlisted, toggleWishlist } = useWishlist();
 
@@ -113,20 +113,20 @@ export function ProductDetailPage() {
   const colors = product && Array.isArray(product.colors) ? product.colors : [];
   const details = product?.details || {};
   const isWish = product ? isWishlisted(product.id) : false;
-  const productName = product ? (lang === 'ko' ? (product.name_ko || product.name_en) : (product.name_en || product.name_ko)) : '';
+  const productName = product ? (product.name_ko || product.name || product.name_en || '') : '';
   const variants = product ? (Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : []) : [];
   // Price/URL may fall back to any same-color variant (older products), but
   // availability must match the exact color+size combo — unoffered combos
   // (no variant row) are never purchasable.
   const getVariant = (colorObj, sizeVal) => {
-    const cName = colorObj?.name_en || colorObj?.name || colorObj;
+    const cName = colorObj?.name_ko || colorObj?.name || colorObj?.name_en || colorObj;
     return variants.find(v => v.color === cName && v.size === sizeVal) || variants.find(v => v.color === cName) || variants.find(v => v.size === sizeVal) || null;
   };
   const currentVariant = getVariant(selectedColor, selectedSize) || variants[0] || null;
   const basePrice = product ? (product.discount_price || product.price) : 0;
   const finalPrice = currentVariant ? Math.max(1, basePrice + (currentVariant.price_delta || 0)) : basePrice;
   const isVariantAvailable = (colorObj, sizeVal) => {
-    const cName = colorObj?.name_en || colorObj?.name || colorObj?.name_ko || colorObj;
+    const cName = colorObj?.name_ko || colorObj?.name || colorObj?.name_en || colorObj;
     const sz = sizeVal ?? selectedSize;
     const v = variants.find(x => x.color === cName && x.size === sz && x.active !== false);
     if (!v) return false;
@@ -151,7 +151,7 @@ export function ProductDetailPage() {
       const v = variants.find(x=> x.id===vid);
       if (v) {
         if (v.size) setSelectedSize(v.size);
-        const col = colors.find(c=> (c.name_en||c.name)===v.color);
+        const col = colors.find(c=> (c.name_ko||c.name||c.name_en)===v.color);
         if (col) setSelectedColor(col);
         const mediaIdx = product.product_media ? product.product_media.findIndex(m=> m.variant_id===v.id) : -1;
         if (mediaIdx>=0) setSelectedImageIndex(mediaIdx);
@@ -173,9 +173,9 @@ export function ProductDetailPage() {
   // Material extraction
   const productMaterial =
     product?.material ||
-    details.fabric ||
     details.fabric_ko ||
-    (lang === 'ko' ? '상품 상세 및 제품 라벨을 확인해주세요.' : 'Refer to the product description and label.');
+    details.fabric ||
+    '상품 상세 및 제품 라벨을 확인해주세요.';
 
   const currentMainImage = orderedImages[selectedImageIndex] || orderedImages[0] || images[0];
 
@@ -423,7 +423,7 @@ export function ProductDetailPage() {
                     {t('product.select_color')}
                   </span>
                   <span style={{ fontSize: '0.8125rem', color: '#71717a' }}>
-                    {selectedColor ? (lang === 'ko' ? (selectedColor.name_ko || selectedColor.name) : (selectedColor.name_en || selectedColor.name)) : ''}
+                    {selectedColor ? (selectedColor.name_ko || selectedColor.name || selectedColor.name_en || '') : ''}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap:'wrap' }}>
@@ -436,8 +436,8 @@ export function ProductDetailPage() {
                         type="button"
                         disabled={!available}
                         onClick={() => { if(available) setSelectedColor(c); }}
-                        title={`${c.name || c.name_en}${!available ? ' (품절)' : ''}${getVariant(c, selectedSize)?.price_delta ? ` +${formatKRW(getVariant(c, selectedSize).price_delta)}` : ''}`}
-                        aria-label={`${c.name || c.name_en}${!available ? ' 품절' : ''}`}
+                        title={`${c.name_ko || c.name || c.name_en}${!available ? ' (품절)' : ''}${getVariant(c, selectedSize)?.price_delta ? ` +${formatKRW(getVariant(c, selectedSize).price_delta)}` : ''}`}
+                        aria-label={`${c.name_ko || c.name || c.name_en}${!available ? ' 품절' : ''}`}
                         style={{
                           width: '28px',
                           height: '28px',
@@ -465,7 +465,7 @@ export function ProductDetailPage() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#18181b' }}>
-                    {lang === 'ko' ? '사이즈 선택' : 'Available Sizes'}
+                    사이즈 선택
                   </span>
                   <button
                     type="button"
@@ -483,7 +483,7 @@ export function ProductDetailPage() {
                     }}
                   >
                     <Ruler size={13} />
-                    <span>{lang === 'ko' ? '사이즈 가이드' : 'Size Guide'}</span>
+                    <span>사이즈 가이드</span>
                   </button>
                 </div>
 
@@ -525,7 +525,7 @@ export function ProductDetailPage() {
             {/* Quantity Selector */}
             <div>
               <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#18181b', marginBottom: '8px' }}>
-                {lang === 'ko' ? '수량' : 'Quantity'}
+                수량
               </span>
               <div
                 style={{
@@ -572,7 +572,7 @@ export function ProductDetailPage() {
                   gap: '8px',
                 }}
               >
-                <span>⚠️ {lang === 'ko' ? '선택한 옵션은 현재 일시 품절 상태입니다. (Out of Stock)' : 'Selected option is out of stock.'}</span>
+                <span>⚠️ 선택한 옵션은 현재 일시 품절 상태입니다.</span>
               </div>
             )}
 
@@ -597,8 +597,8 @@ export function ProductDetailPage() {
                 }}
               >
                 {(!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0)
-                  ? (lang === 'ko' ? '품절 (Out of Stock)' : 'Out of Stock')
-                  : (lang === 'ko' ? '장바구니 담기' : 'Add to Cart')}
+                  ? '품절'
+                  : '장바구니 담기'}
               </button>
 
               <button
@@ -620,8 +620,8 @@ export function ProductDetailPage() {
                 }}
               >
                 {(!isVariantAvailable(selectedColor, selectedSize) || product?.stock <= 0)
-                  ? (lang === 'ko' ? '품절 (Out of Stock)' : 'Out of Stock')
-                  : (lang === 'ko' ? '바로 구매하기' : 'Buy Now')}
+                  ? '품절'
+                  : '바로 구매하기'}
               </button>
             </div>
 
@@ -640,15 +640,13 @@ export function ProductDetailPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Truck size={16} color="#18181b" />
                 <span>
-                  <strong>{lang === 'ko' ? '배송 정보' : 'Shipping'}:</strong>{' '}
-                  {lang === 'ko' ? '전 상품 무료배송 (결제 후 1~3영업일 내 출고)' : 'Free Shipping on all orders (Ships within 1-3 business days)'}
+                  <strong>배송 정보:</strong> 전 상품 무료배송 (결제 후 1~3영업일 내 출고)
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <RefreshCw size={16} color="#18181b" />
                 <span>
-                  <strong>{lang === 'ko' ? '교환 및 반품' : 'Returns'}:</strong>{' '}
-                  {lang === 'ko' ? '수령 후 7일 이내 청약철회 가능. 상세 조건은 반품 안내를 확인해주세요.' : 'Withdrawal within 7 days of delivery; see the return conditions below.'}
+                  <strong>교환 및 반품:</strong> 수령 후 7일 이내 청약철회 가능. 상세 조건은 반품 안내를 확인해주세요.
                 </span>
               </div>
             </div>
@@ -676,7 +674,7 @@ export function ProductDetailPage() {
                 cursor: 'pointer',
               }}
             >
-              {lang === 'ko' ? '상품 상세 설명' : 'Description'}
+              상품 상세 설명
             </button>
 
             <button
@@ -695,7 +693,7 @@ export function ProductDetailPage() {
                 cursor: 'pointer',
               }}
             >
-              {lang === 'ko' ? '소재 및 관리 (Material)' : 'Material & Care'}
+              소재 및 관리
             </button>
 
             <button
@@ -714,7 +712,7 @@ export function ProductDetailPage() {
                 cursor: 'pointer',
               }}
             >
-              {lang === 'ko' ? '배송 & 교환/반품 안내' : 'Shipping & Returns'}
+              배송 & 교환/반품 안내
             </button>
 
             <button
@@ -733,7 +731,7 @@ export function ProductDetailPage() {
                 cursor: 'pointer',
               }}
             >
-              {lang === 'ko' ? '고객 리뷰' : 'Reviews'}
+              고객 리뷰
             </button>
           </div>
 
@@ -742,12 +740,12 @@ export function ProductDetailPage() {
             {activeTab === 'details' && (
               <div>
                 <p style={{ marginBottom: '16px' }}>
-                  {lang === 'ko' ? (product.description_ko || product.description) : (product.description || product.description_ko)}
+                  {product.description_ko || product.description || ''}
                 </p>
                 <div style={{ backgroundColor: '#fcfcfc', border: '1px solid #f0f0f1', padding: '16px 20px', borderRadius: '4px' }}>
                   <p style={{ margin: '4px 0' }}>• <strong>SKU:</strong> {product.sku}</p>
-                  <p style={{ margin: '4px 0' }}>• <strong>Gender:</strong> {product.gender ? product.gender.toUpperCase() : 'UNISEX'}</p>
-                  {(details.origin || product.origin) && <p style={{ margin: '4px 0' }}>• <strong>Origin:</strong> {details.origin || product.origin}</p>}
+                  <p style={{ margin: '4px 0' }}>• <strong>성별:</strong> {product.gender === 'women' ? '여성' : product.gender === 'men' ? '남성' : '남녀공용'}</p>
+                  {(details.origin || product.origin) && <p style={{ margin: '4px 0' }}>• <strong>원산지:</strong> {details.origin || product.origin}</p>}
                 </div>
               </div>
             )}
@@ -755,16 +753,14 @@ export function ProductDetailPage() {
             {activeTab === 'fabric' && (
               <div>
                 <h4 style={{ fontWeight: 700, color: '#18181b', marginBottom: '8px' }}>
-                  {lang === 'ko' ? '소재 구성' : 'Fabric & Material Composition'}
+                  소재 구성
                 </h4>
                 <p style={{ marginBottom: '16px' }}>{productMaterial}</p>
                 <h4 style={{ fontWeight: 700, color: '#18181b', marginBottom: '8px' }}>
-                  {lang === 'ko' ? '세탁 및 취급 주의사항' : 'Care Instructions'}
+                  세탁 및 취급 주의사항
                 </h4>
                 <p>
-                  {lang === 'ko'
-                    ? (details.care_ko || details.care || '제품 라벨에 표시된 세탁·취급 방법을 따라주세요.')
-                    : (details.care || details.care_ko || 'Follow the washing and care instructions on the product label.')}
+                  {details.care_ko || details.care || '제품 라벨에 표시된 세탁·취급 방법을 따라주세요.'}
                 </p>
               </div>
             )}
@@ -788,7 +784,7 @@ export function ProductDetailPage() {
                 YOU MAY ALSO LIKE
               </span>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#18181b', marginTop: '2px' }}>
-                {lang === 'ko' ? '함께 매치하기 좋은 상품' : 'Recommended Pieces'}
+                함께 매치하기 좋은 상품
               </h2>
             </div>
             <div className="noeul-product-grid">

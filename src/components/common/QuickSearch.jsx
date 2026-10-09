@@ -10,7 +10,7 @@ export function QuickSearch({ isOpen, onClose }) {
   const [results, setResults] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const { lang, t, formatKRW } = useLanguage();
+  const { t, formatKRW } = useLanguage();
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
   const [, setLocation] = useLocation();
@@ -70,12 +70,12 @@ export function QuickSearch({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const popularTags = [
-    { ko: '울 블레이저', en: 'Wool Blazer' },
-    { ko: '박시 티셔츠', en: 'Boxy Tee' },
-    { ko: '와이드 데님', en: 'Wide Denim' },
-    { ko: '모헤어 가디건', en: 'Mohair Cardigan' },
-    { ko: '트렌치 코트', en: 'Trench Coat' },
-    { ko: '레더 백', en: 'Leather Bag' },
+    '울 블레이저',
+    '박시 티셔츠',
+    '와이드 데님',
+    '모헤어 가디건',
+    '트렌치 코트',
+    '레더 백',
   ];
 
   return (
@@ -145,7 +145,7 @@ export function QuickSearch({ isOpen, onClose }) {
               {popularTags.map((tag, i) => (
                 <button
                   key={i}
-                  onClick={() => setQuery(lang === 'ko' ? tag.ko : tag.en)}
+                  onClick={() => setQuery(tag)}
                   style={{
                     backgroundColor: 'var(--bg-secondary)',
                     padding: '8px 14px',
@@ -157,7 +157,7 @@ export function QuickSearch({ isOpen, onClose }) {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#e8e5de')}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-secondary)')}
                 >
-                  #{lang === 'ko' ? tag.ko : tag.en}
+                  #{tag}
                 </button>
               ))}
             </div>
@@ -203,10 +203,10 @@ export function QuickSearch({ isOpen, onClose }) {
                     />
                     <div style={{ flex: 1 }}>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                        {lang === 'ko' ? product.category_name_ko : product.category_name_en}
+                        {product.category_name_ko || product.category_name || product.category_name_en}
                       </span>
                       <h4 style={{ fontSize: '0.9375rem', fontWeight: 600, margin: '2px 0' }}>
-                        {lang === 'ko' ? product.name_ko : product.name_en}
+                        {product.name_ko || product.name || product.name_en}
                       </h4>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <span style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--accent-sunset)' }}>

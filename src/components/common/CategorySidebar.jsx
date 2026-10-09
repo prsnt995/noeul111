@@ -2,18 +2,17 @@ import React from 'react';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 
 export function CategorySidebar({ categories, selectedCategory, onSelect, sticky = true }) {
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
   const handleClick = (slug) => {
     if (onSelect) onSelect(slug);
   };
 
   const items = [
-    { key: 'all', label: t('nav.all'), labelEn: t('nav.all') },
+    { key: 'all', label: t('nav.all') },
     ...categories.map((c) => ({
       // Accept both DB shape {slug,name_ko,name_en} and homepage shape {key,label,label_ko}
       key: (c.key || c.slug || '').toLowerCase(),
       label: c.label_ko || c.name_ko || c.label || c.slug,
-      labelEn: c.label || c.name_en || c.labelEn || '',
     })),
   ];
 
@@ -61,7 +60,7 @@ export function CategorySidebar({ categories, selectedCategory, onSelect, sticky
                 flexShrink: 0,
               }}
             >
-              {lang === 'ko' ? item.label : (item.labelEn || item.label)}
+              {item.label}
             </button>
           );
         })}

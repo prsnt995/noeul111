@@ -8,7 +8,7 @@ import { api } from '../../utils/api.js';
 import { Menu, X, Search, ShoppingBag, ChevronDown, User } from 'lucide-react';
 
 export function Header({ onOpenSearch }) {
-  const { lang, setLang, t } = useLanguage();
+  const { t } = useLanguage();
   const { totalCount, openCart } = useCart();
   const { isLoggedIn, user } = useAuth();
   const [location, setLocation] = useLocation();
@@ -61,7 +61,7 @@ export function Header({ onOpenSearch }) {
   const menCats = useMemo(() => catsFor('men'), [liveCategories]);
   const womenCats = useMemo(() => catsFor('women'), [liveCategories]);
 
-  const catLabel = (c) => (lang === 'ko' ? (c.label_ko || c.label) : (c.label || c.label_ko));
+  const catLabel = (c) => c.label_ko || c.name_ko || c.label || c.slug;
 
   // Close menu on route change + auto-expand section matching gender
   useEffect(() => {
@@ -132,7 +132,7 @@ export function Header({ onOpenSearch }) {
               onClick={() => navigateWithFilter({ gender })}
               className={isActiveGender && currentParams.category === 'all' ? 'drawer-subcat active' : 'drawer-subcat all-link'}
             >
-              {lang === 'ko' ? (gender === 'men' ? '남성 전체' : '여성 전체') : (gender === 'men' ? "All Men's" : "All Women's")}
+              {gender === 'men' ? '남성 전체' : '여성 전체'}
             </button>
             {cats.map((c) => {
               const isActive = isActiveGender && currentParams.category === c.key;
@@ -453,25 +453,6 @@ export function Header({ onOpenSearch }) {
                 <User size={15} />
                 <span>{isLoggedIn ? (user?.name || t('nav.account')) : t('nav.login')}</span>
               </Link>
-
-              <button
-                type="button"
-                onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
-                style={{
-                  background: '#18181b',
-                  border: 'none',
-                  borderRadius: '12px',
-                  padding: '4px 12px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#ffffff',
-                  letterSpacing: '0.04em',
-                }}
-                title={lang === 'ko' ? 'Switch to English' : '한국어로 전환'}
-              >
-                {t('lang.switch')}
-              </button>
             </div>
           </div>
         </div>

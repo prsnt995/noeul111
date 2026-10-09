@@ -12,16 +12,16 @@ export function DetailContentBand({ blocks = [] }) {
   if (!Array.isArray(blocks) || blocks.length === 0) return null;
 
   const pick = (bilingual) => {
-    const ko = String(bilingual?.ko || '');
-    const en = String(bilingual?.en || '');
-    return lang === 'ko' ? (ko || en) : (en || ko);
+    if (!bilingual) return '';
+    if (typeof bilingual === 'string') return bilingual;
+    return String(bilingual.ko || bilingual.en || '');
   };
 
   let firstHeading = true;
 
   return (
     <section
-      aria-label={lang === 'ko' ? '상세 콘텐츠' : 'Product detail content'}
+      aria-label="상세 콘텐츠"
       style={{ backgroundColor: '#f7f6f3', borderRadius: '8px', padding: '40px 24px', marginBottom: '64px' }}
     >
       <div style={{ maxWidth: '880px', margin: '0 auto' }}>

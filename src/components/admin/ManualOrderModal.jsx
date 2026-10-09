@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ORDER_SOURCES, sourceLabel } from '../../utils/orderSources.js';
 import { X, Search, Plus, Trash2 } from 'lucide-react';
 
@@ -11,7 +10,6 @@ import { X, Search, Plus, Trash2 } from 'lucide-react';
 // and payment is confirmed via the existing verify-payment path.
 export function ManualOrderModal({ onClose, onCreated }) {
   const { showToast } = useToast();
-  const { lang } = useLanguage();
   const [saving, setSaving] = useState(false);
 
   const [orderSource, setOrderSource] = useState('instagram');
@@ -28,14 +26,22 @@ export function ManualOrderModal({ onClose, onCreated }) {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [checkingCoupon, setCheckingCoupon] = useState(false);
   const [couponError, setCouponError] = useState('');
-  const [items, setItems] = useState([]);
 
-  // Customer search (link if exists)
+  // Close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Customer search autocomplete
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState([]);
   const [searchingCustomers, setSearchingCustomers] = useState(false);
 
-  // Product / variant picker — color and size are two separate selects.
+  // Product picker
   const [productQuery, setProductQuery] = useState('');
   const [productResults, setProductResults] = useState([]);
   const [searchingProducts, setSearchingProducts] = useState(false);
@@ -44,49 +50,52 @@ export function ManualOrderModal({ onClose, onCreated }) {
   const [selectedSize, setSelectedSize] = useState('');
   const [pickQty, setPickQty] = useState(1);
 
-  // Esc closes (adm-modal is CSS only — no built-in focus trap here).
-  useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  // Items in manual order: [{ key, product_id, variant_id, product_name, size, color, unit_price, quantity }]
+  const [items, setItems] = useState([]);
 
+  // Debounced customer search
   useEffect(() => {
-    if (!customerQuery.trim() || customerQuery.trim().length < 2) {
+    const q = customerQuery.trim();
+    if (q.length < 2) {
       setCustomerResults([]);
-      return;
+      return undefined;
     }
     const t = setTimeout(async () => {
       setSearchingCustomers(true);
       try {
-        const res = await adminApi.get(`/admin/customers?search=${encodeURIComponent(customerQuery.trim())}`);
-        setCustomerResults((res.data || []).slice(0, 8));
+        const res = await adminApi.get(`/admin/customers?search=${encodeURIComponent(q)}&limit=5`);
+        if (res.success) {
+          setCustomerResults(res.data?.customers || res.data || []);
+        }
       } catch {
         setCustomerResults([]);
       } finally {
         setSearchingCustomers(false);
       }
-    }, 350);
+    }, 250);
     return () => clearTimeout(t);
   }, [customerQuery]);
 
+  // Debounced product search
   useEffect(() => {
-    if (!productQuery.trim() || productQuery.trim().length < 2) {
+    const q = productQuery.trim();
+    if (q.length < 2) {
       setProductResults([]);
-      return;
+      return undefined;
     }
     const t = setTimeout(async () => {
       setSearchingProducts(true);
       try {
-        const res = await adminApi.get(`/admin/products?search=${encodeURIComponent(productQuery.trim())}&limit=8`);
-        // Hide fully sold-out products from the picker.
-        setProductResults((res.data || []).filter(p => totalAvailable(p) > 0));
+        const res = await adminApi.get(`/admin/products?search=${encodeURIComponent(q)}&limit=6`);
+        if (res.success) {
+          setProductResults(res.data?.products || res.data || []);
+        }
       } catch {
         setProductResults([]);
       } finally {
         setSearchingProducts(false);
       }
-    }, 350);
+    }, 250);
     return () => clearTimeout(t);
   }, [productQuery]);
 
@@ -95,121 +104,134 @@ export function ManualOrderModal({ onClose, onCreated }) {
     setCustomerName(c.name || '');
     setCustomerPhone(c.phone || '');
     setCustomerEmail(c.email || '');
-    setPostalCode(c.postal_code || '');
-    setAddress(c.address || '');
-    setDetailAddress(c.detail_address || '');
+    if (c.default_address) {
+      setPostalCode(c.default_address.postal_code || '');
+      setAddress(c.default_address.address || '');
+      setDetailAddress(c.default_address.detail_address || '');
+    }
     setCustomerResults([]);
+    setCustomerQuery(c.name || c.email || '');
+  };
+
+  const clearLinkedCustomer = () => {
+    setCustomerId(null);
     setCustomerQuery('');
   };
-
-  const clearLinkedCustomer = () => setCustomerId(null);
-
-  // Normalize to per-variant rows { id, color, size, available }.
-  // Supabase shape uses p.variants (stock − reserved per variant);
-  // legacy shape falls back to product-level stock for every combo.
-  const allVariants = (p) => {
-    if (!p) return [];
-    if (Array.isArray(p.variants) && p.variants.length) {
-      return p.variants
-        .filter(v => v.active !== false)
-        .map(v => ({
-          id: v.id,
-          color: v.color || 'DEFAULT',
-          size: v.size || 'FREE',
-          available: Math.max(0, (v.stock || 0) - (v.reserved || 0)),
-        }));
-    }
-    const sizes = p.sizes && p.sizes.length ? p.sizes : ['FREE'];
-    const colors = p.colors && p.colors.length ? p.colors : ['DEFAULT'];
-    const stock = Number(p.stock ?? 0);
-    const rows = [];
-    for (const color of colors) {
-      for (const size of sizes) {
-        const c = typeof color === 'string' ? color : (color.name_ko || color.name_en || 'DEFAULT');
-        const s = typeof size === 'string' ? size : 'FREE';
-        rows.push({ id: null, productId: p.id, color: c, size: s, available: stock });
-      }
-    }
-    return rows;
-  };
-
-  const totalAvailable = (p) => allVariants(p).reduce((s, v) => s + v.available, 0);
-
-  // Colors with at least one available size — fully sold-out colors hidden.
-  const colorOptions = (p) => {
-    const seen = [];
-    for (const v of allVariants(p)) {
-      if (v.available > 0 && !seen.includes(v.color)) seen.push(v.color);
-    }
-    return seen;
-  };
-
-  // Available sizes of one color — sold-out sizes (e.g. Black/L) hidden.
-  const sizeOptions = (p, color) =>
-    allVariants(p).filter(v => v.color === color && v.available > 0);
-
-  const findVariant = (p, color, size) =>
-    allVariants(p).find(v => v.color === color && v.size === size) || null;
 
   const pickProduct = (p) => {
     setSelectedProduct(p);
     const colors = colorOptions(p);
-    const firstColor = colors[0] || '';
-    setSelectedColor(firstColor);
-    const sizes = sizeOptions(p, firstColor);
+    const initialColor = colors[0] || '';
+    setSelectedColor(initialColor);
+    const sizes = sizeOptions(p, initialColor);
     setSelectedSize(sizes[0]?.size || '');
     setPickQty(1);
+    setProductResults([]);
   };
 
-  // Quantity already in the draft for the same variant.
-  const draftQty = (productId, variantId, color, size) =>
-    items
-      .filter(i => i.product_id === productId && (variantId ? i.variant_id === variantId : (i.color === color && i.size === size)))
-      .reduce((s, i) => s + i.quantity, 0);
+  const colorOptions = (prod) => {
+    if (!prod) return [];
+    if (Array.isArray(prod.colors) && prod.colors.length > 0) {
+      return prod.colors.map(c => (typeof c === 'object' ? c.name_ko || c.name || c.name_en : c)).filter(Boolean);
+    }
+    if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+      const set = new Set();
+      prod.variants.forEach(v => { if (v.color) set.add(v.color); });
+      if (set.size > 0) return Array.from(set);
+    }
+    return ['단일색상'];
+  };
 
-  const currentVariant = selectedProduct ? findVariant(selectedProduct, selectedColor, selectedSize) : null;
-  const currentAvailable = currentVariant
-    ? Math.max(0, currentVariant.available - draftQty(selectedProduct.id, currentVariant.id, selectedColor, selectedSize))
-    : 0;
+  const sizeOptions = (prod, color) => {
+    if (!prod) return [];
+    if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+      const filtered = prod.variants.filter(v => !color || !v.color || v.color === color);
+      return filtered.map(v => ({
+        size: v.size || 'FREE',
+        variant_id: v.id,
+        available: typeof v.stock === 'number' ? v.stock : 99,
+        price: v.price || prod.discount_price || prod.price,
+      }));
+    }
+    const sizes = Array.isArray(prod.sizes) && prod.sizes.length > 0 ? prod.sizes : ['FREE'];
+    return sizes.map(s => ({
+      size: s,
+      variant_id: null,
+      available: typeof prod.stock === 'number' ? prod.stock : 99,
+      price: prod.discount_price || prod.price,
+    }));
+  };
+
+  const currentAvailable = (() => {
+    if (!selectedProduct) return 0;
+    const sizes = sizeOptions(selectedProduct, selectedColor);
+    const found = sizes.find(s => s.size === selectedSize);
+    return found ? found.available : (selectedProduct.stock ?? 0);
+  })();
+
+  const totalAvailable = (prod) => {
+    if (!prod) return 0;
+    if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+      return prod.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+    }
+    return prod.stock ?? 0;
+  };
 
   const addItem = () => {
-    if (!selectedProduct || !currentVariant || currentAvailable < 1) return;
-    const qty = Math.max(1, Math.min(currentAvailable, Number(pickQty) || 1));
-    const unit = Number(selectedProduct.discount_price || selectedProduct.price || 0);
-    setItems(prev => [...prev, {
-      key: `${selectedProduct.id}-${currentVariant.id || `${selectedColor}-${selectedSize}`}-${Date.now()}`,
-      product_id: selectedProduct.id,
-      variant_id: currentVariant.id || null,
-      variant_label: `${selectedColor} / ${selectedSize}`,
-      color: selectedColor,
-      size: selectedSize,
-      product_name: selectedProduct.name_ko || selectedProduct.name_en || '',
-      unit_price: unit,
-      quantity: qty,
-    }]);
-    setPickQty(1);
-    // Draft subtotal changed — validated coupon may no longer apply.
-    setAppliedCoupon(null);
-    setCouponError('');
+    if (!selectedProduct) return;
+    const qty = Math.max(1, parseInt(pickQty, 10) || 1);
+    if (qty > currentAvailable) {
+      showToast(`남은 재고(${currentAvailable}개)보다 많이 선택할 수 없습니다.`, 'error');
+      return;
+    }
+    const sizes = sizeOptions(selectedProduct, selectedColor);
+    const found = sizes.find(s => s.size === selectedSize);
+    const key = `${selectedProduct.id}-${selectedColor}-${selectedSize}`;
+    const unitPrice = selectedProduct.discount_price || selectedProduct.price;
+
+    setItems(prev => {
+      const idx = prev.findIndex(i => i.key === key);
+      if (idx >= 0) {
+        const next = [...prev];
+        const newQty = next[idx].quantity + qty;
+        if (newQty > currentAvailable) {
+          showToast(`남은 재고(${currentAvailable}개)를 초과합니다.`, 'error');
+          return prev;
+        }
+        next[idx] = { ...next[idx], quantity: newQty };
+        return next;
+      }
+      return [...prev, {
+        key,
+        product_id: selectedProduct.id,
+        variant_id: found?.variant_id || null,
+        product_name: selectedProduct.name_ko || selectedProduct.name || selectedProduct.name_en,
+        color: selectedColor,
+        size: selectedSize,
+        variant_label: `${selectedColor} / ${selectedSize}`,
+        unit_price: unitPrice,
+        quantity: qty,
+      }];
+    });
+
+    setSelectedProduct(null);
+    setProductQuery('');
+    setProductResults([]);
   };
 
   const removeItem = (key) => {
     setItems(prev => prev.filter(i => i.key !== key));
-    // Draft subtotal changed — validated coupon may no longer apply.
-    setAppliedCoupon(null);
-    setCouponError('');
   };
 
   const couponErrorText = (code) => {
     const map = {
-      COUPON_CODE_REQUIRED: { ko: '쿠폰 코드를 입력해주세요.', en: 'Enter a coupon code.' },
-      COUPON_INVALID: { ko: '유효하지 않은 쿠폰 코드입니다.', en: 'Invalid coupon code.' },
-      COUPON_EXPIRED: { ko: '사용 기간이 아닌 쿠폰입니다.', en: 'Coupon is not valid at this time.' },
-      COUPON_LIMIT_REACHED: { ko: '쿠폰 사용 수량이 모두 소진되었습니다.', en: 'Coupon usage limit reached.' },
-      COUPON_MINIMUM_NOT_MET: { ko: '최소 주문 금액을 충족하지 않아 사용할 수 없습니다.', en: 'Minimum order amount not met.' },
+      COUPON_CODE_REQUIRED: '쿠폰 코드를 입력해주세요.',
+      COUPON_INVALID: '유효하지 않은 쿠폰 코드입니다.',
+      COUPON_EXPIRED: '사용 기간이 아닌 쿠폰입니다.',
+      COUPON_LIMIT_REACHED: '쿠폰 사용 수량이 모두 소진되었습니다.',
+      COUPON_MINIMUM_NOT_MET: '최소 주문 금액을 충족하지 않아 사용할 수 없습니다.',
     };
-    const entry = map[code] || { ko: '쿠폰을 확인할 수 없습니다.', en: 'Could not validate coupon.' };
-    return lang === 'en' ? entry.en : entry.ko;
+    return map[code] || '쿠폰을 확인할 수 없습니다.';
   };
 
   const handleCouponCheck = async () => {
@@ -221,7 +243,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
       const res = await adminApi.get(`/admin/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}`);
       if (res.success) {
         setAppliedCoupon(res.data);
-        showToast(lang === 'en' ? `Coupon applied: -${formatKRW(res.data.discount)}` : `쿠폰 적용됨: -${formatKRW(res.data.discount)}`, 'success');
+        showToast(`쿠폰 적용됨: -${formatKRW(res.data.discount)}`, 'success');
       }
     } catch (err) {
       setAppliedCoupon(null);
@@ -245,7 +267,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (items.length === 0) {
-      showToast(lang === 'en' ? 'Add at least one product.' : '상품을 1개 이상 추가해주세요.', 'error');
+      showToast('상품을 1개 이상 추가해주세요.', 'error');
       return;
     }
     // Legacy SQLite path uses product_id; Supabase path needs variant_id.
@@ -274,12 +296,12 @@ export function ManualOrderModal({ onClose, onCreated }) {
         items: payloadItems,
       });
       if (res.success) {
-        showToast(lang === 'en' ? 'External order created.' : '외부 주문이 등록되었습니다.', 'success');
+        showToast('외부 주문이 등록되었습니다.', 'success');
         onCreated?.(res.data);
         onClose();
       }
     } catch (err) {
-      showToast(err?.message || (lang === 'en' ? 'Failed to create order.' : '주문 등록 실패'), 'error');
+      showToast(err?.message || '주문 등록 실패', 'error');
     } finally {
       setSaving(false);
     }
@@ -288,19 +310,17 @@ export function ManualOrderModal({ onClose, onCreated }) {
   return (
     <>
       <div className="adm-backdrop" onClick={onClose} />
-      <div className="adm-modal" role="dialog" aria-modal="true" aria-label={lang === 'en' ? 'New Manual Order' : '외부 주문 등록'} style={{ maxWidth: 720 }}>
+      <div className="adm-modal" role="dialog" aria-modal="true" aria-label="외부 주문 등록" style={{ maxWidth: 720 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
           <div>
             <h2>
-              {lang === 'en' ? 'New Manual Order' : '외부 주문 등록'} <small style={{ fontSize: '0.8rem', color: '#71717a', fontWeight: 400 }}>(Instagram / TikTok)</small>
+              외부 주문 등록 <small style={{ fontSize: '0.8rem', color: '#71717a', fontWeight: 400 }}>(Instagram / TikTok)</small>
             </h2>
             <p className="adm-modal-sub" style={{ marginBottom: 0 }}>
-              {lang === 'en'
-                ? 'Stock is reserved immediately. Payment is confirmed via the bank-transfer verify flow.'
-                : '등록 즉시 재고가 차감(예약)되며, 무통장 입금 검수 흐름으로 결제를 확정합니다.'}
+              등록 즉시 재고가 차감(예약)되며, 무통장 입금 검수 흐름으로 결제를 확정합니다.
             </p>
           </div>
-          <button type="button" className="adm-icon-btn" onClick={onClose} aria-label={lang === 'en' ? 'Close dialog' : '닫기 Close'}>
+          <button type="button" className="adm-icon-btn" onClick={onClose} aria-label="닫기">
             <X size={16} />
           </button>
         </div>
@@ -308,28 +328,28 @@ export function ManualOrderModal({ onClose, onCreated }) {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px', marginTop: 12 }}>
           <div className="adm-form-grid">
             <div>
-              <label className="adm-label" htmlFor="manual-source">{lang === 'en' ? 'Channel *' : '주문 채널 *'}</label>
+              <label className="adm-label" htmlFor="manual-source">주문 채널 *</label>
               <select id="manual-source" value={orderSource} onChange={(e) => setOrderSource(e.target.value)} className="adm-select" style={{ width: '100%' }}>
                 {ORDER_SOURCES.filter(s => s !== 'website').map(s => (
-                  <option key={s} value={s}>{sourceLabel(s, 'ko')} ({sourceLabel(s, 'en')})</option>
+                  <option key={s} value={s}>{sourceLabel(s, 'ko')}</option>
                 ))}
-                <option value="website">{sourceLabel('website', 'ko')} ({sourceLabel('website', 'en')})</option>
+                <option value="website">{sourceLabel('website', 'ko')}</option>
               </select>
             </div>
             <div>
-              <label className="adm-label" htmlFor="manual-source-detail">{lang === 'en' ? 'Channel memo (e.g. IG handle)' : '채널 메모 (예: IG 아이디)'}</label>
-              <input id="manual-source-detail" value={sourceDetail} onChange={(e) => setSourceDetail(e.target.value)} className="adm-input" placeholder="e.g. @noeul.seoul" maxLength={200} />
+              <label className="adm-label" htmlFor="manual-source-detail">채널 메모 (예: IG 아이디)</label>
+              <input id="manual-source-detail" value={sourceDetail} onChange={(e) => setSourceDetail(e.target.value)} className="adm-input" placeholder="예: @noeul.seoul" maxLength={200} />
             </div>
           </div>
 
           <div className="adm-card" style={{ padding: '14px' }}>
             <label className="adm-label" htmlFor="manual-customer-search">
-              {lang === 'en' ? 'Link member (optional)' : '회원 연결 (선택)'} {customerId && <span style={{ color: '#16a34a' }}>✓ 연결됨 Linked</span>}
+              회원 연결 (선택) {customerId && <span style={{ color: '#16a34a' }}>✓ 연결됨</span>}
             </label>
             <div style={{ position: 'relative', display: 'flex', gap: '8px' }}>
               <Search size={15} color="#999" aria-hidden style={{ position: 'absolute', top: '11px', left: '10px' }} />
-              <input id="manual-customer-search" value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)} className="adm-input" placeholder={lang === 'en' ? 'Search name / email / phone' : '이름 / 이메일 / 연락처 검색'} style={{ paddingLeft: '32px' }} />
-              {customerId && <button type="button" className="adm-btn" onClick={clearLinkedCustomer}>해제 Unlink</button>}
+              <input id="manual-customer-search" value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)} className="adm-input" placeholder="이름 / 이메일 / 연락처 검색" style={{ paddingLeft: '32px' }} />
+              {customerId && <button type="button" className="adm-btn" onClick={clearLinkedCustomer}>해제</button>}
             </div>
             {searchingCustomers && <p style={{ fontSize: '0.75rem', color: '#888' }}>검색 중…</p>}
             {customerResults.length > 0 && (
@@ -342,26 +362,26 @@ export function ManualOrderModal({ onClose, onCreated }) {
               </div>
             )}
             <div className="adm-form-grid" style={{ marginTop: '12px' }}>
-              <div><label className="adm-label" htmlFor="manual-name">{lang === 'en' ? 'Recipient *' : '받는 분 *'}</label><input id="manual-name" required value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="adm-input" maxLength={60} /></div>
-              <div><label className="adm-label" htmlFor="manual-phone">{lang === 'en' ? 'Phone *' : '연락처 *'}</label><input id="manual-phone" required value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="adm-input" placeholder="010-0000-0000" maxLength={30} /></div>
-              <div className="full"><label className="adm-label" htmlFor="manual-email">Email</label><input id="manual-email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className="adm-input" maxLength={120} /></div>
-              <div><label className="adm-label" htmlFor="manual-postal">{lang === 'en' ? 'Postal code *' : '우편번호 *'}</label><input id="manual-postal" required value={postalCode} onChange={(e) => setPostalCode(e.target.value)} className="adm-input" maxLength={20} /></div>
-              <div><label className="adm-label" htmlFor="manual-addr">{lang === 'en' ? 'Address *' : '주소 *'}</label><input id="manual-addr" required value={address} onChange={(e) => setAddress(e.target.value)} className="adm-input" maxLength={200} /></div>
-              <div className="full"><label className="adm-label" htmlFor="manual-addr-detail">{lang === 'en' ? 'Detail address' : '상세 주소'}</label><input id="manual-addr-detail" value={detailAddress} onChange={(e) => setDetailAddress(e.target.value)} className="adm-input" maxLength={200} /></div>
-              <div className="full"><label className="adm-label" htmlFor="manual-memo">{lang === 'en' ? 'Shipping memo' : '배송 메모'}</label><input id="manual-memo" value={shippingMemo} onChange={(e) => setShippingMemo(e.target.value)} className="adm-input" maxLength={300} /></div>
+              <div><label className="adm-label" htmlFor="manual-name">받는 분 *</label><input id="manual-name" required value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="adm-input" maxLength={60} /></div>
+              <div><label className="adm-label" htmlFor="manual-phone">연락처 *</label><input id="manual-phone" required value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="adm-input" placeholder="010-0000-0000" maxLength={30} /></div>
+              <div className="full"><label className="adm-label" htmlFor="manual-email">이메일</label><input id="manual-email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className="adm-input" maxLength={120} /></div>
+              <div><label className="adm-label" htmlFor="manual-postal">우편번호 *</label><input id="manual-postal" required value={postalCode} onChange={(e) => setPostalCode(e.target.value)} className="adm-input" maxLength={20} /></div>
+              <div><label className="adm-label" htmlFor="manual-addr">주소 *</label><input id="manual-addr" required value={address} onChange={(e) => setAddress(e.target.value)} className="adm-input" maxLength={200} /></div>
+              <div className="full"><label className="adm-label" htmlFor="manual-addr-detail">상세 주소</label><input id="manual-addr-detail" value={detailAddress} onChange={(e) => setDetailAddress(e.target.value)} className="adm-input" maxLength={200} /></div>
+              <div className="full"><label className="adm-label" htmlFor="manual-memo">배송 메모</label><input id="manual-memo" value={shippingMemo} onChange={(e) => setShippingMemo(e.target.value)} className="adm-input" maxLength={300} /></div>
             </div>
           </div>
 
           <div className="adm-card" style={{ padding: '14px' }}>
-            <label className="adm-label" htmlFor="manual-product-search">{lang === 'en' ? 'Products *' : '주문 상품 *'}</label>
+            <label className="adm-label" htmlFor="manual-product-search">주문 상품 *</label>
             <div style={{ position: 'relative' }}>
               <Search size={15} color="#999" aria-hidden style={{ position: 'absolute', top: '11px', left: '10px' }} />
-              <input id="manual-product-search" value={productQuery} onChange={(e) => setProductQuery(e.target.value)} className="adm-input" placeholder={lang === 'en' ? 'Search products (2+ chars)' : '상품 검색 (2글자 이상)'} style={{ paddingLeft: '32px' }} />
+              <input id="manual-product-search" value={productQuery} onChange={(e) => setProductQuery(e.target.value)} className="adm-input" placeholder="상품 검색 (2글자 이상)" style={{ paddingLeft: '32px' }} />
             </div>
             {searchingProducts && <p style={{ fontSize: '0.75rem', color: '#888' }}>검색 중…</p>}
             {productResults.length > 0 && !selectedProduct && (
               <div style={{ border: '1px solid #e4e4e7', borderRadius: '6px', marginTop: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                {productResults.map(p => (
+                {productResults.filter(p => totalAvailable(p) > 0).map(p => (
                   <button key={p.id} type="button" onClick={() => pickProduct(p)} className="adm-cmd-item">
                     <span><strong>{p.name_ko}</strong></span>
                     <small>{formatKRW(p.discount_price || p.price)} · 재고 {totalAvailable(p)}개</small>
@@ -377,7 +397,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
                 </div>
                 <div className="adm-form-grid">
                   <div>
-                    <label className="adm-label" htmlFor="manual-color">{lang === 'en' ? 'Color' : '색상'}</label>
+                    <label className="adm-label" htmlFor="manual-color">색상</label>
                     <select
                       id="manual-color"
                       value={selectedColor}
@@ -397,7 +417,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
                     </select>
                   </div>
                   <div>
-                    <label className="adm-label" htmlFor="manual-size">{lang === 'en' ? 'Size' : '사이즈'}</label>
+                    <label className="adm-label" htmlFor="manual-size">사이즈</label>
                     <select
                       id="manual-size"
                       value={selectedSize}
@@ -411,7 +431,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
                     </select>
                   </div>
                   <div>
-                    <label className="adm-label" htmlFor="manual-qty">{lang === 'en' ? 'Qty' : '수량'}</label>
+                    <label className="adm-label" htmlFor="manual-qty">수량</label>
                     <input
                       id="manual-qty"
                       type="number" min={1} max={Math.max(1, currentAvailable)}
@@ -429,19 +449,19 @@ export function ManualOrderModal({ onClose, onCreated }) {
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' }}>
-              {items.length === 0 && <p style={{ fontSize: '0.8rem', color: '#999', margin: 0 }}>{lang === 'en' ? 'No items yet.' : '아직 추가된 상품이 없습니다.'}</p>}
+              {items.length === 0 && <p style={{ fontSize: '0.8rem', color: '#999', margin: 0 }}>아직 추가된 상품이 없습니다.</p>}
               {items.map(i => (
                 <div key={i.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: '0.85rem', background: '#fafafa', border: '1px solid #f0f0f2', borderRadius: '6px', padding: '8px 12px' }}>
                   <span><strong>{i.product_name}</strong> <span style={{ color: '#71717a' }}>{i.variant_label} × {i.quantity}</span></span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                     <strong>{formatKRW(i.unit_price * i.quantity)}</strong>
-                    <button type="button" onClick={() => removeItem(i.key)} aria-label="Remove item 항목 삭제" className="adm-icon-btn" style={{ color: '#dc2626', width: 28, height: 28 }}><Trash2 size={14} aria-hidden /></button>
+                    <button type="button" onClick={() => removeItem(i.key)} aria-label="항목 삭제" className="adm-icon-btn" style={{ color: '#dc2626', width: 28, height: 28 }}><Trash2 size={14} aria-hidden /></button>
                   </span>
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: '10px' }}>
-              <span>상품 합계 Subtotal</span><span>{formatKRW(subtotal)}</span>
+              <span>상품 합계</span><span>{formatKRW(subtotal)}</span>
             </div>
             {couponDiscount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#15803d' }}>
@@ -449,17 +469,17 @@ export function ManualOrderModal({ onClose, onCreated }) {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-              <span>배송비 Shipping</span><span>{formatKRW(shipping)}</span>
+              <span>배송비</span><span>{formatKRW(shipping)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-              <span>{lang === 'en' ? 'Total' : '합계'}</span><span>{formatKRW(total)}</span>
+              <span>총 결제 금액</span><span>{formatKRW(total)}</span>
             </div>
             <div style={{ marginTop: '8px' }}>
-              <label className="adm-label" htmlFor="manual-coupon">{lang === 'en' ? 'Coupon (optional)' : '쿠폰 코드 (선택)'}</label>
+              <label className="adm-label" htmlFor="manual-coupon">쿠폰 코드 (선택)</label>
               {appliedCoupon ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '8px 12px', fontSize: '0.85rem' }}>
                   <span><strong style={{ color: '#15803d' }}>✓ {appliedCoupon.code}</strong> <span style={{ color: '#15803d' }}>−{formatKRW(appliedCoupon.discount)}</span></span>
-                  <button type="button" onClick={clearCoupon} aria-label="Remove coupon 쿠폰 제거" className="adm-icon-btn" style={{ width: 28, height: 28 }}>✕</button>
+                  <button type="button" onClick={clearCoupon} aria-label="쿠폰 제거" className="adm-icon-btn" style={{ width: 28, height: 28 }}>✕</button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -480,7 +500,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
                     className="adm-btn"
                     style={{ whiteSpace: 'nowrap' }}
                   >
-                    {checkingCoupon ? (lang === 'en' ? 'Checking...' : '확인 중...') : (lang === 'en' ? 'Check' : '확인')}
+                    {checkingCoupon ? '확인 중...' : '확인'}
                   </button>
                 </div>
               )}
@@ -489,9 +509,9 @@ export function ManualOrderModal({ onClose, onCreated }) {
           </div>
 
           <div className="adm-modal-actions" style={{ marginTop: 0 }}>
-            <button type="button" onClick={onClose} className="adm-btn" style={{ flex: 1 }} disabled={saving}>취소 Cancel</button>
+            <button type="button" onClick={onClose} className="adm-btn" style={{ flex: 1 }} disabled={saving}>취소</button>
             <button type="submit" className="adm-btn adm-btn-primary" style={{ flex: 1 }} disabled={saving || items.length === 0}>
-              {saving ? (lang === 'en' ? 'Saving...' : '등록 중...') : (lang === 'en' ? 'Create Order' : '주문 등록하기')}
+              {saving ? '등록 중...' : '주문 등록하기'}
             </button>
           </div>
         </form>
