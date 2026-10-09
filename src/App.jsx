@@ -59,6 +59,7 @@ const AdminStaffPage = lazy(() => import('./pages/admin/AdminStaffPage.jsx').the
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage.jsx').then(m => ({ default: m.AdminSettingsPage })));
 const AdminAuditPage = lazy(() => import('./pages/admin/AdminAuditPage.jsx').then(m => ({ default: m.AdminAuditPage })));
 const AdminPrivacyPage = lazy(() => import('./pages/admin/AdminPrivacyPage.jsx').then(m => ({ default: m.AdminPrivacyPage })));
+const AdminBusinessPage = lazy(() => import('./pages/admin/AdminBusinessPage.jsx').then(m => ({ default: m.AdminBusinessPage })));
 
 function AppContent() {
   const [location] = useLocation();
@@ -129,6 +130,7 @@ function AppContent() {
           <Route path="/admin/settings" component={AdminSettingsPage} />
           <Route path="/admin/audit" component={AdminAuditPage} />
           <Route path="/admin/privacy" component={AdminPrivacyPage} />
+          <Route path="/admin/business" component={AdminBusinessPage} />
 
           {/* 404 Fallback */}
           <Route>

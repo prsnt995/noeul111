@@ -24,6 +24,7 @@ import {
   ChevronsLeft,
   ScrollText,
   KeyRound,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 // New IA: 5 ERP sections, bilingual labels kept as 한국어 (English).
@@ -34,6 +35,7 @@ const NAV_SECTIONS = [
     en: 'Overview',
     items: [
       { id: 'dashboard', ko: '대시보드', en: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+      { id: 'business', ko: '경영 관리 (Excel)', en: 'Business (Excel)', href: '/admin/business', icon: FileSpreadsheet },
       { id: 'reports', ko: '매출 리포트', en: 'Reports', href: '/admin/reports', icon: BarChart3 },
       { id: 'audit', ko: '감사 로그', en: 'Audit', href: '/admin/audit', icon: ScrollText },
     ],
@@ -88,6 +90,7 @@ function routeIdFromLocation(location, activePage) {
   if (location.startsWith('/admin/orders')) return 'orders';
   if (location.startsWith('/admin/products')) return 'products';
   if (location.startsWith('/admin/customers')) return 'customers';
+  if (location.startsWith('/admin/business')) return 'business';
   return 'dashboard';
 }
 

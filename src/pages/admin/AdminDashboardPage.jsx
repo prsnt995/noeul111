@@ -18,6 +18,7 @@ import {
   Plus,
   CheckCircle,
   Clock,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export function AdminDashboardPage() {
@@ -97,10 +98,28 @@ export function AdminDashboardPage() {
         en="Dashboard"
         desc="노을(NOEUL) 브랜드 실시간 매출 및 주문 배송 현황"
         actions={(
-          <Link href="/admin/products" className="adm-btn adm-btn-primary">
-            <Plus size={16} aria-hidden />
-            <span>새 상품 등록 New product</span>
-          </Link>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <Link
+              href="/admin/business"
+              className="adm-btn adm-btn-secondary"
+              style={{
+                backgroundColor: '#107c41',
+                color: '#ffffff',
+                borderColor: '#0e6b37',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <FileSpreadsheet size={16} aria-hidden />
+              <span>경영 관리 (Excel)</span>
+            </Link>
+            <Link href="/admin/products" className="adm-btn adm-btn-primary">
+              <Plus size={16} aria-hidden />
+              <span>새 상품 등록 New product</span>
+            </Link>
+          </div>
         )}
       />
 

@@ -22,6 +22,14 @@ import {
   UPLOAD_FAILED_EMPTY,
 } from '../src/config/upload.js';
 import { getCategoryPrefix, generateNextSku } from '../src/utils/product.js';
+import {
+  EXPENSE_CATEGORIES,
+  PAYMENT_METHODS,
+  toKstDateString,
+  toKstDateTimeString,
+  isOrderInPeriod,
+  calculateBusinessMetrics,
+} from '../src/utils/businessAccounting.js';
 
 // Wave 3: Supabase-backed /api/v1/admin/* surface. The storefront frontend
 // speaks legacy payload shapes; this module translates them onto the
@@ -42,6 +50,7 @@ const R = {
   settings: ['super_admin', 'admin'],
   customers: ['super_admin', 'admin', 'order_manager'],
   dashboard: ['super_admin', 'admin', 'order_manager'],
+  business: ['super_admin', 'admin', 'order_manager'],
 };
 
 const random = () => randomBytes(6).toString('base64url');
@@ -1902,6 +1911,427 @@ export function registerAdminRoutes(app, ctx) {
       await deleteDocItem(database, 'banners', req.params.id);
       res.json({ success: true });
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
+  });
+
+  // ---------- Business Management & Accounting ----------
+  app.get('/api/v1/admin/business/summary', ...need(R.business), async (req, res) => {
+    try {
+      const period = String(req.query.period || 'all').toLowerCase();
+      const from = req.query.from || '';
+      const to = req.query.to || '';
+
+      const [ordersRes, expensesRes, productsRes, variantsRes] = await Promise.all([
+        database().from('orders').select('*').order('created_at', { ascending: false }).limit(2000).then(r => r, () => ({ data: [] })),
+        database().from('business_expenses').select('*').order('expense_date', { ascending: false }).limit(2000).then(r => r, () => ({ data: [] })),
+        database().from('products').select('id,sku,name_ko,name_en,price,discount_price,category_id').then(r => r, () => ({ data: [] })),
+        database().from('product_variants').select('id,product_id,sku,color,size,stock,reserved').then(r => r, () => ({ data: [] })),
+      ]);
+
+      const allOrders = ordersRes.data || [];
+      const allExpenses = expensesRes.data || [];
+      const allProducts = productsRes.data || [];
+      const allVariants = variantsRes.data || [];
+
+      const variantsByProduct = new Map();
+      for (const v of allVariants) {
+        if (!variantsByProduct.has(v.product_id)) variantsByProduct.set(v.product_id, []);
+        variantsByProduct.get(v.product_id).push(v);
+      }
+      const enrichedProducts = allProducts.map(p => ({
+        ...p,
+        variants: variantsByProduct.get(p.id) || [],
+      }));
+
+      const filteredOrders = allOrders.filter(o => isOrderInPeriod(o.created_at, period, from, to));
+      const filteredExpenses = allExpenses.filter(e => isOrderInPeriod(e.expense_date, period, from, to));
+
+      if (filteredOrders.length) {
+        const oids = filteredOrders.map(o => o.id);
+        const { data: itemRows } = await database().from('order_items').select('*').in('order_id', oids).then(r => r, () => ({ data: [] }));
+        const itemsByOrder = new Map();
+        for (const it of (itemRows || [])) {
+          if (!itemsByOrder.has(it.order_id)) itemsByOrder.set(it.order_id, []);
+          itemsByOrder.get(it.order_id).push(it);
+        }
+        for (const o of filteredOrders) {
+          o.items = itemsByOrder.get(o.id) || [];
+        }
+      }
+
+      const metrics = calculateBusinessMetrics({
+        orders: filteredOrders,
+        expenses: filteredExpenses,
+        products: enrichedProducts,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          metrics,
+          period,
+          from,
+          to,
+          todayKst: toKstDateString(new Date()),
+          generated_at: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      console.error('business summary error', err);
+      error(res, 503, 'BUSINESS_SUMMARY_UNAVAILABLE');
+    }
+  });
+
+  app.get('/api/v1/admin/business/orders', ...need(R.business), async (req, res) => {
+    try {
+      const period = String(req.query.period || 'all').toLowerCase();
+      const from = req.query.from || '';
+      const to = req.query.to || '';
+      const category = req.query.category || 'all';
+      const search = req.query.search || '';
+      const { page, pageSize, offset } = parseListQuery(req.query, { pageSize: 50, maxPageSize: 200 });
+
+      const { data: orderRows, error: oErr } = await database().from('orders').select('*').order('created_at', { ascending: false }).limit(2000);
+      if (oErr) throw oErr;
+
+      let orders = await adminOrderList(orderRows || []);
+
+      const { data: catRows } = await database().from('categories').select('*').then(r => r, () => ({ data: [] }));
+      const catMap = new Map((catRows || []).map(c => [String(c.id), c]));
+      const catSlugMap = new Map((catRows || []).map(c => [c.slug?.toLowerCase(), c]));
+
+      const { data: prodRows } = await database().from('products').select('id,sku,category_id').then(r => r, () => ({ data: [] }));
+      const prodCatMap = new Map((prodRows || []).map(p => [p.sku, p.category_id]));
+
+      for (const o of orders) {
+        for (const it of o.items || []) {
+          const catId = prodCatMap.get(it.product_sku);
+          const cat = catId ? catMap.get(String(catId)) : null;
+          it.category_id = catId;
+          it.category_name = cat?.name_ko || '기타';
+          it.category_slug = cat?.slug || 'other';
+        }
+      }
+
+      if (period && period !== 'all') {
+        orders = orders.filter(o => isOrderInPeriod(o.created_at, period, from, to));
+      }
+
+      if (category && category !== 'all') {
+        const targetCat = catMap.get(String(category)) || catSlugMap.get(String(category).toLowerCase());
+        orders = orders.filter(o => (o.items || []).some(it =>
+          (targetCat && String(it.category_id) === String(targetCat.id)) ||
+          (it.category_slug && it.category_slug.toLowerCase() === String(category).toLowerCase())
+        ));
+      }
+
+      if (search) {
+        const q = search.toLowerCase().trim();
+        orders = orders.filter(o =>
+          (o.order_number && o.order_number.toLowerCase().includes(q)) ||
+          (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
+          (o.customer_phone && o.customer_phone.includes(q)) ||
+          (o.items || []).some(it =>
+            (it.product_name_ko && it.product_name_ko.toLowerCase().includes(q)) ||
+            (it.product_sku && it.product_sku.toLowerCase().includes(q))
+          )
+        );
+      }
+
+      const total = orders.length;
+      const paginated = orders.slice(offset, offset + pageSize);
+      res.json(pageEnvelope({ data: paginated, total, page, pageSize }));
+    } catch (err) {
+      console.error('business orders error', err);
+      error(res, 503, 'BUSINESS_ORDERS_UNAVAILABLE');
+    }
+  });
+
+  app.get('/api/v1/admin/business/category-reports', ...need(R.business), async (req, res) => {
+    try {
+      const period = String(req.query.period || 'all').toLowerCase();
+      const from = req.query.from || '';
+      const to = req.query.to || '';
+
+      const [catRes, orderRowsRes, prodRes] = await Promise.all([
+        database().from('categories').select('*').order('sort_order', { ascending: true }).then(r => r, () => ({ data: [] })),
+        database().from('orders').select('*').order('created_at', { ascending: false }).limit(2000).then(r => r, () => ({ data: [] })),
+        database().from('products').select('id,sku,name_ko,category_id').then(r => r, () => ({ data: [] })),
+      ]);
+
+      const categories = catRes.data || [];
+      const allOrders = await adminOrderList(orderRowsRes.data || []);
+      const products = prodRes.data || [];
+
+      const prodCatMap = new Map((products || []).map(p => [p.sku, p.category_id]));
+
+      const filteredOrders = allOrders.filter(o => isOrderInPeriod(o.created_at, period, from, to));
+
+      const reports = categories.map(cat => {
+        const catId = cat.id;
+        const catSlug = (cat.slug || '').toLowerCase();
+        const items = [];
+        let totalQuantity = 0;
+        let totalSubtotal = 0;
+        const orderIds = new Set();
+
+        for (const o of filteredOrders) {
+          for (const it of o.items || []) {
+            const itCatId = prodCatMap.get(it.product_sku);
+            const match = (itCatId && String(itCatId) === String(catId)) || (it.category_slug && it.category_slug.toLowerCase() === catSlug);
+            if (match) {
+              orderIds.add(o.id);
+              const qty = Number(it.quantity) || 1;
+              const price = Number(it.price) || 0;
+              const subtotal = qty * price;
+              totalQuantity += qty;
+              totalSubtotal += subtotal;
+
+              items.push({
+                order_id: o.id,
+                order_number: o.order_number,
+                created_at: o.created_at,
+                created_at_kst: toKstDateTimeString(o.created_at),
+                customer_name: o.customer_name,
+                customer_phone: o.customer_phone,
+                product_name: it.product_name_ko || it.product_sku,
+                sku: it.product_sku,
+                size: it.size || 'FREE',
+                color: it.color || 'DEFAULT',
+                quantity: qty,
+                price,
+                subtotal,
+                order_shipping_fee: Number(o.shipping_fee ?? 0),
+                payment_status: o.payment_status,
+                order_status: o.order_status,
+              });
+            }
+          }
+        }
+
+        return {
+          category_id: cat.id,
+          category_name: cat.name_ko,
+          category_slug: cat.slug,
+          orders_count: orderIds.size,
+          items_count: totalQuantity,
+          total_subtotal: totalSubtotal,
+          items,
+        };
+      });
+
+      res.json({
+        success: true,
+        data: {
+          reports,
+          period,
+          categories_count: categories.length,
+        },
+      });
+    } catch (err) {
+      console.error('business category reports error', err);
+      error(res, 503, 'CATEGORY_REPORTS_UNAVAILABLE');
+    }
+  });
+
+  app.get('/api/v1/admin/expenses', ...need(R.business), async (req, res) => {
+    try {
+      const { category, period, from, to, search } = req.query;
+      const { page, pageSize, offset, sort, order } = parseListQuery(req.query, {
+        pageSize: 50, maxPageSize: 200, sort: 'expense_date', order: 'desc',
+      });
+      const sortCol = pickSort(sort, ['expense_date', 'amount', 'created_at'], 'expense_date');
+      const ascending = order === 'asc';
+
+      let q = database().from('business_expenses').select('*', { count: 'exact' }).order(sortCol, { ascending });
+      if (category && category !== 'all') {
+        q = q.eq('category', category);
+      }
+      if (search) {
+        const safe = escapeIlike(search);
+        if (safe) q = q.or(`description.ilike.%${safe}%,notes.ilike.%${safe}%,order_id.ilike.%${safe}%`);
+      }
+
+      const { data, count, error: expErr } = await q;
+      if (expErr) throw expErr;
+
+      let list = data || [];
+      if (period && period !== 'all') {
+        list = list.filter(e => isOrderInPeriod(e.expense_date, period, from, to));
+      }
+
+      const total = list.length;
+      const paginated = list.slice(offset, offset + pageSize);
+      res.json(pageEnvelope({ data: paginated, total, page, pageSize }));
+    } catch (err) {
+      console.error('expenses error', err);
+      error(res, 503, 'EXPENSES_UNAVAILABLE');
+    }
+  });
+
+  app.post('/api/v1/admin/expenses', ...need(R.business), async (req, res) => {
+    try {
+      const b = req.body || {};
+      const category = String(b.category || '').trim();
+      const validCat = EXPENSE_CATEGORIES.some(c => c.id === category);
+      if (!validCat) return error(res, 400, 'INVALID_EXPENSE_CATEGORY');
+
+      const amount = Number(b.amount);
+      if (!amount || amount <= 0 || !Number.isFinite(amount)) return error(res, 400, 'INVALID_AMOUNT');
+
+      const dateStr = b.expense_date ? toKstDateString(b.expense_date) : toKstDateString(new Date());
+      if (!dateStr) return error(res, 400, 'INVALID_DATE');
+
+      const validMethod = PAYMENT_METHODS.some(m => m.id === b.payment_method) ? b.payment_method : 'card';
+
+      const record = {
+        id: uid(),
+        expense_date: dateStr,
+        category,
+        description: String(b.description || '').trim().slice(0, 300),
+        amount: Math.round(amount),
+        payment_method: validMethod,
+        order_id: b.order_id ? String(b.order_id).trim().slice(0, 100) : null,
+        notes: b.notes ? String(b.notes).trim().slice(0, 500) : null,
+        receipt_url: b.receipt_url ? String(b.receipt_url).trim().slice(0, 500) : null,
+        created_by: req.locals?.session?.user_id || null,
+      };
+
+      const { data, error: insErr } = await database().from('business_expenses').insert(record).select().maybeSingle();
+      if (insErr) throw insErr;
+
+      await auditLog(req, 'EXPENSE_CREATE', { table: 'business_expenses', id: record.id, amount: record.amount, category: record.category });
+      res.status(201).json({ success: true, data: data || record });
+    } catch (err) {
+      console.error('create expense error', err);
+      error(res, 503, 'EXPENSE_CREATE_FAILED');
+    }
+  });
+
+  app.put('/api/v1/admin/expenses/:id', ...need(R.business), async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { data: existing } = await database().from('business_expenses').select('*').eq('id', id).maybeSingle();
+      if (!existing) return error(res, 404, 'EXPENSE_NOT_FOUND');
+
+      const b = req.body || {};
+      const updates = {};
+      if (b.category !== undefined) {
+        if (!EXPENSE_CATEGORIES.some(c => c.id === b.category)) return error(res, 400, 'INVALID_EXPENSE_CATEGORY');
+        updates.category = b.category;
+      }
+      if (b.amount !== undefined) {
+        const amount = Number(b.amount);
+        if (!amount || amount <= 0 || !Number.isFinite(amount)) return error(res, 400, 'INVALID_AMOUNT');
+        updates.amount = Math.round(amount);
+      }
+      if (b.expense_date !== undefined) {
+        const d = toKstDateString(b.expense_date);
+        if (!d) return error(res, 400, 'INVALID_DATE');
+        updates.expense_date = d;
+      }
+      if (b.description !== undefined) updates.description = String(b.description || '').trim().slice(0, 300);
+      if (b.payment_method !== undefined) {
+        updates.payment_method = PAYMENT_METHODS.some(m => m.id === b.payment_method) ? b.payment_method : 'card';
+      }
+      if (b.order_id !== undefined) updates.order_id = b.order_id ? String(b.order_id).trim().slice(0, 100) : null;
+      if (b.notes !== undefined) updates.notes = b.notes ? String(b.notes).trim().slice(0, 500) : null;
+      if (b.receipt_url !== undefined) updates.receipt_url = b.receipt_url ? String(b.receipt_url).trim().slice(0, 500) : null;
+      updates.updated_at = new Date().toISOString();
+
+      const { data, error: upErr } = await database().from('business_expenses').update(updates).eq('id', id).select().maybeSingle();
+      if (upErr) throw upErr;
+
+      await auditLog(req, 'EXPENSE_UPDATE', { table: 'business_expenses', id, before: existing, after: updates });
+      res.json({ success: true, data: data || { ...existing, ...updates } });
+    } catch (err) {
+      console.error('update expense error', err);
+      error(res, 503, 'EXPENSE_UPDATE_FAILED');
+    }
+  });
+
+  app.delete('/api/v1/admin/expenses/:id', ...need(R.business), async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { data: existing } = await database().from('business_expenses').select('*').eq('id', id).maybeSingle();
+      if (!existing) return error(res, 404, 'EXPENSE_NOT_FOUND');
+
+      const { error: delErr } = await database().from('business_expenses').delete().eq('id', id);
+      if (delErr) throw delErr;
+
+      await auditLog(req, 'EXPENSE_DELETE', { table: 'business_expenses', id, deleted: existing });
+      res.json({ success: true });
+    } catch (err) {
+      console.error('delete expense error', err);
+      error(res, 503, 'EXPENSE_DELETE_FAILED');
+    }
+  });
+
+  app.post('/api/v1/admin/expenses/bulk', ...need(R.business), async (req, res) => {
+    try {
+      const items = req.body?.items;
+      if (!Array.isArray(items) || items.length === 0 || items.length > 500) {
+        return error(res, 400, 'INVALID_ITEMS');
+      }
+
+      const validRows = [];
+      for (const b of items) {
+        const category = String(b.category || '').trim();
+        const validCat = EXPENSE_CATEGORIES.some(c => c.id === category);
+        const amount = Number(b.amount);
+        const dateStr = b.expense_date ? toKstDateString(b.expense_date) : toKstDateString(new Date());
+
+        if (validCat && amount > 0 && dateStr) {
+          validRows.push({
+            id: uid(),
+            expense_date: dateStr,
+            category,
+            description: String(b.description || '').trim().slice(0, 300),
+            amount: Math.round(amount),
+            payment_method: PAYMENT_METHODS.some(m => m.id === b.payment_method) ? b.payment_method : 'card',
+            order_id: b.order_id ? String(b.order_id).trim().slice(0, 100) : null,
+            notes: b.notes ? String(b.notes).trim().slice(0, 500) : null,
+            created_by: req.locals?.session?.user_id || null,
+          });
+        }
+      }
+
+      if (validRows.length === 0) return error(res, 400, 'NO_VALID_EXPENSES');
+
+      const { data, error: insErr } = await database().from('business_expenses').insert(validRows).select();
+      if (insErr) throw insErr;
+
+      await auditLog(req, 'EXPENSE_BULK_IMPORT', { table: 'business_expenses', count: validRows.length });
+      res.status(201).json({ success: true, count: validRows.length, data: data || validRows });
+    } catch (err) {
+      console.error('bulk expenses error', err);
+      error(res, 503, 'EXPENSE_BULK_FAILED');
+    }
+  });
+
+  app.patch('/api/v1/admin/orders/:id/customer-details', ...need(R.orders), async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { data: order } = await database().from('orders').select('*').eq('id', id).maybeSingle();
+      if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
+
+      const b = req.body || {};
+      const addr = { ...(order.address || {}) };
+      if (b.customer_name !== undefined) addr.recipient = String(b.customer_name).trim().slice(0, 60);
+      if (b.customer_phone !== undefined) addr.phone = String(b.customer_phone).trim().slice(0, 30);
+      if (b.postal_code !== undefined) addr.postal_code = String(b.postal_code).trim().slice(0, 20);
+      if (b.address !== undefined) addr.address = String(b.address).trim().slice(0, 200);
+      if (b.detail_address !== undefined) addr.detail_address = String(b.detail_address).trim().slice(0, 200);
+      if (b.shipping_memo !== undefined) addr.shipping_memo = String(b.shipping_memo).trim().slice(0, 300);
+
+      const { error: upErr } = await database().from('orders').update({ address: addr }).eq('id', id);
+      if (upErr) throw upErr;
+
+      await auditLog(req, 'ORDER_ADDRESS_UPDATE', { table: 'orders', id, before: order.address, after: addr });
+      res.json({ success: true, data: await adminOrderDetail(id) });
+    } catch (err) {
+      console.error('order address update error', err);
+      error(res, 503, 'ORDERS_UNAVAILABLE');
+    }
   });
 
   // Builder / menus / pages removed — lean cloth store (generic CMS retired)
