@@ -180,6 +180,9 @@ export function AdminProductsPage() {
         setErrorMsg('관리자 로그인이 필요합니다. /admin/login 에서 Google 계정으로 로그인하세요.');
       } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
         setErrorMsg('관리자 권한이 없습니다. staff_members에 super_admin/admin으로 등록된 Google 계정으로 로그인하세요.');
+      } else if (msg.includes('PRODUCTS_UNAVAILABLE')) {
+        setErrorMsg('상품 데이터를 일시적으로 불러올 수 없습니다. 서버 상태 또는 데이터베이스 연결을 확인해 주세요. (PRODUCTS_UNAVAILABLE)');
+        showToast('상품 데이터를 일시적으로 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
       } else {
         setErrorMsg(msg || '상품 목록을 불러오지 못했습니다.');
         showToast(msg || '상품 목록을 불러오지 못했습니다.', 'error');
@@ -800,7 +803,16 @@ export function AdminProductsPage() {
             </button>
           )}
         />
-        <ErrorBanner message={errorMsg ? `상품 로드 실패: ${errorMsg}` : ''} onRetry={fetchProducts} />
+        <ErrorBanner
+          message={
+            errorMsg
+              ? errorMsg.startsWith('관리자') || errorMsg.startsWith('상품')
+                ? errorMsg
+                : `상품 로드 실패: ${errorMsg}`
+              : ''
+          }
+          onRetry={fetchProducts}
+        />
 
         {schemaIssue && !schemaIssue.ok && (
           <div className="adm-error" role="alert" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>

@@ -83,6 +83,12 @@ describe('PR2 — Admin list pagination contract', () => {
     expect(block.includes("filterType === 'sale'"), 'sale filter').toBe(true);
   });
 
+  it('products list declares both data and total variables before category branch', () => {
+    const block = endpointBlock('get', '/api/v1/admin/products');
+    expect(block.includes('let data = null;'), 'data declaration').toBe(true);
+    expect(block.includes('let total = 0;'), 'total declaration').toBe(true);
+  });
+
   it('reviews supports status + search filters alongside pagination', () => {
     const block = endpointBlock('get', '/api/v1/admin/reviews');
     expect(block.includes("status === 'approved'"), 'approved filter').toBe(true);

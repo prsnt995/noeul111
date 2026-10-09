@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 // Static analysis (no runtime imports) per repo test conventions.
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
 
 const GRID_PAGES = [
   'src/pages/HomePage.jsx',

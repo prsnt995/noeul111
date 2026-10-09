@@ -138,6 +138,7 @@ export function isOrderInPeriod(orderCreatedAt, period = 'all', customFrom = '',
  * - Shipping fee counted ONCE per order.
  * - Revenue, Costs, Gross Profit, Operating Expenses, Net Profit separated.
  * - Personal living expenses kept separate from operating expenses.
+ * @param {{ orders?: any[], expenses?: any[], products?: any[] }} [params]
  */
 export function calculateBusinessMetrics({ orders = [], expenses = [], products = [] } = {}) {
   let totalOrdersCount = orders.length;
@@ -282,6 +283,7 @@ export function calculateBusinessMetrics({ orders = [], expenses = [], products 
 
 /**
  * Builds multi-sheet Excel (.xlsx) workbook.
+ * @param {{ summaryMetrics?: any, orders?: any[], categories?: any[], expenses?: any[], products?: any[], datePeriodLabel?: string }} [params]
  */
 export function generateBusinessExcelWorkbook({
   summaryMetrics,
@@ -290,7 +292,7 @@ export function generateBusinessExcelWorkbook({
   expenses = [],
   products = [],
   datePeriodLabel = '전체 기간',
-}) {
+} = {}) {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Dashboard Summary

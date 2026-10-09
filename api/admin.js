@@ -712,6 +712,7 @@ export function registerAdminRoutes(app, ctx) {
       };
 
       let data = null;
+      let total = 0;
       const isAllCategory = !category || category === 'all' || category === '전체' || category === '전체 카테고리' || category === '전체카테고리';
       if (!isAllCategory) {
         const catStr = String(category).trim();
@@ -791,7 +792,10 @@ export function registerAdminRoutes(app, ctx) {
         };
       });
       res.json(pageEnvelope({ data: composed, total, page, pageSize }));
-    } catch { error(res, 503, 'PRODUCTS_UNAVAILABLE'); }
+    } catch (err) {
+      console.error('[GET /api/v1/admin/products failed]:', err);
+      error(res, 503, 'PRODUCTS_UNAVAILABLE');
+    }
   });
 
   app.post('/api/v1/admin/products', ...need(R.catalog), async (req, res) => {
@@ -931,7 +935,10 @@ export function registerAdminRoutes(app, ctx) {
       await auditLog(req, 'PRODUCT_UPDATE', { table: 'products', id: p.id });
       const { data: updated } = await database().from('products').select('*').eq('id', p.id).maybeSingle();
       res.json({ success: true, data: await composeAdminProduct(updated) });
-    } catch (err) { error(res, err?.status === 409 ? 409 : 503, 'PRODUCT_UPDATE_FAILED'); }
+    } catch (err) {
+      console.error('[PUT /api/v1/admin/products/:id failed]:', err);
+      error(res, err?.status === 409 ? 409 : 503, 'PRODUCT_UPDATE_FAILED');
+    }
   });
 
   app.patch('/api/v1/admin/products/:id/status', ...need(R.catalog), async (req, res) => {
@@ -939,7 +946,10 @@ export function registerAdminRoutes(app, ctx) {
       if (!['active', 'hidden'].includes(req.body?.status)) return error(res, 400, 'INVALID_STATUS');
       await database().from('products').update({ is_active: req.body.status === 'active' }).eq('id', req.params.id);
       res.json({ success: true, message: '상태가 변경되었습니다.', status: req.body.status });
-    } catch { error(res, 503, 'PRODUCT_UPDATE_FAILED'); }
+    } catch (err) {
+      console.error('[PATCH /api/v1/admin/products/:id/status failed]:', err);
+      error(res, 503, 'PRODUCT_UPDATE_FAILED');
+    }
   });
 
   // Stock is product-total across variants; the delta is applied to the
@@ -957,7 +967,10 @@ export function registerAdminRoutes(app, ctx) {
       await database().from('product_variants').update({ stock: Math.max(0, primary.stock + (target - total)) }).eq('id', primary.id);
       await auditLog(req, 'STOCK_ADJUST', { table: 'product_variants', id: primary.id, before: { total }, after: { total: target } });
       res.json({ success: true, message: '재고가 변경되었습니다.', stock: target });
-    } catch { error(res, 503, 'STOCK_UPDATE_FAILED'); }
+    } catch (err) {
+      console.error('[PATCH /api/v1/admin/products/:id/stock failed]:', err);
+      error(res, 503, 'STOCK_UPDATE_FAILED');
+    }
   });
 
   app.delete('/api/v1/admin/products/:id', ...need(R.catalog), async (req, res) => {
