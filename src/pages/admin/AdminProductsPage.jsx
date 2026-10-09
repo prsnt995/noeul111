@@ -78,7 +78,8 @@ export function AdminProductsPage() {
   const page = Number(pv.page) || 1;
   const search = pv.search || '';
   const sort = { key: pv.sort || 'id', dir: pv.order === 'asc' ? 'asc' : 'desc' };
-  const selectedCategory = pv.category || 'all';
+  const selectedCatObj = categories.find((c) => String(c.id) === String(pv.category) || String(c.slug) === String(pv.category));
+  const selectedCategory = selectedCatObj ? String(selectedCatObj.id) : (pv.category === 'all' || !pv.category ? 'all' : pv.category);
   const stockFilter = pv.stockStatus || 'all';
   const specialFilter = pv.filterType || 'all';
   const [products, setProducts] = useState([]);
@@ -155,7 +156,7 @@ export function AdminProductsPage() {
         search: search.trim(),
         sort: sort.key,
         dir: sort.dir,
-        category: selectedCategory,
+        category: selectedCategory === 'all' ? undefined : (selectedCatObj ? selectedCatObj.id : selectedCategory),
         stockStatus: stockFilter,
         filterType: specialFilter,
       });
@@ -186,6 +187,10 @@ export function AdminProductsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   useEffect(() => {
     fetchProducts();
@@ -640,11 +645,14 @@ export function AdminProductsPage() {
     {
       key: 'category',
       label: '카테고리',
-      render: (p) => (
-        <div style={{ color: '#52525b', fontWeight: 500 }}>
-          {p.category_name_ko || p.category_name || p.category_name_en}
-        </div>
-      ),
+      render: (p) => {
+        const cat = categories.find((c) => String(c.id) === String(p.category_id));
+        return (
+          <div style={{ color: '#52525b', fontWeight: 500 }}>
+            {p.category_name_ko || p.category_name || p.category_name_en || cat?.name_ko || cat?.name || '-'}
+          </div>
+        );
+      },
     },
     {
       key: 'price',
@@ -826,10 +834,12 @@ export function AdminProductsPage() {
           searchPlaceholder="상품명, SKU, ID 검색..."
           selects={[
             {
-              name: 'category', value: selectedCategory, onChange: (v) => listParams.set({ category: v }), ariaLabel: '카테고리', label: '카테고리',
+              name: 'category', value: selectedCategory, onChange: (v) => listParams.set({ category: v }), ariaLabel: '카테고리', label: '카테고리', clearValue: 'all',
               options: [
                 { value: 'all', label: '전체 카테고리' },
-                ...categories.map((c) => ({ value: String(c.id), label: c.name_ko || c.name || c.name_en })),
+                ...categories
+                  .filter((c) => c && c.id != null)
+                  .map((c) => ({ value: String(c.id), label: c.name_ko || c.name || c.name_en })),
               ],
             },
             {

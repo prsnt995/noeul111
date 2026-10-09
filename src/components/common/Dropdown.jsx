@@ -29,8 +29,15 @@ export function Dropdown({
   const btnRef = useRef(null);
   const popRef = useRef(null);
   const listId = useId();
-  const selectedIdx = options.findIndex((o) => String(o.value) === String(value));
-  const selected = options[selectedIdx];
+  const selectedIdx = options.findIndex((o) => {
+    if (String(o.value) === String(value)) return true;
+    if ((value === '' || value === 'all' || value === undefined || value === null) &&
+        (o.value === '' || o.value === 'all')) {
+      return true;
+    }
+    return false;
+  });
+  const selected = options[selectedIdx] || (options.length > 0 ? options[0] : null);
 
   useEffect(() => {
     if (!open) return;
@@ -53,13 +60,25 @@ export function Dropdown({
       setCoords(null);
     }
     const onDown = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+      if (
+        (rootRef.current && rootRef.current.contains(e.target)) ||
+        (popRef.current && popRef.current.contains(e.target))
+      ) {
+        return;
+      }
+      setOpen(false);
     };
     // Keyboard hole: focus leaving the dropdown (e.g. opening a drawer or
     // modal from another control) must close the popover so it can never
     // paint above the overlay.
     const onFocusIn = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+      if (
+        (rootRef.current && rootRef.current.contains(e.target)) ||
+        (popRef.current && popRef.current.contains(e.target))
+      ) {
+        return;
+      }
+      setOpen(false);
     };
     // A viewport-fixed popover can't track a scrolling trigger — close it
     // instead (standard floating-menu behavior). Scrolls inside the popover
@@ -86,7 +105,7 @@ export function Dropdown({
     if (!opt) return;
     setOpen(false);
     btnRef.current?.focus();
-    if (String(opt.value) !== String(value)) onChange?.(opt.value);
+    onChange?.(opt.value);
   };
 
   const onTriggerKey = (e) => {
@@ -127,6 +146,7 @@ export function Dropdown({
             data-focused={i === focusIdx}
             className={`fancy-select-opt${isSel ? ' selected' : ''}${i === focusIdx ? ' focused' : ''}`}
             ref={i === focusIdx ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={() => pick(i)}
             onMouseEnter={() => setFocusIdx(i)}
           >

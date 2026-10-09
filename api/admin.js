@@ -712,9 +712,20 @@ export function registerAdminRoutes(app, ctx) {
       };
 
       let data = null;
-      let total = 0;
-      if (category && category !== 'all') {
-        const slug = String(category).toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 80); const numId = /^\d+$/.test(String(category)) ? Number(category) : -1; if (!slug && numId < 0) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize })); const { data: cat } = await database().from('categories').select('id').or(`slug.eq.${slug},id.eq.${numId}`).maybeSingle();
+      const isAllCategory = !category || category === 'all' || category === '전체' || category === '전체 카테고리' || category === '전체카테고리';
+      if (!isAllCategory) {
+        const catStr = String(category).trim();
+        const slug = catStr.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 80);
+        const numId = /^\d+$/.test(catStr) ? Number(catStr) : -1;
+        let catQuery = database().from('categories').select('id');
+        if (numId > 0) {
+          catQuery = catQuery.eq('id', numId);
+        } else if (slug) {
+          catQuery = catQuery.or(`slug.eq.${slug},name_ko.eq.${catStr},name_en.ilike.${catStr}`);
+        } else {
+          catQuery = catQuery.or(`name_ko.eq.${catStr},name_en.ilike.${catStr}`);
+        }
+        const { data: cat } = await catQuery.maybeSingle();
         if (!cat) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize }));
         const r = await applyCommon(
           database().from('products').select('*', { count: 'exact' }).eq('category_id', cat.id).order(sortCol, { ascending }).range(offset, offset + pageSize - 1)

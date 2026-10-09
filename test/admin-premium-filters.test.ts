@@ -160,3 +160,30 @@ describe('Premium filters — overlay stacking (no filter-over-modal overlap)', 
     expect(Number(drawer?.[1]), 'drawer above popover').toBeGreaterThan(120);
   });
 });
+
+describe('Category filter & All Categories reliability', () => {
+  it('Dropdown protects portalled popover options from premature dismissal', () => {
+    const src = read('src/components/common/Dropdown.jsx');
+    expect(src.includes('popRef.current.contains(e.target)'), 'protects popover options in onDown/onFocusIn').toBe(true);
+    expect(src.includes('onChange?.(opt.value)'), 'fires onChange on option pick').toBe(true);
+  });
+
+  it('useListParams omits "all" filter defaults from query params', () => {
+    const src = read('src/hooks/useListParams.js');
+    expect(src.includes("v === 'all'"), 'omits all from URL').toBe(true);
+  });
+
+  it('AdminProductsPage supports All Categories and resolves slug/id', () => {
+    const src = read('src/pages/admin/AdminProductsPage.jsx');
+    expect(src.includes("'전체 카테고리'"), 'has all categories option').toBe(true);
+    expect(src.includes('selectedCatObj'), 'resolves category slug/id safely').toBe(true);
+    expect(src.includes('fetchCategories();'), 'prefetches categories on mount').toBe(true);
+  });
+
+  it('api/admin.js supports all-category variations and multi-attribute lookup', () => {
+    const src = read('api/admin.js');
+    expect(src.includes('isAllCategory'), 'identifies all categories').toBe(true);
+    expect(src.includes("'전체 카테고리'"), 'recognizes Korean all-category string').toBe(true);
+    expect(src.includes('catQuery'), 'dynamic category lookup').toBe(true);
+  });
+});

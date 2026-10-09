@@ -23,7 +23,7 @@ export function useListParams(config = {}) {
     const touchesFilter = Object.keys(patch).some((k) => k !== 'page');
     for (const [k, v] of Object.entries(patch)) {
       if (!allowlist.includes(k)) continue;
-      if (v === undefined || v === null || v === '' || (k === 'page' && String(v) === '1')) next.delete(k);
+      if (v === undefined || v === null || v === '' || v === 'all' || (k === 'page' && String(v) === '1')) next.delete(k);
       else next.set(k, String(v));
     }
     // Any filter/search/sort change restarts at page 1.
