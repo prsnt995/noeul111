@@ -122,7 +122,7 @@ describe('Business Management System (경영 관리) — Core Scenarios A~K', ()
     expect(todayKst).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
     const nowIso = new Date().toISOString();
-    const yesterdayIso = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+    const yesterdayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const lastMonthIso = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
 
     expect(isOrderInPeriod(nowIso, 'today')).toBe(true);
