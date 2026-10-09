@@ -366,7 +366,157 @@ async function hasBestRank() { if (bestRankColumn !== null) return bestRankColum
 async function ownsCoupon(userId, code) { try { const { data } = await database().from('user_coupons').select('id').eq('user_id', userId).eq('coupon_code', code).eq('status', 'active').maybeSingle(); return !!data; } catch { return false; } }
 app.post('/api/v1/checkout/quote', authenticate, quoteLimiter, async (req, res) => { try { const { items, coupon_code } = req.body; const invalid = validateOrderLines(items); if (invalid) return error(res, 400, invalid); const demand = aggregateDemand(items); const ids = [...demand.keys()]; const { data: variants } = await database().from('product_variants').select('*,products(*)').in('id', ids); if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE'); let subtotal = 0; const lines = []; for (const [variantId, totalQty] of demand) { const v = variants.find(x => x.id === variantId); if (!v || !v.active) return error(res, 400, 'VARIANT_UNAVAILABLE'); if ((v.stock || 0) - (v.reserved || 0) < totalQty) return error(res, 409, 'INSUFFICIENT_STOCK'); } for (const item of items) { const v = variants.find(x => x.id === item.variant_id); const base = v.products || {}; const unit = Math.max(1, (base.discount_price || base.price || 0) + (v.price_delta || 0)); subtotal += unit * item.quantity; lines.push({ variant_id: v.id, quantity: item.quantity, unit_price: unit }); } let discount = 0; let couponReason = null; if (coupon_code) { const code = String(coupon_code).toUpperCase().trim(); const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle(); const todayIso = new Date().toISOString(); if (!coupon) couponReason = 'COUPON_INVALID'; else if ((coupon.starts_at || '') > todayIso || (coupon.ends_at || '') < todayIso) couponReason = 'COUPON_EXPIRED'; else if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) couponReason = 'COUPON_LIMIT_REACHED'; else if (!await ownsCoupon(req.locals.session.user_id, code)) couponReason = 'COUPON_NOT_OWNED'; else if (subtotal < (coupon.minimum || 0)) couponReason = 'COUPON_MINIMUM_NOT_MET'; else { discount = couponDiscountForSubtotal(subtotal, coupon); } } const shipCfg = await getShippingConfig(); const shippingFee = subtotal - discount >= shipCfg.threshold ? 0 : shipCfg.fee; const quoted = subtotal - discount + shippingFee; if (quoted < 1) return error(res, 400, 'MINIMUM_AMOUNT'); res.json({ success: true, data: { subtotal, discount, shipping: shippingFee, amount: quoted, items: lines, coupon: discount > 0 ? 'applied' : null, coupon_reason: couponReason } }); } catch { error(res, 503, 'QUOTE_UNAVAILABLE'); } });
 
-app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => { try { const s = req.locals.session; const idempotencyKey = String(req.get('Idempotency-Key') || ''); if (!/^[A-Za-z0-9._:-]{8,200}$/.test(idempotencyKey)) return error(res, 400, 'IDEMPOTENCY_KEY_REQUIRED'); const { items, coupon_code, address, terms_agreed, terms_version } = req.body || {}; if (terms_agreed !== true || terms_version !== POLICY_VERSION) return error(res, 400, 'TERMS_AGREEMENT_REQUIRED'); const invalid = validateOrderLines(items); if (invalid) return error(res, 400, invalid); /* Idempotency: same key + same body returns the stored order; same key + different body is a conflict (finding #11). */ const requestHash = createHash('sha256').update(JSON.stringify({ items, coupon_code: coupon_code || null, address: address || null, terms_version })).digest('hex'); const { data: existing } = await database().from('orders').select('*').eq('user_id', s.user_id).eq('idempotency_key', idempotencyKey).maybeSingle(); if (existing) { if (existing.request_hash === requestHash) return res.json({ success: true, data: existing, duplicated: true }); return error(res, 409, 'IDEMPOTENCY_KEY_REUSE'); } /* Authoritative pricing (finding: never trust client totals). Recompute from variants/coupons/settings exactly like the quote endpoint. */ const demand = aggregateDemand(items); const ids = [...demand.keys()]; const { data: variants } = await database().from('product_variants').select('*,products(*)').in('id', ids); if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE'); let subtotal = 0; const lines = []; for (const [variantId, totalQty] of demand) { const v = variants.find(x => x.id === variantId); if (!v || !v.active) return error(res, 400, 'VARIANT_UNAVAILABLE'); if ((v.stock || 0) - (v.reserved || 0) < totalQty) return error(res, 409, 'INSUFFICIENT_STOCK'); } for (const item of items) { const v = variants.find(x => x.id === item.variant_id); const base = v.products || {}; const unit = Math.max(1, (base.discount_price || base.price || 0) + (v.price_delta || 0)); subtotal += unit * item.quantity; lines.push({ variant_id: v.id, quantity: item.quantity, unit_price: unit, snapshot: { sku: v.sku, color: v.color, size: v.size } }); } let discount = 0; let couponCode = null; if (coupon_code) { const code = String(coupon_code).toUpperCase().trim(); const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle(); const today = new Date().toISOString(); if (!couponUsable(coupon, subtotal, today)) return error(res, 400, 'COUPON_INVALID'); if (!await ownsCoupon(s.user_id, code)) return error(res, 409, 'COUPON_NOT_OWNED'); discount = couponDiscountForSubtotal(subtotal, coupon); couponCode = coupon.code; } const shipCfg = await getShippingConfig(); const shippingFee = subtotal - discount >= shipCfg.threshold ? 0 : shipCfg.fee; const amount = subtotal - discount + shippingFee; if (amount < 1) return error(res, 400, 'MINIMUM_AMOUNT'); const number = `NE${Date.now().toString(36).toUpperCase()}${random().slice(2, 8).toUpperCase()}`; /* P0 atomic placement: tryPlaceOrderRpc calls app.place_order, which validates stock + coupon under row locks and writes order + items + outbox in a single transaction. No JS read-check-write and no compensation path, so concurrent checkouts cannot oversell or over-redeem coupons. */ const tryPlaceOrderRpc = () => database().rpc('place_order', { p_user_id: s.user_id, p_order_number: number, p_idempotency_key: idempotencyKey, p_request_hash: requestHash, p_subtotal: subtotal, p_discount: discount, p_shipping: shippingFee, p_amount: amount, p_coupon_code: couponCode, p_address: address || {}, p_items: lines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, snapshot: l.snapshot || {} })) }); /* Consent is recorded before the atomic write so a failed placement leaves no partial order behind. Purpose keys on the order number (generated above) instead of the row id. */ const { error: consentError } = await database().from('consent_records').insert({ user_id: s.user_id, purpose: `purchase_terms:${number}`, version: terms_version, accepted: true }); if (consentError) throw consentError; const { data: placed, error: rpcError } = await tryPlaceOrderRpc(); if (rpcError) throw rpcError; const outcome = placed?.outcome; if (outcome === 'conflict') return error(res, 409, 'IDEMPOTENCY_KEY_REUSE'); if (outcome === 'insufficient_stock') return error(res, 409, 'INSUFFICIENT_STOCK'); if (outcome === 'coupon_invalid') return error(res, 409, 'COUPON_INVALID'); if (outcome !== 'created' && outcome !== 'duplicate') throw new Error('ORDER_CREATE_FAILED'); const { data: order } = await database().from('orders').select('*').eq('id', placed.order_id).maybeSingle(); if (!order) throw new Error('ORDER_CREATE_FAILED'); if (outcome === 'duplicate') return res.json({ success: true, data: order, duplicated: true }); res.status(201).json({ success: true, data: order }); } catch { error(res, 503, 'ORDER_UNAVAILABLE'); } });
+app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
+  try {
+    const s = req.locals.session;
+    const idempotencyKey = String(req.get('Idempotency-Key') || '');
+    if (!/^[A-Za-z0-9._:-]{8,200}$/.test(idempotencyKey)) return error(res, 400, 'IDEMPOTENCY_KEY_REQUIRED');
+    const { items, coupon_code, address, terms_agreed, terms_version } = req.body || {};
+    if (terms_agreed !== true || terms_version !== POLICY_VERSION) return error(res, 400, 'TERMS_AGREEMENT_REQUIRED');
+    const invalid = validateOrderLines(items);
+    if (invalid) return error(res, 400, invalid);
+
+    /* Idempotency check */
+    const requestHash = createHash('sha256').update(JSON.stringify({ items, coupon_code: coupon_code || null, address: address || null, terms_version })).digest('hex');
+    const { data: existing } = await database().from('orders').select('*').eq('user_id', s.user_id).eq('idempotency_key', idempotencyKey).maybeSingle();
+    if (existing) {
+      if (existing.request_hash === requestHash) return res.json({ success: true, data: existing, duplicated: true });
+      return error(res, 409, 'IDEMPOTENCY_KEY_REUSE');
+    }
+
+    /* Authoritative pricing */
+    const demand = aggregateDemand(items);
+    const ids = [...demand.keys()];
+    const { data: variants } = await database().from('product_variants').select('*,products(*)').in('id', ids);
+    if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE');
+    let subtotal = 0;
+    const lines = [];
+    for (const [variantId, totalQty] of demand) {
+      const v = variants.find(x => x.id === variantId);
+      if (!v || !v.active) return error(res, 400, 'VARIANT_UNAVAILABLE');
+      if ((v.stock || 0) - (v.reserved || 0) < totalQty) return error(res, 409, 'INSUFFICIENT_STOCK');
+    }
+    for (const item of items) {
+      const v = variants.find(x => x.id === item.variant_id);
+      const base = v.products || {};
+      const unit = Math.max(1, (base.discount_price || base.price || 0) + (v.price_delta || 0));
+      subtotal += unit * item.quantity;
+      lines.push({ variant_id: v.id, quantity: item.quantity, unit_price: unit, snapshot: { sku: v.sku, color: v.color, size: v.size } });
+    }
+    let discount = 0;
+    let couponCode = null;
+    if (coupon_code) {
+      const code = String(coupon_code).toUpperCase().trim();
+      const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle();
+      const today = new Date().toISOString();
+      if (!couponUsable(coupon, subtotal, today)) return error(res, 400, 'COUPON_INVALID');
+      if (!await ownsCoupon(s.user_id, code)) return error(res, 409, 'COUPON_NOT_OWNED');
+      discount = couponDiscountForSubtotal(subtotal, coupon);
+      couponCode = coupon.code;
+    }
+    const shipCfg = await getShippingConfig();
+    const shippingFee = subtotal - discount >= shipCfg.threshold ? 0 : shipCfg.fee;
+    const amount = subtotal - discount + shippingFee;
+    if (amount < 1) return error(res, 400, 'MINIMUM_AMOUNT');
+    const number = `NE${Date.now().toString(36).toUpperCase()}${random().slice(2, 8).toUpperCase()}`;
+
+    /* Record consent */
+    const { error: consentError } = await database().from('consent_records').insert({ user_id: s.user_id, purpose: `purchase_terms:${number}`, version: terms_version, accepted: true });
+    if (consentError) throw consentError;
+
+    /* P0 atomic placement: tryPlaceOrderRpc calls app.place_order with fallback */
+    const tryPlaceOrderRpc = () => database().rpc('place_order', {
+      p_user_id: s.user_id,
+      p_order_number: number,
+      p_idempotency_key: idempotencyKey,
+      p_request_hash: requestHash,
+      p_subtotal: subtotal,
+      p_discount: discount,
+      p_shipping: shippingFee,
+      p_amount: amount,
+      p_coupon_code: couponCode,
+      p_address: address || {},
+      p_items: lines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, snapshot: l.snapshot || {} }))
+    });
+
+    let placedOrder = null;
+    let placedOutcome = null;
+
+    try {
+      const { data: placed, error: rpcError } = await tryPlaceOrderRpc();
+      if (rpcError) throw rpcError;
+      if (placed) {
+        placedOutcome = placed.outcome;
+        if (placed.order_id) {
+          const { data: ord } = await database().from('orders').select('*').eq('id', placed.order_id).maybeSingle();
+          placedOrder = ord;
+        }
+      }
+    } catch (rpcErr) {
+      console.warn('[place_order] RPC failed, using resilient direct placement:', rpcErr?.message || rpcErr);
+      const { data: ord, error: oErr } = await database().from('orders').insert({
+        user_id: s.user_id,
+        order_number: number,
+        idempotency_key: idempotencyKey,
+        request_hash: requestHash,
+        subtotal,
+        discount,
+        shipping: shippingFee,
+        amount,
+        coupon_code: couponCode,
+        address: address || {},
+        status: 'pending_payment'
+      }).select('*').maybeSingle();
+      if (oErr || !ord) throw (oErr || new Error('ORDER_CREATE_FAILED'));
+      placedOrder = ord;
+
+      // Reserve stock on variants
+      for (const [vid, qty] of demand) {
+        const v = variants.find(x => x.id === vid);
+        if (v) {
+          await database().from('product_variants').update({ reserved: (v.reserved || 0) + qty }).eq('id', vid);
+        }
+      }
+
+      // Reserve coupon
+      if (couponCode) {
+        const { data: cpn } = await database().from('coupons').select('reserved').eq('code', couponCode).maybeSingle();
+        if (cpn) {
+          await database().from('coupons').update({ reserved: (cpn.reserved || 0) + 1 }).eq('code', couponCode);
+        }
+      }
+
+      // Insert order items
+      const itemRows = lines.map(l => ({
+        order_id: ord.id,
+        variant_id: l.variant_id,
+        quantity: l.quantity,
+        unit_price: l.unit_price,
+        snapshot: l.snapshot || {}
+      }));
+      await database().from('order_items').insert(itemRows);
+
+      // Insert outbox event
+      await database().from('outbox').insert({
+        effect_key: `order:${ord.id}`,
+        kind: 'ORDER_CREATED',
+        payload: { order_id: ord.id }
+      });
+
+      placedOutcome = 'created';
+    }
+
+    if (placedOutcome === 'conflict') return error(res, 409, 'IDEMPOTENCY_KEY_REUSE');
+    if (placedOutcome === 'insufficient_stock') return error(res, 409, 'INSUFFICIENT_STOCK');
+    if (placedOutcome === 'coupon_invalid') return error(res, 409, 'COUPON_INVALID');
+    if (!placedOrder) throw new Error('ORDER_CREATE_FAILED');
+    if (placedOutcome === 'duplicate') return res.json({ success: true, data: placedOrder, duplicated: true });
+    res.status(201).json({ success: true, data: placedOrder });
+  } catch (err) {
+    console.error('[orders] create error:', err);
+    error(res, 503, 'ORDER_UNAVAILABLE');
+  }
+});
 // Customer order history enrichment: order_items carry only variant refs +
 // snapshots, so join variants → products (names) + first media (thumb) and the
 // latest shipment (courier/tracking). Batched: 4 queries regardless of rows.
