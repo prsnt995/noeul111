@@ -56,6 +56,186 @@ export function productErrorText(code, lang = 'ko', vars = {}) {
   return text;
 }
 
+export const CATEGORY_PREFIX_MAP = {
+  tshirts: 'TS',
+  tshirt: 'TS',
+  't-shirts': 'TS',
+  't-shirt': 'TS',
+  tops: 'TS',
+  top: 'TS',
+  shirts: 'SH',
+  shirt: 'SH',
+  blouses: 'BL',
+  blouse: 'BL',
+  knitwear: 'KN',
+  knit: 'KN',
+  outerwear: 'OW',
+  jackets: 'JK',
+  jacket: 'JK',
+  pants: 'PT',
+  bottoms: 'PT',
+  jeans: 'JN',
+  denim: 'JN',
+  skirts: 'SK',
+  skirt: 'SK',
+  dresses: 'DR',
+  dress: 'DR',
+  accessories: 'AC',
+  accessory: 'AC',
+  bags: 'BG',
+  bag: 'BG',
+  shoes: 'SO',
+  shoe: 'SO',
+  footwear: 'SO',
+  socks: 'SC',
+  sock: 'SC',
+  hoodies: 'HD',
+  hoodie: 'HD',
+  sweatshirts: 'SW',
+  sweatshirt: 'SW',
+  cardigans: 'CD',
+  cardigan: 'CD',
+  underwear: 'UW',
+};
+
+export const KOREAN_CATEGORY_PREFIX_MAP = {
+  '티셔츠': 'TS',
+  '셔츠': 'SH',
+  '셔츠/블라우스': 'SH',
+  '블라우스': 'BL',
+  '니트': 'KN',
+  '니트웨어': 'KN',
+  '아우터': 'OW',
+  '자켓': 'JK',
+  '재킷': 'JK',
+  '팬츠': 'PT',
+  '팬츠/데님': 'PT',
+  '바지': 'PT',
+  '데님': 'JN',
+  '청바지': 'JN',
+  '스커트': 'SK',
+  '치마': 'SK',
+  '원피스': 'DR',
+  '드레스': 'DR',
+  '상의': 'TS',
+  '하의': 'PT',
+  '악세사리': 'AC',
+  '액세서리': 'AC',
+  '악세사리/가방': 'AC',
+  '가방': 'BG',
+  '신발': 'SO',
+  '양말': 'SC',
+  '양말/삭스': 'SC',
+  '후드': 'HD',
+  '후드티': 'HD',
+  '맨투맨': 'SW',
+  '가디건': 'CD',
+  '속옷': 'UW',
+};
+
+export const COMMON_SIZES = ['FREE', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+export const DEFAULT_SIZE_STOCK = 50;
+
+/**
+ * Derives a clean uppercase prefix (e.g., 'TS', 'SH', 'KN') from a category.
+ * Supports known fashion categories and dynamically derives 2-letter prefixes
+ * for admin-created custom categories.
+ */
+export function getCategoryPrefix(category) {
+  if (!category) return 'NE';
+  const slug = typeof category === 'string'
+    ? category
+    : (category.slug || '');
+  const name_en = typeof category === 'object' ? (category.name_en || '') : '';
+  const name_ko = typeof category === 'object' ? (category.name_ko || category.name || '') : '';
+
+  const cleanSlug = String(slug).toLowerCase().trim();
+  const cleanEn = String(name_en).toLowerCase().trim();
+  const cleanKo = String(name_ko).trim();
+
+  // 1. Direct slug match
+  if (cleanSlug && CATEGORY_PREFIX_MAP[cleanSlug]) {
+    return CATEGORY_PREFIX_MAP[cleanSlug];
+  }
+
+  // 2. Direct English name match
+  const strippedEn = cleanEn.replace(/[^a-z0-9]/g, '');
+  if (strippedEn && CATEGORY_PREFIX_MAP[strippedEn]) {
+    return CATEGORY_PREFIX_MAP[strippedEn];
+  }
+
+  // 3. Korean name match
+  if (cleanKo) {
+    for (const [k, v] of Object.entries(KOREAN_CATEGORY_PREFIX_MAP)) {
+      if (cleanKo === k || cleanKo.includes(k) || k.includes(cleanKo)) {
+        return v;
+      }
+    }
+  }
+
+  // 4. Custom admin-created category
+  // If slug has hyphens / underscores (e.g. "crop-top", "wide_pants")
+  const words = cleanSlug.split(/[-_\s]+/).filter(Boolean);
+  if (words.length >= 2) {
+    const letters = words
+      .map((w) => w.replace(/[^a-z]/g, '').charAt(0))
+      .filter(Boolean)
+      .slice(0, 3)
+      .join('')
+      .toUpperCase();
+    if (letters.length >= 2) return letters;
+  }
+
+  // Single word custom slug or English name
+  const candidate = cleanSlug || cleanEn;
+  const lettersOnly = candidate.replace(/[^a-z]/gi, '').toUpperCase();
+  if (lettersOnly.length >= 2) {
+    return lettersOnly.slice(0, 2);
+  }
+  if (lettersOnly.length === 1) {
+    return `${lettersOnly}X`;
+  }
+
+  return 'CT';
+}
+
+/**
+ * Computes the next unique SKU for a given category (e.g., 'TS-001', 'SH-001').
+ * Inspects all existing SKUs with the prefix, finds the highest numeric suffix,
+ * and increments it to prevent duplicate SKUs.
+ */
+export function generateNextSku(category, existingProductsOrSkus = []) {
+  const prefix = getCategoryPrefix(category);
+  const skus = (existingProductsOrSkus || []).map((item) => {
+    if (typeof item === 'string') return item.trim().toUpperCase();
+    return String(item?.sku || '').trim().toUpperCase();
+  });
+
+  const regex = new RegExp(`^${prefix}-(\\d+)$`, 'i');
+  let maxNum = 0;
+
+  for (const s of skus) {
+    const match = s.match(regex);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!Number.isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
+  }
+
+  let nextNum = maxNum + 1;
+  let nextSku = `${prefix}-${String(nextNum).padStart(3, '0')}`;
+
+  const set = new Set(skus);
+  while (set.has(nextSku)) {
+    nextNum += 1;
+    nextSku = `${prefix}-${String(nextNum).padStart(3, '0')}`;
+  }
+
+  return nextSku;
+}
+
 /**
  * Client-side pre-flight mirroring the backend guards, so fixable input
  * mistakes never cost a network round trip. Returns { ok: true } or

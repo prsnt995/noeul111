@@ -13,7 +13,14 @@ import {
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useListParams } from '../../hooks/useListParams.js';
-import { validateProductForm, productErrorText } from '../../utils/product.js';
+import {
+  validateProductForm,
+  productErrorText,
+  COMMON_SIZES,
+  DEFAULT_SIZE_STOCK,
+  generateNextSku,
+  getCategoryPrefix,
+} from '../../utils/product.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useBusy } from '../../context/BusyContext.jsx';
@@ -26,7 +33,6 @@ import {
   X,
 } from 'lucide-react';
 
-const COMMON_SIZES = ['S', 'M', 'L', 'XL', 'FREE'];
 const PRESET_COLORS = [
   { name_ko: '블랙', name_en: 'Black', hex: '#111112' },
   { name_ko: '화이트', name_en: 'White', hex: '#ffffff' },
@@ -197,9 +203,19 @@ export function AdminProductsPage() {
     // Never fall back to a phantom id: an empty string fails pre-flight with
     // a named message instead of dying on the category FK server-side.
     if (!categories.length) fetchCategories();
+    const targetCat = categories[0] || null;
+    const initialSku = targetCat ? generateNextSku(targetCat, products) : 'TS-001';
+    const initialSizes = ['FREE'];
+    const initialColors = [{ name_ko: '블랙', hex: '#111112' }];
+    const initialStock = {};
+    initialColors.forEach((c) => {
+      initialSizes.forEach((sz) => {
+        initialStock[comboKey(c, sz)] = String(DEFAULT_SIZE_STOCK);
+      });
+    });
     setFormData({
-      sku: `NE-${Date.now().toString().slice(-6)}`,
-      category_id: categories[0]?.id ?? '',
+      sku: initialSku,
+      category_id: targetCat?.id ?? '',
       name_ko: '',
       description_ko: '',
       material_ko: '100% 코튼',
@@ -212,9 +228,9 @@ export function AdminProductsPage() {
       best_rank: '',
       status: 'active',
       images: [],
-      sizes: ['S', 'M', 'L', 'XL'],
-      colors: [{ name_ko: '블랙', hex: '#111112' }],
-      variant_stock: {},
+      sizes: initialSizes,
+      colors: initialColors,
+      variant_stock: initialStock,
       detail_blocks: [],
     });
     setIsModalOpen(true);
@@ -499,15 +515,33 @@ export function AdminProductsPage() {
     fetchProducts();
   };
 
+  const handleCategoryChange = (catId) => {
+    const targetCat = categories.find((c) => String(c.id) === String(catId));
+    const nextSku = targetCat ? generateNextSku(targetCat, products) : formData.sku;
+    setFormData((prev) => ({
+      ...prev,
+      category_id: catId,
+      sku: !isEditMode ? nextSku : prev.sku,
+    }));
+  };
+
   const toggleSizeSelection = (size) => {
     const current = [...formData.sizes];
     const index = current.indexOf(size);
+    const nextStock = { ...formData.variant_stock };
     if (index > -1) {
       current.splice(index, 1);
     } else {
       current.push(size);
+      // Default quantity to 50 for every newly selected size
+      for (const c of formData.colors) {
+        const k = comboKey(c, size);
+        if (!cellFilled(nextStock[k])) {
+          nextStock[k] = String(DEFAULT_SIZE_STOCK);
+        }
+      }
     }
-    setFormData({ ...formData, sizes: current });
+    setFormData({ ...formData, sizes: current, variant_stock: nextStock });
   };
 
   const toggleColorSelection = (colorObj) => {
@@ -518,7 +552,14 @@ export function AdminProductsPage() {
       const next = current.filter((c) => (c.name_ko || c.name_en) !== key);
       setFormData({ ...formData, colors: next.length > 0 ? next : [colorObj] });
     } else {
-      setFormData({ ...formData, colors: [...current, colorObj] });
+      const nextStock = { ...formData.variant_stock };
+      for (const sz of formData.sizes) {
+        const k = comboKey(colorObj, sz);
+        if (!cellFilled(nextStock[k])) {
+          nextStock[k] = String(DEFAULT_SIZE_STOCK);
+        }
+      }
+      setFormData({ ...formData, colors: [...current, colorObj], variant_stock: nextStock });
     }
   };
 
@@ -532,7 +573,19 @@ export function AdminProductsPage() {
       showToast('이미 존재하는 색상입니다.', 'error');
       return;
     }
-    setFormData({ ...formData, colors: [...formData.colors, { name_ko, name_en: name_ko, hex: newColor.hex }] });
+    const customColor = { name_ko, name_en: name_ko, hex: newColor.hex };
+    const nextStock = { ...formData.variant_stock };
+    for (const sz of formData.sizes) {
+      const k = comboKey(customColor, sz);
+      if (!cellFilled(nextStock[k])) {
+        nextStock[k] = String(DEFAULT_SIZE_STOCK);
+      }
+    }
+    setFormData({
+      ...formData,
+      colors: [...formData.colors, customColor],
+      variant_stock: nextStock,
+    });
     setNewColor({ name_ko: '', hex: '#18181b' });
   };
 
@@ -916,7 +969,7 @@ export function AdminProductsPage() {
                     <label className="form-label">카테고리 *</label>
                     <select
                       value={formData.category_id}
-                      onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
                       className="form-select"
                       required
                     >
@@ -943,12 +996,35 @@ export function AdminProductsPage() {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">상품 SKU 번호</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label className="form-label">상품 SKU 번호</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cat = categories.find((c) => String(c.id) === String(formData.category_id)) || categories[0];
+                          const next = generateNextSku(cat, products);
+                          setFormData((prev) => ({ ...prev, sku: next }));
+                          showToast(`SKU 자동 생성: ${next}`, 'info');
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--accent-sunset)',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          padding: 0,
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        SKU 자동 생성
+                      </button>
+                    </div>
                     <input
                       type="text"
                       value={formData.sku}
                       onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                      placeholder="NE-KN-001"
+                      placeholder="예: TS-001"
                       className="form-input"
                     />
                   </div>
@@ -1087,7 +1163,12 @@ export function AdminProductsPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   {/* Sizes */}
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">선택 가능한 사이즈</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label className="form-label">선택 가능한 사이즈</label>
+                      <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>
+                        선택 시 기본 재고 {DEFAULT_SIZE_STOCK}개 자동 설정
+                      </span>
+                    </div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                       {COMMON_SIZES.map((sz) => {
                         const selected = formData.sizes.includes(sz);
@@ -1107,7 +1188,7 @@ export function AdminProductsPage() {
                               cursor: 'pointer',
                             }}
                           >
-                            {sz}
+                            {sz === 'FREE' ? 'FREE (F)' : sz}
                           </button>
                         );
                       })}
@@ -1232,6 +1313,22 @@ export function AdminProductsPage() {
                       4. 옵션별 재고 (Color × Size Stock)
                     </span>
                     <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = { ...formData.variant_stock };
+                          for (const c of formData.colors) {
+                            for (const sz of formData.sizes) {
+                              next[comboKey(c, sz)] = String(DEFAULT_SIZE_STOCK);
+                            }
+                          }
+                          setFormData({ ...formData, variant_stock: next });
+                          showToast(`선택된 사이즈의 재고를 기본 ${DEFAULT_SIZE_STOCK}개로 설정했습니다.`, 'info');
+                        }}
+                        style={{ padding: '5px 10px', fontSize: '0.6875rem', fontWeight: 700, backgroundColor: '#ffffff', border: '1px solid #e4e4e7', borderRadius: '4px', cursor: 'pointer', color: 'var(--accent-sunset)' }}
+                      >
+                        기본 50개 전체 채우기
+                      </button>
                       <button type="button" onClick={fillAllBlankWithZero} style={{ padding: '5px 10px', fontSize: '0.6875rem', fontWeight: 700, backgroundColor: '#ffffff', border: '1px solid #e4e4e7', borderRadius: '4px', cursor: 'pointer', color: '#52525b' }}>
                         빈칸 전체 0 채우기
                       </button>

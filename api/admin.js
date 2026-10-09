@@ -21,6 +21,7 @@ import {
   UPLOAD_FAILED_GENERIC,
   UPLOAD_FAILED_EMPTY,
 } from '../src/config/upload.js';
+import { getCategoryPrefix, generateNextSku } from '../src/utils/product.js';
 
 // Wave 3: Supabase-backed /api/v1/admin/* surface. The storefront frontend
 // speaks legacy payload shapes; this module translates them onto the
@@ -636,6 +637,28 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'SCHEMA_CHECK_FAILED'); }
   });
 
+  app.get('/api/v1/admin/products/next-sku', ...need(R.catalog), async (req, res) => {
+    try {
+      const categoryId = req.query.category_id;
+      const categorySlug = req.query.category_slug;
+      let cat = null;
+      if (categoryId) {
+        const { data } = await database().from('categories').select('*').eq('id', categoryId).maybeSingle().then(r => r, () => ({ data: null }));
+        cat = data;
+      } else if (categorySlug) {
+        const { data } = await database().from('categories').select('*').eq('slug', categorySlug).maybeSingle().then(r => r, () => ({ data: null }));
+        cat = data;
+      }
+      const prefix = getCategoryPrefix(cat || categorySlug || '');
+      const { data: rows } = await database().from('products').select('sku').ilike('sku', `${prefix}-%`).then(r => r, () => ({ data: [] }));
+      const existingSkus = (rows || []).map(r => r.sku);
+      const sku = generateNextSku(cat || prefix, existingSkus);
+      res.json({ success: true, sku, prefix });
+    } catch {
+      error(res, 500, 'NEXT_SKU_FAILED');
+    }
+  });
+
   app.get('/api/v1/admin/products', ...need(R.catalog), async (req, res) => {
     try {
       const { category, status, filterType, stockStatus } = req.query;
@@ -759,7 +782,13 @@ export function registerAdminRoutes(app, ctx) {
       const discount = b.discount_price ? Number(b.discount_price) : null;
       if (!Number.isInteger(price) || price <= 0) return error(res, 400, 'INVALID_PRICE');
       if (discount !== null && (!Number.isInteger(discount) || discount <= 0 || discount >= price)) return error(res, 400, 'INVALID_DISCOUNT');
-      const sku = String(b.sku || `NE-${Date.now().toString().slice(-6)}`).toUpperCase().slice(0, 60);
+      let sku = b.sku ? String(b.sku).trim().toUpperCase().slice(0, 60) : '';
+      if (!sku) {
+        const { data: cat } = await database().from('categories').select('*').eq('id', Number(b.category_id)).maybeSingle().then(r => r, () => ({ data: null }));
+        const prefix = getCategoryPrefix(cat || '');
+        const { data: rows } = await database().from('products').select('sku').ilike('sku', `${prefix}-%`).then(r => r, () => ({ data: [] }));
+        sku = generateNextSku(cat || prefix, (rows || []).map(r => r.sku));
+      }
       const detailBlocks = sanitizeDetailBlocks(b.detail_blocks);
       if (detailBlocks === null) return error(res, 400, 'INVALID_DETAIL_BLOCKS');
       // Duplicate SKUs are the classic retry trap: an earlier attempt may have
