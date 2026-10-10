@@ -30,6 +30,13 @@ import {
   isOrderInPeriod,
   calculateBusinessMetrics,
 } from '../src/utils/businessAccounting.js';
+import {
+  normalizePrefix,
+  suggestPrefix,
+  nextSku,
+  SKU_PREFIX_RE,
+  SKU_SEQ_MAX,
+} from '../src/utils/sku.js';
 
 // Wave 3: Supabase-backed /api/v1/admin/* surface. The storefront frontend
 // speaks legacy payload shapes; this module translates them onto the
@@ -75,6 +82,23 @@ function slugify(text, fallback = 'item') {
     .replace(/^-+|-+$/g, '')
     .slice(0, 48) || fallback;
   return `${base}-${random().slice(0, 6).toLowerCase()}`;
+}
+
+// Category SKU prefixes (TSH-00001): explicit category prefix first,
+// slug-derived suggestion second, legacy timestamp last resort.
+function resolveCategoryPrefix(cat) {
+  const explicit = normalizePrefix(cat?.sku_prefix);
+  if (explicit && SKU_PREFIX_RE.test(explicit)) return explicit;
+  const suggested = suggestPrefix(cat?.slug || '');
+  if (suggested && SKU_PREFIX_RE.test(suggested)) return suggested;
+  return null;
+}
+
+async function prefixTaken(database, prefix, excludeId = null) {
+  let q = getDb(database).from('categories').select('id').eq('sku_prefix', prefix);
+  if (excludeId !== null && excludeId !== undefined) q = q.neq('id', excludeId);
+  const { data } = await q.maybeSingle().then(r => r, () => ({ data: null }));
+  return !!data;
 }
 
 // JSON content-document store (banners, settings facets, menus, pages,
@@ -806,20 +830,45 @@ export function registerAdminRoutes(app, ctx) {
       const discount = b.discount_price ? Number(b.discount_price) : null;
       if (!Number.isInteger(price) || price <= 0) return error(res, 400, 'INVALID_PRICE');
       if (discount !== null && (!Number.isInteger(discount) || discount <= 0 || discount >= price)) return error(res, 400, 'INVALID_DISCOUNT');
-      let sku = b.sku ? String(b.sku).trim().toUpperCase().slice(0, 60) : '';
+      const typedSku = String(b.sku || '').toUpperCase().trim().slice(0, 60);
+      let sku = typedSku;
+      let autoAssigned = false;
+      let autoSeq = 0;
       if (!sku) {
-        const { data: cat } = await database().from('categories').select('*').eq('id', Number(b.category_id)).maybeSingle().then(r => r, () => ({ data: null }));
-        const prefix = getCategoryPrefix(cat || '');
-        const { data: rows } = await database().from('products').select('sku').ilike('sku', `${prefix}-%`).then(r => r, () => ({ data: [] }));
-        sku = generateNextSku(cat || prefix, (rows || []).map(r => r.sku));
+        // Category-based auto SKU (TSH-00001): resolve the category prefix,
+        // walk the sequence past taken codes (max 5 probes), and let the
+        // products.sku unique constraint stay the final guard. No resolvable
+        // prefix falls back to the legacy timestamp code — creation never
+        // blocks on SKU plumbing.
+        const { data: cat } = await database().from('categories').select('id,slug,sku_prefix,sku_seq').eq('id', Number(b.category_id)).maybeSingle().then(r => r, () => ({ data: null }));
+        if (!cat) return error(res, 400, 'CATEGORY_INVALID');
+        const prefix = resolveCategoryPrefix(cat);
+        if (prefix) {
+          const base = Number(cat.sku_seq) || 0;
+          let picked = null;
+          for (let a = 0; a < 5 && !picked; a++) {
+            const seq = base + 1 + a;
+            if (seq > SKU_SEQ_MAX) return error(res, 400, 'SKU_SEQUENCE_EXHAUSTED');
+            const candidate = nextSku(prefix, seq);
+            const { data: hit } = await database().from('products').select('id').eq('sku', candidate).maybeSingle().then(r => r, () => ({ data: null }));
+            if (!hit) picked = { sku: candidate, seq };
+          }
+          if (!picked) return error(res, 409, 'SKU_RETRY');
+          sku = picked.sku;
+          autoAssigned = true;
+          autoSeq = picked.seq;
+        } else {
+          sku = `NE-${Date.now().toString().slice(-6)}`.toUpperCase();
+        }
+      } else {
+        // Duplicate SKUs are the classic retry trap: an earlier attempt may have
+        // inserted the row before failing at variants/media, so every retry with
+        // the same SKU would otherwise die with a generic 503. Name it instead.
+        const { data: skuTaken } = await database().from('products').select('id').eq('sku', sku).maybeSingle().then(r => r, () => ({ data: null }));
+        if (skuTaken) return error(res, 409, 'SKU_EXISTS');
       }
       const detailBlocks = sanitizeDetailBlocks(b.detail_blocks);
       if (detailBlocks === null) return error(res, 400, 'INVALID_DETAIL_BLOCKS');
-      // Duplicate SKUs are the classic retry trap: an earlier attempt may have
-      // inserted the row before failing at variants/media, so every retry with
-      // the same SKU would otherwise die with a generic 503. Name it instead.
-      const { data: skuTaken } = await database().from('products').select('id').eq('sku', sku).maybeSingle().then(r => r, () => ({ data: null }));
-      if (skuTaken) return error(res, 409, 'SKU_EXISTS');
       let created = null;
       try {
         const { data, error: e } = await database().from('products').insert({
@@ -856,7 +905,11 @@ export function registerAdminRoutes(app, ctx) {
           console.error('PRODUCT_CREATE permission denied', code, msg.slice(0, 200));
           return error(res, 503, 'DB_PERMISSION');
         }
-        if (e?.code === '23505' || /duplicate|unique/i.test(msg)) return error(res, 409, 'SKU_EXISTS');
+        if (e?.code === '23505' || /duplicate|unique/i.test(msg)) {
+          // Auto-assigned codes colliding at insert mean a concurrent create
+          // won the same sequence — retryable, unlike a typed duplicate.
+          return error(res, 409, autoAssigned ? 'SKU_RETRY' : 'SKU_EXISTS');
+        }
         if (e?.code === '23503' || /foreign key|violates/i.test(msg)) return error(res, 400, 'CATEGORY_INVALID');
         throw e;
       }
@@ -876,6 +929,11 @@ export function registerAdminRoutes(app, ctx) {
         return error(res, 503, 'MEDIA_FAILED');
       }
       await auditLog(req, 'PRODUCT_CREATE', { table: 'products', id: created.id });
+      if (autoAssigned) {
+        // Advance the category hint past the consumed sequence (best-effort;
+        // the pre-check loop, not this value, guarantees correctness).
+        await database().from('categories').update({ sku_seq: autoSeq }).eq('id', Number(b.category_id)).then(r => r, () => null);
+      }
       res.status(201).json({ success: true, data: await composeAdminProduct(created) });
     } catch (err) {
       console.error('PRODUCT_CREATE_FAILED', err?.message);
@@ -1019,6 +1077,21 @@ export function registerAdminRoutes(app, ctx) {
       const b = req.body || {};
       const slug = String(b.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
       if (!slug || !b.name_ko) return error(res, 400, 'SLUG_NAME_REQUIRED');
+      // SKU prefix: explicit value wins (validated + unique); otherwise derive
+      // from the slug so every category can mint TSH-00001-style SKUs. A taken
+      // suggestion falls back to null — the admin sets one explicitly later.
+      let skuPrefix = null;
+      if (b.sku_prefix !== undefined && b.sku_prefix !== null && String(b.sku_prefix).trim() !== '') {
+        const clean = normalizePrefix(b.sku_prefix);
+        if (!SKU_PREFIX_RE.test(clean)) return error(res, 400, 'INVALID_PREFIX');
+        if (await prefixTaken(database, clean)) return error(res, 409, 'PREFIX_EXISTS');
+        skuPrefix = clean;
+      } else {
+        const suggested = suggestPrefix(slug);
+        if (suggested && SKU_PREFIX_RE.test(suggested) && !(await prefixTaken(database, suggested))) {
+          skuPrefix = suggested;
+        }
+      }
       const { data, error: e } = await database().from('categories').insert({
         slug, name_ko: String(b.name_ko).slice(0, 100), name_en: String(b.name_en || b.name_ko).slice(0, 100),
         description_ko: String(b.description_ko || '').slice(0, 500), description_en: String(b.description_en || b.description_ko || '').slice(0, 500),
@@ -1026,9 +1099,28 @@ export function registerAdminRoutes(app, ctx) {
         gender: ['unisex','men','women'].includes(b.gender) ? b.gender : 'unisex',
         is_active: b.is_active === undefined ? true : !!b.is_active,
         sort_order: Number(b.sort_order || 0),
+        sku_prefix: skuPrefix,
       }).select().maybeSingle();
       if (e) {
-        if (String(e.message || '').includes('duplicate') || e.code === '23505') return error(res, 400, 'SLUG_EXISTS');
+        const m = String(e.message || '');
+        if (m.includes('categories_sku_prefix_idx')) return error(res, 409, 'PREFIX_EXISTS');
+        if (m.includes('duplicate') || e.code === '23505') return error(res, 400, 'SLUG_EXISTS');
+        // Pre-migration DBs lack sku_prefix: retry without it rather than 503.
+        if (/sku_prefix|column .* does not exist|schema cache/i.test(m)) {
+          const retry = await database().from('categories').insert({
+            slug, name_ko: String(b.name_ko).slice(0, 100), name_en: String(b.name_en).slice(0, 100),
+            description_ko: String(b.description_ko || '').slice(0, 500), description_en: String(b.description_en || '').slice(0, 500),
+            image_url: String(b.image_url || '').slice(0, 500),
+            gender: ['unisex','men','women'].includes(b.gender) ? b.gender : 'unisex',
+            is_active: b.is_active === undefined ? true : !!b.is_active,
+            sort_order: Number(b.sort_order || 0),
+          }).select().maybeSingle();
+          if (retry.error) throw retry.error;
+          if (!retry.data) throw new Error('CATEGORY_CREATE_FAILED');
+          await auditLog(req, 'CATEGORY_CREATE', { table: 'categories', id: retry.data.id });
+          res.status(201).json({ success: true, data: retry.data });
+          return;
+        }
         throw e;
       }
       await auditLog(req, 'CATEGORY_CREATE', { table: 'categories', id: data.id });
@@ -1059,8 +1151,23 @@ export function registerAdminRoutes(app, ctx) {
       if (b.gender !== undefined) patch.gender = ['unisex','men','women'].includes(b.gender) ? b.gender : 'unisex';
       if (b.is_active !== undefined) patch.is_active = !!b.is_active;
       if (b.sort_order !== undefined) patch.sort_order = Number(b.sort_order) || 0;
+      if (b.sku_prefix !== undefined) {
+        const raw = String(b.sku_prefix || '').trim();
+        if (!raw) {
+          patch.sku_prefix = null;
+        } else {
+          const clean = normalizePrefix(raw);
+          if (!SKU_PREFIX_RE.test(clean)) return error(res, 400, 'INVALID_PREFIX');
+          if (await prefixTaken(database, clean, req.params.id)) return error(res, 409, 'PREFIX_EXISTS');
+          patch.sku_prefix = clean;
+        }
+      }
       const { data, error: e } = await database().from('categories').update(patch).eq('id', req.params.id).select().maybeSingle();
-      if (e || !data) return error(res, e ? 400 : 404, e ? 'CATEGORY_UPDATE_FAILED' : 'CATEGORY_NOT_FOUND');
+      if (e) {
+        if (String(e.message || '').includes('categories_sku_prefix_idx')) return error(res, 409, 'PREFIX_EXISTS');
+        return error(res, 400, 'CATEGORY_UPDATE_FAILED');
+      }
+      if (!data) return error(res, 404, 'CATEGORY_NOT_FOUND');
       await auditLog(req, 'CATEGORY_UPDATE', { table: 'categories', id: req.params.id });
       res.json({ success: true, data });
     } catch { error(res, 503, 'CATEGORY_UPDATE_FAILED'); }

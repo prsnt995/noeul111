@@ -17,6 +17,14 @@ const PRODUCT_ERROR_TEXT = {
     ko: '이미 존재하는 SKU입니다. 상품 목록에서 확인하세요 — 이전 저장 시도가 성공했을 수 있습니다.',
     en: 'This SKU already exists. Check the product list — a previous save may have succeeded.',
   },
+  SKU_RETRY: {
+    ko: '다른 관리자가 동시에 등록 중입니다. 그대로 다시 저장하세요.',
+    en: 'Another admin saved simultaneously. Save again unchanged.',
+  },
+  SKU_SEQUENCE_EXHAUSTED: {
+    ko: '이 카테고리의 SKU 번호가 소진되었습니다 (99999). 새 접두사를 사용하세요.',
+    en: 'SKU numbers exhausted for this category (99999). Use a new prefix.',
+  },
   CATEGORY_INVALID: {
     ko: '선택한 카테고리가 존재하지 않습니다. 카테고리를 다시 선택하세요.',
     en: 'The selected category does not exist. Pick another category.',

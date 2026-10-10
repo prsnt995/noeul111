@@ -19,8 +19,8 @@ import {
   COMMON_SIZES,
   DEFAULT_SIZE_STOCK,
   generateNextSku,
-  getCategoryPrefix,
 } from '../../utils/product.js';
+import { normalizePrefix, suggestPrefix, nextSku } from '../../utils/sku.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useBusy } from '../../context/BusyContext.jsx';
@@ -130,7 +130,22 @@ export function AdminProductsPage() {
   });
 
   // Custom color draft (name + hex picker) appended to presets
-  const [newColor, setNewColor] = useState({ name_ko: '', hex: '#18181b' });
+  const [newColor, setNewColor] = useState({ name_ko: '', name_en: '', hex: '#18181b' });
+  // Tracks whether the admin typed the SKU manually (stops auto-suggest).
+  const [skuDirty, setSkuDirty] = useState(false);
+
+  // Next auto SKU preview for a category (best-effort seq+1; the server
+  // assigns authoritatively and skips taken codes).
+  const suggestSkuForCategory = (cat) => {
+    if (!cat) return '';
+    const prefix = normalizePrefix(cat.sku_prefix) || suggestPrefix(cat.slug);
+    if (!prefix) return '';
+    try {
+      return nextSku(prefix, (Number(cat.sku_seq) || 0) + 1);
+    } catch {
+      return '';
+    }
+  };
 
   // Standalone category refresh: the save guard and the add-modal call this
   // when the list is empty/stale, instead of trusting a phantom fallback id.
@@ -209,19 +224,23 @@ export function AdminProductsPage() {
     setIsEditMode(false);
     setEditingId(null);
     setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
+    setSkuDirty(false);
     // Never fall back to a phantom id: an empty string fails pre-flight with
     // a named message instead of dying on the category FK server-side.
     if (!categories.length) fetchCategories();
     const targetCat = categories[0] || null;
-    const initialSku = targetCat ? generateNextSku(targetCat, products) : 'TS-001';
     const initialSizes = ['FREE'];
-    const initialColors = [{ name_ko: '블랙', hex: '#111112' }];
+    const initialColors = [{ name_ko: '블랙', name_en: 'Black', hex: '#111112' }];
     const initialStock = {};
     initialColors.forEach((c) => {
       initialSizes.forEach((sz) => {
         initialStock[comboKey(c, sz)] = String(DEFAULT_SIZE_STOCK);
       });
     });
+    // Auto-suggest the next category SKU (TSH-00042…); the server assigns
+    // authoritatively, this is just a preview until the admin types.
+    // Falls back to the legacy generator when the category lacks sku_seq.
+    const initialSku = suggestSkuForCategory(targetCat) || (targetCat ? generateNextSku(targetCat, products) : '');
     setFormData({
       sku: initialSku,
       category_id: targetCat?.id ?? '',
@@ -248,7 +267,9 @@ export function AdminProductsPage() {
   const openEditModal = (p) => {
     setIsEditMode(true);
     setEditingId(p.id);
-    setNewColor({ name_ko: '', hex: '#18181b' });
+    setNewColor({ name_ko: '', name_en: '', hex: '#18181b' });
+    // Existing SKU is explicit — never overwrite it with suggestions.
+    setSkuDirty(true);
     // Preserve per-image color mapping for reorder plan (media has color, images is fallback)
     const mediaWithColor = Array.isArray(p.media) && p.media.length
       ? p.media.map(m => ({ url: m.url, color: m.color || null, variant_id: m.variant_id || null }))
@@ -361,14 +382,17 @@ export function AdminProductsPage() {
     await runBusy(async () => {
       const payload = {
         ...formData,
-        name_en: formData.name_ko,
-        description_en: formData.description_ko || '',
-        material_en: formData.material_ko || '',
+        name_en: formData.name_en || formData.name_ko,
+        description_en: formData.description_en || formData.description_ko || '',
+        material_en: formData.material_en || formData.material_ko || '',
         colors: formData.colors.map((c) => ({
           ...c,
           name_ko: c.name_ko || c.name || c.name_en,
           name_en: c.name_en || c.name_ko || c.name,
         })),
+        // Untouched auto-suggest goes out blank so the server assigns the
+        // authoritative next sequence; a manually typed SKU is sent as-is.
+        sku: skuDirty ? formData.sku : '',
         price: Number(formData.price),
         discount_price: formData.discount_price ? Number(formData.discount_price) : null,
         variant_stock,
@@ -378,8 +402,8 @@ export function AdminProductsPage() {
         await adminApi.put(`/admin/products/${editingId}`, payload);
         showToast('상품 정보가 성공적으로 수정되었습니다.', 'success');
       } else {
-        await adminApi.post('/admin/products', payload);
-        showToast('새 상품이 등록되었습니다.', 'success');
+        const res = await adminApi.post('/admin/products', payload);
+        showToast(`새 상품이 등록되었습니다.${res?.data?.sku ? ` (SKU: ${res.data.sku})` : ''}`, 'success');
       }
       if (emptyColors.length) {
         showToast(`판매 조합 없는 색상(고객에게 숨김): ${emptyColors.map(colorKey).join(', ')}`, 'info');
@@ -992,7 +1016,17 @@ export function AdminProductsPage() {
                     <label className="form-label">카테고리 *</label>
                     <select
                       value={formData.category_id}
-                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      onChange={(e) => {
+                        const category_id = e.target.value;
+                        const cat = categories.find((c) => String(c.id) === String(category_id));
+                        setFormData((fd) => ({
+                          ...fd,
+                          category_id,
+                          // Follow the category with a fresh suggestion until
+                          // the admin types a SKU manually.
+                          ...(!skuDirty && !isEditMode ? { sku: suggestSkuForCategory(cat) || (cat ? generateNextSku(cat, products) : fd.sku) } : {}),
+                        }));
+                      }}
                       className="form-select"
                       required
                     >
@@ -1019,37 +1053,38 @@ export function AdminProductsPage() {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <label className="form-label">상품 SKU 번호</label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cat = categories.find((c) => String(c.id) === String(formData.category_id)) || categories[0];
-                          const next = generateNextSku(cat, products);
-                          setFormData((prev) => ({ ...prev, sku: next }));
-                          showToast(`SKU 자동 생성: ${next}`, 'info');
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--accent-sunset)',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          padding: 0,
-                          textDecoration: 'underline',
-                        }}
-                      >
-                        SKU 자동 생성
-                      </button>
+                    <label className="form-label">상품 SKU 번호 {skuDirty ? '(직접 입력)' : '(자동 부여)'}</label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input
+                        type="text"
+                        value={formData.sku}
+                        onChange={(e) => { setSkuDirty(true); setFormData({ ...formData, sku: e.target.value }); }}
+                        placeholder={isEditMode ? '' : '비워두면 카테고리별 자동 부여'}
+                        className="form-input"
+                        style={{ fontFamily: 'monospace', fontWeight: skuDirty ? 400 : 700 }}
+                      />
+                      {!isEditMode && (
+                        <button
+                          type="button"
+                          title="다음 번호로 다시 생성"
+                          onClick={() => {
+                            const cat = categories.find((c) => String(c.id) === String(formData.category_id)) || categories[0];
+                            const next = suggestSkuForCategory(cat) || (cat ? generateNextSku(cat, products) : formData.sku);
+                            setSkuDirty(false);
+                            setFormData((fd) => ({ ...fd, sku: next }));
+                            if (next) showToast(`SKU 자동 생성: ${next}`, 'info');
+                          }}
+                          style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #e4e4e7', background: '#f4f4f5', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                        >
+                          ⟳ 자동
+                        </button>
+                      )}
                     </div>
-                    <input
-                      type="text"
-                      value={formData.sku}
-                      onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                      placeholder="예: TS-001"
-                      className="form-input"
-                    />
+                    {!isEditMode && !skuDirty && formData.sku && (
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--accent-sunset)', fontWeight: 600 }}>
+                        다음 SKU: {formData.sku} (저장 시 확정)
+                      </span>
+                    )}
                   </div>
                 </div>
 

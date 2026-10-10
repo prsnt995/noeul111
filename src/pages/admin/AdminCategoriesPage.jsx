@@ -8,6 +8,7 @@ import {
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useListParams } from '../../hooks/useListParams.js';
+import { normalizePrefix, suggestPrefix, SKU_PREFIX_RE, prefixErrorText } from '../../utils/sku.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { CardGridSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import { Plus, Edit2, Trash2, FolderTree, X, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
@@ -38,7 +39,10 @@ export function AdminCategoriesPage() {
     gender: 'unisex',
     sort_order: 0,
     is_active: true,
+    sku_prefix: '',
   });
+  // Tracks whether the admin typed the prefix manually (stops slug-following).
+  const [prefixDirty, setPrefixDirty] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [sampleProducts, setSampleProducts] = useState({});
   const [sampleLoading, setSampleLoading] = useState({});
@@ -89,6 +93,7 @@ export function AdminCategoriesPage() {
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingId(null);
+    setPrefixDirty(false);
     setFormData({
       slug: '',
       name_ko: '',
@@ -98,6 +103,7 @@ export function AdminCategoriesPage() {
       gender: 'unisex',
       sort_order: categories.length + 1,
       is_active: true,
+      sku_prefix: '',
     });
     setIsModalOpen(true);
   };
@@ -105,6 +111,7 @@ export function AdminCategoriesPage() {
   const openEditModal = (cat) => {
     setIsEditMode(true);
     setEditingId(cat.id);
+    setPrefixDirty(true);
     setFormData({
       slug: cat.slug,
       name_ko: cat.name_ko,
@@ -114,15 +121,28 @@ export function AdminCategoriesPage() {
       gender: cat.gender || 'unisex',
       sort_order: cat.sort_order || 0,
       is_active: Boolean(cat.is_active),
+      sku_prefix: cat.sku_prefix || suggestPrefix(cat.slug),
     });
     setIsModalOpen(true);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    // New categories require a prefix (it mints TSH-00001-style SKUs);
+    // edits may clear it back to slug-derived behavior.
+    const prefix = normalizePrefix(formData.sku_prefix);
+    if (!isEditMode && !prefix) {
+      showToast(prefixErrorText('INVALID_PREFIX'), 'error');
+      return;
+    }
+    if (prefix && !SKU_PREFIX_RE.test(prefix)) {
+      showToast(prefixErrorText('INVALID_PREFIX'), 'error');
+      return;
+    }
     try {
       const payload = {
         ...formData,
+        sku_prefix: prefix || '',
         name_en: formData.name_en || formData.name_ko,
         description_en: formData.description_en || formData.description_ko || '',
       };
@@ -131,12 +151,16 @@ export function AdminCategoriesPage() {
         showToast('카테고리가 수정되었습니다.', 'success');
       } else {
         await adminApi.post('/admin/categories', payload);
-        showToast('새 카테고리가 등록되었습니다.', 'success');
+        showToast(`새 카테고리가 등록되었습니다.${prefix ? ` 이 카테고리 상품 SKU: ${prefix}-00001부터` : ''}`, 'success');
       }
       setIsModalOpen(false);
       fetchCategories();
     } catch (err) {
-      showToast(err.message || '저장 실패', 'error');
+      const code = err?.message;
+      showToast(
+        code === 'INVALID_PREFIX' || code === 'PREFIX_EXISTS' ? prefixErrorText(code) : (code || '저장 실패'),
+        'error'
+      );
     }
   };
 
@@ -284,6 +308,12 @@ export function AdminCategoriesPage() {
                   <span style={{ backgroundColor: '#18181b', color: '#ffffff', fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}>
                     slug: {cat.slug}
                   </span>
+                  <span
+                    title={cat.sku_prefix ? `이 카테고리 다음 SKU: ${cat.sku_prefix}-${String((cat.sku_seq || 0) + 1).padStart(5, '0')}` : '접두사 미지정 — 수정에서 설정하세요'}
+                    style={{ backgroundColor: cat.sku_prefix ? '#ede9fe' : '#fef3c7', color: cat.sku_prefix ? '#5b21b6' : '#92400e', fontSize: '0.6875rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}
+                  >
+                    SKU: {cat.sku_prefix || '미지정'}
+                  </span>
                   <span style={{ backgroundColor: cat.is_active ? '#16a34a' : '#fee2e2', color: cat.is_active ? '#fff' : '#dc2626', fontSize: '0.6875rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>
                     {cat.is_active ? '활성' : '숨김'}
                   </span>
@@ -385,14 +415,52 @@ export function AdminCategoriesPage() {
 
               <form onSubmit={handleSave} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">영문 슬러그 (Slug) * — URL 주소용</label>
-                  <input type="text" required value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })} placeholder="예: knitwear, outerwear" className="form-input" />
+                  <label className="form-label">영문 슬러그 (Slug) * — URL에 사용</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.slug}
+                    onChange={(e) => {
+                      const slug = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                      setFormData((fd) => ({
+                        ...fd,
+                        slug,
+                        // Follow the slug until the admin types a prefix manually.
+                        sku_prefix: prefixDirty ? fd.sku_prefix : (suggestPrefix(slug) || ''),
+                      }));
+                    }}
+                    placeholder="e.g. outerwear, knitwear"
+                    className="form-input"
+                  />
                   <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>소문자, 숫자, -, _ 만 허용. 예: /shop?category={formData.slug || 'example'}</span>
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">카테고리명 *</label>
-                  <input type="text" required value={formData.name_ko} onChange={(e) => setFormData({ ...formData, name_ko: e.target.value, name_en: e.target.value })} placeholder="예: 니트 / 가디건" className="form-input" />
+                  <label className="form-label">SKU 접두사 (Prefix){!isEditMode ? ' *' : ''} — 상품번호 자동 생성용</label>
+                  <input
+                    type="text"
+                    required={!isEditMode}
+                    value={formData.sku_prefix}
+                    onChange={(e) => { setPrefixDirty(true); setFormData({ ...formData, sku_prefix: normalizePrefix(e.target.value) }); }}
+                    placeholder="예: TSH (영문 대문자/숫자 2~6자)"
+                    className="form-input"
+                    style={{ fontFamily: 'monospace', fontWeight: 700, textTransform: 'uppercase' }}
+                    maxLength={6}
+                  />
+                  <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>
+                    이 카테고리의 새 상품은 {formData.sku_prefix || suggestPrefix(formData.slug) || '???'}-00001부터 자동 번호가 부여됩니다.
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">한글 카테고리명 *</label>
+                    <input type="text" required value={formData.name_ko} onChange={(e) => setFormData({ ...formData, name_ko: e.target.value })} placeholder="예: 아우터" className="form-input" />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">영문 카테고리명 *</label>
+                    <input type="text" required value={formData.name_en} onChange={(e) => setFormData({ ...formData, name_en: e.target.value })} placeholder="e.g. Outerwear" className="form-input" />
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
