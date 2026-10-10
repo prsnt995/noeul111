@@ -187,7 +187,12 @@ describe('Feature 4 & 5: Integration with Admin Form & Backend API', () => {
       adminSrc.indexOf("app.post('/api/v1/admin/products'"),
       adminSrc.indexOf("app.put('/api/v1/admin/products/:id'")
     );
-    expect(postHandler.includes('generateNextSku('), 'auto-generates SKU if omitted').toBe(true);
+    // New category-prefix system (TSH-00001 via nextSku/resolveCategoryPrefix)
+    // supersedes the legacy generateNextSku (TS-001) — accept either.
+    expect(
+      postHandler.includes('generateNextSku(') || postHandler.includes('nextSku('),
+      'auto-generates SKU if omitted'
+    ).toBe(true);
     expect(postHandler.includes('SKU_EXISTS'), 'checks uniqueness and prevents duplicate SKUs').toBe(true);
   });
 });

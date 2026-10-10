@@ -1810,10 +1810,10 @@ export function registerAdminRoutes(app, ctx) {
   const uploadDir = path.join(__adminDirname, '../uploads');
   const MIME_TO_EXT = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif' };
   // Per-file validation happens in the handler (per-file results) — multer
-  // only enforces a generous DoS guard (25 MB/file) and the request cap.
+  // enforces the shared 8 MB DoS guard (see src/config/upload.js) plus the request cap.
   const adminUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 25 * 1024 * 1024, files: UPLOAD_MAX_FILES_PER_REQUEST },
+    limits: { fileSize: UPLOAD_MAX_FILE_BYTES, files: UPLOAD_MAX_FILES_PER_REQUEST },
   });
 
   function uploadFileProblem(file) {

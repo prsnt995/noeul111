@@ -11,7 +11,7 @@ import {
 } from '../src/utils/sku.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
 
 describe('SKU system — generator', () => {
   it('formats TSH-00001 with zero-padded sequences', () => {

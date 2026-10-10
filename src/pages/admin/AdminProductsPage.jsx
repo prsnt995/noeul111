@@ -550,11 +550,12 @@ export function AdminProductsPage() {
 
   const handleCategoryChange = (catId) => {
     const targetCat = categories.find((c) => String(c.id) === String(catId));
-    const nextSku = targetCat ? generateNextSku(targetCat, products) : formData.sku;
+    const next = suggestSkuForCategory(targetCat) || (targetCat ? generateNextSku(targetCat, products) : formData.sku);
     setFormData((prev) => ({
       ...prev,
       category_id: catId,
-      sku: !isEditMode ? nextSku : prev.sku,
+      // Follow the category with a fresh suggestion until the admin types a SKU manually.
+      ...(!skuDirty && !isEditMode ? { sku: next } : {}),
     }));
   };
 
@@ -1016,17 +1017,7 @@ export function AdminProductsPage() {
                     <label className="form-label">카테고리 *</label>
                     <select
                       value={formData.category_id}
-                      onChange={(e) => {
-                        const category_id = e.target.value;
-                        const cat = categories.find((c) => String(c.id) === String(category_id));
-                        setFormData((fd) => ({
-                          ...fd,
-                          category_id,
-                          // Follow the category with a fresh suggestion until
-                          // the admin types a SKU manually.
-                          ...(!skuDirty && !isEditMode ? { sku: suggestSkuForCategory(cat) || (cat ? generateNextSku(cat, products) : fd.sku) } : {}),
-                        }));
-                      }}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
                       className="form-select"
                       required
                     >

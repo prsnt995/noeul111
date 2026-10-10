@@ -21,5 +21,20 @@ export function registerPaymentRoutes(app, { service, authenticate, staff, stepU
   // Webhook is reconciliation-only (payload re-verified against the PG via
   // retrieve; unknown keys fail closed) but each hit costs a PG call, so it
   // shares the payment rate limiter — Toss retries delivery on 429.
-  app.post('/api/v1/payments/toss/webhook', limiter, run(req => service.webhook(req.body || {})));
+  // Optional shared-secret: set TOSS_WEBHOOK_SECRET to require
+  // x-webhook-secret header (fail-closed when configured, open otherwise
+  // for backwards compat — reconcile still never trusts the payload).
+  app.post('/api/v1/payments/toss/webhook', limiter, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const expected = process.env.TOSS_WEBHOOK_SECRET;
+      if (expected && req.get('x-webhook-secret') !== expected) {
+        res.status(401).json({ success: false, code: 'WEBHOOK_UNAUTHORIZED' });
+        return;
+      }
+      res.json({ success: true, data: await service.webhook(req.body || {}) });
+    } catch (err) {
+      res.status(err instanceof PaymentError ? err.status : 503).json({ success: false, code: err instanceof PaymentError ? err.code : 'PAYMENTS_UNAVAILABLE' });
+    }
+  });
 }
