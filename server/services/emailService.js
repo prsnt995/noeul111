@@ -18,14 +18,22 @@ export const emailService = {
   // Finding #23: delivery states are honest. The stream transport only
   // buffers mail in-process (dev/test) — it must never report delivery.
   // In production a missing SMTP password fails closed.
-  async sendMail({ to, subject, template, data }) { // eslint-disable-line no-unused-vars -- template/data reserved for the template renderer; delivery state is the contract here
+  async sendMail({ to, subject, template, data, html, text }) { // eslint-disable-line no-unused-vars -- template/data reserved for the template renderer; delivery state is the contract here
     const pass = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.EMAIL_PASSWORD;
     const streaming = !pass;
     if (streaming && process.env.NODE_ENV === 'production' && process.env.EMAIL_ALLOW_STREAM !== '1') {
       throw new Error('SMTP is not configured (production delivery required)');
     }
     const transporter = createTransporter();
-    const mailOptions = { from: `"NOEUL 고객센터" <${process.env.SMTP_USER || 'noeulenterprises@gmail.com'}>`, to, subject };
+    let bodyHtml = html;
+    let bodyText = text;
+    // Password-reset template (v1): minimal branded body with the reset link.
+    if (!bodyHtml && template === 'password-reset' && data?.link) {
+      const link = String(data.link);
+      bodyText = `NOEUL 비밀번호 재설정\n\n아래 링크를 클릭하여 새 비밀번호를 설정해주세요 (1시간 유효):\n${link}\n\n본인이 요청하지 않았다면 이 이메일을 무시해주세요.`;
+      bodyHtml = `<div style="font-family:'Pretendard',sans-serif;max-width:560px;margin:0 auto;background:#ffffff;color:#18181b;padding:32px;border-radius:12px;border:1px solid #e4e4e7;"><h2 style="margin:0 0 12px;font-size:20px;">NOEUL 비밀번호 재설정</h2><p style="font-size:14px;color:#52525b;line-height:1.6;">아래 버튼을 클릭하여 새 비밀번호를 설정해주세요. 링크는 1시간 동안 유효합니다.</p><p style="margin:24px 0;"><a href="${link}" style="display:inline-block;background:#e05638;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 28px;border-radius:10px;">새 비밀번호 설정하기</a></p><p style="font-size:12px;color:#a1a1aa;word-break:break-all;">버튼이 동작하지 않으면 아래 주소를 브라우저에 붙여넣으세요:<br/>${link}</p><p style="font-size:12px;color:#a1a1aa;">본인이 요청하지 않았다면 이 이메일을 무시해주세요.</p></div>`;
+    }
+    const mailOptions = { from: `"NOEUL 고객센터" <${process.env.SMTP_USER || 'noeulenterprises@gmail.com'}>`, to, subject, ...(bodyHtml ? { html: bodyHtml } : {}), ...(bodyText ? { text: bodyText } : {}) };
     try {
       const info = await transporter.sendMail(mailOptions);
       console.log(`[EmailService] Sent to ${to}: ${info.messageId || 'sent'}`);

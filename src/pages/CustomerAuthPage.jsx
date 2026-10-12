@@ -19,6 +19,23 @@ import {
   KeyRound
 } from 'lucide-react';
 
+const FRIENDLY_AUTH_ERRORS = {
+  GOOGLE_ACCOUNT_USE_GOOGLE: 'This email uses Google login — please Continue with Google above.',
+  ADMIN_USE_GOOGLE: 'Staff accounts must use Continue with Google above.',
+  ACCOUNT_EXISTS_USE_GOOGLE: 'This email is already registered with Google — please Sign In, or use Continue with Google.',
+  ACCOUNT_EXISTS_USE_PASSWORD: 'This email is registered with email + password — please Sign In below.',
+  INVALID_CREDENTIALS: 'Email or password is incorrect. Please try again.',
+  PASSWORD_TOO_SHORT: 'Password must be at least 8 characters.',
+  INVALID_EMAIL: 'Please enter a valid email address.',
+  NAME_REQUIRED: 'Please enter your name.',
+};
+
+function friendlyAuthError(err) {
+  const code = String(err?.message || err || '').trim();
+  if (FRIENDLY_AUTH_ERRORS[code]) return FRIENDLY_AUTH_ERRORS[code];
+  return code || 'Something went wrong. Please try again.';
+}
+
 export function CustomerAuthPage() {
   const { isLoggedIn, loginWithGoogle, login, register, resetPassword } = useAuth();
   const { t } = useLanguage();
@@ -47,6 +64,17 @@ export function CustomerAuthPage() {
       setLocation('/account');
     }
   }, [isLoggedIn, setLocation]);
+
+  // Google-callback conflict redirects here as /auth?error=CODE — surface it.
+  useEffect(() => {
+    try {
+      const code = new URLSearchParams(window.location.search).get('error');
+      if (code && FRIENDLY_AUTH_ERRORS[code]) {
+        setErrorMsg(FRIENDLY_AUTH_ERRORS[code]);
+        window.history.replaceState(null, '', '/auth');
+      }
+    } catch { /* non-browser / malformed URL — ignore */ }
+  }, []);
 
   // 1. Google Sign-In
   const handleGoogleSignIn = async () => {
@@ -86,7 +114,7 @@ export function CustomerAuthPage() {
       showToast('로그인되었습니다. 환영합니다!', 'success');
       setLocation('/account');
     } catch (err) {
-      setErrorMsg(err.message || '로그인에 실패했습니다.');
+      setErrorMsg(friendlyAuthError(err));
     } finally {
       setFormLoading(false);
     }
@@ -100,8 +128,8 @@ export function CustomerAuthPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
+    if (password.length < 8) {
+      setErrorMsg('비밀번호는 8자리 이상이어야 합니다.');
       return;
     }
 
@@ -121,7 +149,7 @@ export function CustomerAuthPage() {
       );
       setLocation('/account');
     } catch (err) {
-      setErrorMsg(err.message || '회원가입 실패');
+      setErrorMsg(friendlyAuthError(err));
     } finally {
       setFormLoading(false);
     }
@@ -467,7 +495,7 @@ export function CustomerAuthPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="6자 이상 입력"
+                    placeholder="8자 이상 입력"
                     className="form-input"
                     style={{ paddingLeft: '40px', borderRadius: '10px', height: '44px' }}
                   />
@@ -605,6 +633,8 @@ export function CustomerAuthPage() {
 
             <p style={{ fontSize: '0.84375rem', color: '#71717a', marginBottom: '20px', lineHeight: 1.5 }}>
               Enter the email address associated with your NOEUL account, and we will send you a password reset link.
+              <br />
+              <span style={{ fontSize: '0.78125rem' }}>Google로 가입하셨다면 재설정 없이 위의 Continue with Google 버튼을 이용해주세요.</span>
             </p>
 
             {successMsg ? (

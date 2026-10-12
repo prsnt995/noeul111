@@ -5,7 +5,9 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { createClient } from '@supabase/supabase-js';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, randomUUID } from 'node:crypto';
+import bcrypt from 'bcryptjs';
+import { emailService } from '../server/services/emailService.js';
 import { notificationService } from '../server/services/notificationService.js';
 import { encryptSessionTokens } from '../server/lib/sessionCrypto.js';
 import { startOutboxWorker } from '../server/workers/outbox.js';
@@ -66,6 +68,7 @@ const reviewLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeade
 const claimLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeaders: true, legacyHeaders: false });
 const quoteLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const cancelLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: true, legacyHeaders: false });
+const passwordResetLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
 app.use(express.json({ limit: '256kb', strict: true }));
 app.use((req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Referrer-Policy', 'strict-origin-when-cross-origin'); res.set('Cache-Control', req.method === 'GET' ? 'private, max-age=0' : 'no-store'); next(); });
 
@@ -227,11 +230,34 @@ app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
     }
     const id = random();
     const csrf = random();
-    await database().from('profiles').upsert({
-      id: token.user.id,
-      email: token.user.email,
-      name: token.user.user_metadata?.full_name || ''
-    });
+    // Password-account guard: a password-registered email must not be
+    // silently merged into a Google identity. Redirect with a code the
+    // /auth page surfaces as "please sign in with email + password".
+    const loginEmail = String(token.user.email || '').trim().toLowerCase();
+    if (loginEmail) {
+      try {
+        const { data: conflict } = await database().from('profiles').select('id,email,auth_provider').ilike('email', escapeIlike(loginEmail)).limit(10);
+        const taken = (conflict || []).find(r => String(r.email || '').toLowerCase() === loginEmail && r.id !== token.user.id && r.auth_provider === 'password');
+        if (taken) return res.redirect('/auth?error=ACCOUNT_EXISTS_USE_PASSWORD');
+      } catch { /* guard is best-effort; fall through to upsert */ }
+    }
+    try {
+      await database().from('profiles').upsert({
+        id: token.user.id,
+        email: token.user.email,
+        name: token.user.user_metadata?.full_name || '',
+        auth_provider: 'google'
+      });
+    } catch (upErr) {
+      // DBs without the password-auth migration have no auth_provider column.
+      if (String(upErr?.message || '').includes('auth_provider')) {
+        await database().from('profiles').upsert({
+          id: token.user.id,
+          email: token.user.email,
+          name: token.user.user_metadata?.full_name || ''
+        });
+      } else throw upErr;
+    }
 
     const sessionPayload = {
       id_hash: sha(id),
@@ -262,6 +288,206 @@ app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
   }
 });
 
+
+// EMAIL + PASSWORD AUTH (v1, alongside Google OAuth).
+// Passwords live in app.credentials (bcrypt, cost 12), never in profiles.
+// Google-origin emails have no credential row and are blocked from password
+// flows with GOOGLE_ACCOUNT_USE_GOOGLE / ACCOUNT_EXISTS_USE_GOOGLE.
+// Sessions reuse the same noeul_session HttpOnly cookie + CSRF as Google.
+const normalizeEmail = v => String(v || '').trim().toLowerCase().slice(0, 254);
+const isValidEmail = v => /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/.test(v);
+// Emails are matched with ilike (case-insensitive), but %, _, \ are LIKE
+// wildcards and all three are legal in email local parts (e.g. a_b@x.com).
+// Without escaping, a_b@x.com would match aXb@x.com (wrong 409/401), and
+// over-matched rows could push the true match past .limit(10). Same escape
+// idiom as the catalog search term sanitizer. Note: commas are NOT stripped
+// (unlike catalog `in.()` lists) — comma is literal in LIKE, and stripping
+// it would make the pattern unequal to the stored email.
+const escapeIlike = v => String(v || '').replace(/\\/g, '\\\\').replace(/[%_]/g, c => `\\${c}`);
+const rawEmailTooLong = v => String(v || '').trim().length > 254;
+async function issuePasswordSession(res, userId) {
+  const id = random();
+  const csrf = random();
+  const payload = {
+    id_hash: sha(id),
+    user_id: userId,
+    encrypted_tokens: encryptSessionTokens({ type: 'password', created_at: new Date().toISOString() }),
+    csrf,
+    aal: 'aal1',
+    refreshed_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 24*60*60*1000).toISOString()
+  };
+  let { error: sessErr } = await database().from('sessions').insert(payload);
+  if (sessErr && (sessErr.code === 'PGRST204' || String(sessErr.message || '').includes('aal'))) {
+    delete payload.aal;
+    const retry = await database().from('sessions').insert(payload);
+    sessErr = retry.error;
+  }
+  if (sessErr) throw sessErr;
+  setCookie(res, cookieName, id);
+  return { csrf };
+}
+async function passwordUserResponse(userId, role) {
+  const [{ data: profile }, { data: staffRow }] = await Promise.all([
+    database().from('profiles').select('id,email,name').eq('id', userId).maybeSingle(),
+    database().from('staff_members').select('role,active').eq('user_id', userId).maybeSingle(),
+  ]);
+  if (!profile) return null;
+  return { id: profile.id, uid: profile.id, name: profile.name, email: profile.email, role: role || (staffRow?.active ? staffRow.role : 'customer') };
+}
+
+// POST /api/v1/auth/register {email, password>=8, name, phone?}
+// Phone is accepted (UI sends it) but profiles has no phone column in v1 — ignored.
+app.post('/api/v1/auth/register', authLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+    const name = String(req.body?.name || '').trim().slice(0, 60);
+    if (rawEmailTooLong(req.body?.email) || !isValidEmail(email)) return error(res, 400, 'INVALID_EMAIL');
+    if (password.length < 8) return error(res, 400, 'PASSWORD_TOO_SHORT');
+    if (!name) return error(res, 400, 'NAME_REQUIRED');
+    const { data: existing } = await database().from('profiles').select('id,email').ilike('email', escapeIlike(email)).limit(10);
+    if ((existing || []).some(r => String(r.email || '').toLowerCase() === email)) {
+      // Point the user at the right path: password accounts sign in below,
+      // Google accounts use Continue with Google. Defaults to Google wording
+      // when the credentials table is unreachable (unmigrated DB).
+      let conflictCode = 'ACCOUNT_EXISTS_USE_GOOGLE';
+      try {
+        const { data: cred } = await database().from('credentials').select('email').ilike('email', escapeIlike(email)).limit(10);
+        if ((cred || []).some(r => String(r.email || '').toLowerCase() === email)) conflictCode = 'ACCOUNT_EXISTS_USE_PASSWORD';
+      } catch { /* keep Google wording */ }
+      return error(res, 409, conflictCode);
+    }
+    const userId = randomUUID();
+    const password_hash = bcrypt.hashSync(password, 12);
+    const { error: pErr } = await database().from('profiles').insert({ id: userId, email, name, auth_provider: 'password' });
+    if (pErr) {
+      if (pErr.code === '23505' || String(pErr.message || '').includes('duplicate')) return error(res, 409, 'ACCOUNT_EXISTS_USE_GOOGLE');
+      if (String(pErr.message || '').includes('auth_provider')) return error(res, 503, 'PASSWORD_AUTH_MIGRATION_MISSING');
+      throw pErr;
+    }
+    const { error: cErr } = await database().from('credentials').insert({ user_id: userId, email, password_hash });
+    if (cErr) {
+      await database().from('profiles').delete().eq('id', userId);
+      // A duplicate here means a credential row already owns this email, so
+      // it is a password account — direct to Sign In, not Google.
+      if (cErr.code === '23505' || String(cErr.message || '').includes('duplicate')) return error(res, 409, 'ACCOUNT_EXISTS_USE_PASSWORD');
+      if (String(cErr.message || '').includes('credentials')) return error(res, 503, 'PASSWORD_AUTH_MIGRATION_MISSING');
+      throw cErr;
+    }
+    const { csrf } = await issuePasswordSession(res, userId);
+    const user = await passwordUserResponse(userId, 'customer');
+    await auditLog(req, 'AUTH_PASSWORD_REGISTER', { table: 'profiles', id: userId });
+    res.status(201).json({ success: true, user, csrf });
+  } catch (e) {
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[register] error', e);
+    error(res, 503, 'REGISTER_UNAVAILABLE');
+  }
+});
+
+// POST /api/v1/auth/login {email, password}
+app.post('/api/v1/auth/login', authLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+    if (rawEmailTooLong(req.body?.email) || !isValidEmail(email) || !password) return error(res, 401, 'INVALID_CREDENTIALS');
+    const { data: cred } = await database().from('credentials').select('user_id,email,password_hash').ilike('email', escapeIlike(email)).limit(10);
+    const row = (cred || []).find(r => String(r.email || '').toLowerCase() === email);
+    if (!row) {
+      // Distinct UX per product decision: Google-only emails get directed back
+      // to Google. Unknown emails stay generic to avoid enumeration.
+      const { data: prof } = await database().from('profiles').select('id,email').ilike('email', escapeIlike(email)).limit(10);
+      if ((prof || []).some(r => String(r.email || '').toLowerCase() === email)) {
+        return error(res, 401, 'GOOGLE_ACCOUNT_USE_GOOGLE');
+      }
+      return error(res, 401, 'INVALID_CREDENTIALS');
+    }
+    const ok = bcrypt.compareSync(password, row.password_hash);
+    if (!ok) return error(res, 401, 'INVALID_CREDENTIALS');
+    const { data: profile } = await database().from('profiles').select('id,disabled').eq('id', row.user_id).maybeSingle();
+    if (!profile || profile.disabled) return error(res, 401, 'SESSION_EXPIRED');
+    // Admin stays Google-only: a password login must never mint a staff
+    // session, even if a staff_members row were ever attached to this user.
+    const { data: staffRow } = await database().from('staff_members').select('role,active').eq('user_id', row.user_id).maybeSingle();
+    if (staffRow?.active && (staffRow.role === 'super_admin' || staffRow.role === 'admin')) {
+      return error(res, 403, 'ADMIN_USE_GOOGLE');
+    }
+    const { csrf } = await issuePasswordSession(res, row.user_id);
+    const user = await passwordUserResponse(row.user_id);
+    await auditLog(req, 'AUTH_PASSWORD_LOGIN', { table: 'profiles', id: row.user_id });
+    res.json({ success: true, user, csrf });
+  } catch (e) {
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[login] error', e);
+    error(res, 503, 'LOGIN_UNAVAILABLE');
+  }
+});
+
+// POST /api/v1/auth/request-password-reset {email} — always 200 (anti-enumeration).
+app.post('/api/v1/auth/request-password-reset', passwordResetLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!rawEmailTooLong(req.body?.email) && isValidEmail(email)) {
+      const { data: cred } = await database().from('credentials').select('user_id,email').ilike('email', escapeIlike(email)).limit(10);
+      const row = (cred || []).find(r => String(r.email || '').toLowerCase() === email);
+      if (row) {
+        const token = random();
+        // Single outstanding token per user: revoke prior ones so only the
+        // newest email works and stale rows cannot accumulate.
+        await database().from('password_resets').delete().eq('user_id', row.user_id);
+        await database().from('password_resets').insert({
+          id_hash: sha(token),
+          user_id: row.user_id,
+          expires_at: new Date(Date.now() + 60*60*1000).toISOString()
+        });
+        const link = `${origin}/auth/reset?token=${encodeURIComponent(token)}`;
+        try {
+          await emailService.sendMail({
+            to: email,
+            subject: '[NOEUL] 비밀번호 재설정 안내',
+            template: 'password-reset',
+            data: { link }
+          });
+        } catch (mailErr) {
+          console.error('[request-password-reset] mail failed', mailErr?.message || mailErr);
+        }
+      }
+    }
+    res.json({ success: true });
+  } catch (e) {
+    // Fail open-safe: still return success to avoid enumeration, unless DB is down.
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[request-password-reset] error', e);
+    res.json({ success: true });
+  }
+});
+
+// POST /api/v1/auth/reset-password {token, newPassword>=8}
+app.post('/api/v1/auth/reset-password', passwordResetLimiter, async (req, res) => {
+  try {
+    const token = String(req.body?.token || '');
+    const next = String(req.body?.newPassword || req.body?.password || '');
+    if (!token || next.length < 8) return error(res, 400, next.length < 8 ? 'PASSWORD_TOO_SHORT' : 'RESET_TOKEN_INVALID');
+    const { data: row, error: qErr } = await database().from('password_resets').delete().eq('id_hash', sha(token)).gt('expires_at', new Date().toISOString()).is('used_at', null).select('user_id').maybeSingle();
+    if (qErr) throw qErr;
+    if (!row) return error(res, 400, 'RESET_TOKEN_INVALID');
+    const password_hash = bcrypt.hashSync(next, 12);
+    // Returning clause verifies the credential row still exists: without it
+    // a missing row would report success while locking the user out.
+    const { data: updated, error: uErr } = await database().from('credentials').update({ password_hash, updated_at: new Date().toISOString() }).eq('user_id', row.user_id).select('user_id').maybeSingle();
+    if (uErr || !updated) return error(res, 400, 'RESET_TOKEN_INVALID');
+    // Revoke all sessions so the new password takes effect everywhere.
+    await database().from('sessions').delete().eq('user_id', row.user_id);
+    await database().from('password_resets').delete().eq('user_id', row.user_id);
+    await auditLog(req, 'AUTH_PASSWORD_RESET', { table: 'profiles', id: row.user_id });
+    res.json({ success: true });
+  } catch (e) {
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[reset-password] error', e);
+    error(res, 503, 'RESET_UNAVAILABLE');
+  }
+});
 
 app.get('/api/v1/me', authenticate, async (req, res) => { const s = req.locals.session; res.set('Cache-Control', 'no-store'); res.json({ success: true, user: { id: s.user_id, uid: s.user_id, name: s.profiles.name, email: s.profiles.email, role: s.role }, csrf: s.csrf }); });
 app.post('/api/v1/auth/logout', authenticate, async (req, res) => { const s = req.locals.session; if (s) await database().from('sessions').delete().eq('id_hash', s.id_hash); clearCookie(res); res.json({ success: true }); });
