@@ -297,7 +297,7 @@ export function AdminProductsPage() {
       sizes: p.sizes?.length > 0 ? p.sizes : ['FREE'],
       colors: p.colors?.length > 0 ? p.colors : [{ name_ko: '블랙', hex: '#111' }],
       variant_stock,
-      detail_blocks: Array.isArray(p.detail_blocks) ? p.detail_blocks : [],
+      detail_blocks: (() => { let b = p.detail_blocks; if (typeof b === 'string') { try { b = JSON.parse(b); } catch { b = []; } } return Array.isArray(b) ? b : []; })(),
     });
     setIsModalOpen(true);
   };
@@ -653,7 +653,7 @@ export function AdminProductsPage() {
       render: (p) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', opacity: p.status === 'hidden' ? 0.6 : 1 }}>
           <img
-            src={p.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
+            src={p.images?.[0] || '/products/men/tshirts/classic-tshirt/1.svg'}
             alt=""
             style={{ width: '48px', height: '62px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #e4e4e7' }}
           />

@@ -79,7 +79,7 @@ export const PRODUCTS = [
     material: 'Loopwheel Cotton',
     sizes: ["S","M","L","XL"],
     images: [
-      '/products/men/tshirts/classic-tshirt/1.jpg',
+      '/products/men/tshirts/classic-tshirt/1.svg',
     ],
     description: 'NOEUL Heavyweight Loopwheel Tee — synthetic placeholder until real shoot, cache-friendly reused local image.',
     description_ko: '노을 루프휠 헤비웨이트 티셔츠 — 실제 촬영 전까지 재사용 로컬 이미지로 구성된 합성 플레이스홀더입니다.',
@@ -107,7 +107,7 @@ export const PRODUCTS = [
     material: 'Oxford Cotton',
     sizes: ["M","L","XL"],
     images: [
-      '/products/women/tshirts/oversized-tshirt/2.jpg',
+      '/products/women/tshirts/oversized-tshirt/2.svg',
     ],
     description: 'NOEUL Oxford BD Shirt — synthetic placeholder until real shoot, cache-friendly reused local image.',
     description_ko: '노을 옥스포드 버튼다운 셔츠 — 실제 촬영 전까지 재사용 로컬 이미지로 구성된 합성 플레이스홀더입니다.',
@@ -135,7 +135,7 @@ export const PRODUCTS = [
     material: '14oz Denim',
     sizes: ["30","32","34","36"],
     images: [
-      '/products/men/tshirts/classic-tshirt/3.jpg',
+      '/products/men/tshirts/3.svg',
     ],
     description: 'NOEUL Tapered Selvedge Jean — synthetic placeholder until real shoot, cache-friendly reused local image.',
     description_ko: '노을 테이퍼드 셀비지 진 — 실제 촬영 전까지 재사용 로컬 이미지로 구성된 합성 플레이스홀더입니다.',
@@ -163,7 +163,7 @@ export const PRODUCTS = [
     material: 'Ripstop Cotton',
     sizes: ["S","M","L","XL"],
     images: [
-      '/products/women/tshirts/oversized-tshirt/4.jpg',
+      '/products/women/tshirts/oversized-tshirt/4.svg',
     ],
     description: 'NOEUL Deconstructed Cargo Trousers — synthetic placeholder until real shoot, cache-friendly reused local image.',
     description_ko: '노을 디컨스트럭션 카고 팬츠 — 실제 촬영 전까지 재사용 로컬 이미지로 구성된 합성 플레이스홀더입니다.',
@@ -247,7 +247,7 @@ export const PRODUCTS = [
     material: 'Nylon Quilted',
     sizes: ["M","L","XL"],
     images: [
-      '/products/men/tshirts/classic-tshirt/5.jpg',
+      '/products/men/tshirts/5.svg',
     ],
     description: 'NOEUL Quilted MA-1 Bomber — synthetic placeholder until real shoot, cache-friendly reused local image.',
     description_ko: '노을 퀼팅 MA-1 봄버 자켓 — 실제 촬영 전까지 재사용 로컬 이미지로 구성된 합성 플레이스홀더입니다.',
@@ -359,7 +359,7 @@ export const PRODUCTS = [
     material: 'Modal Air',
     sizes: ["M","L","XL"],
     images: [
-      '/products/women/tshirts/oversized-tshirt/3.jpg',
+      '/products/women/tshirts/oversized-tshirt/3.svg',
     ],
     description: 'NOEUL Air-Cool Trunk 2-Pack — synthetic placeholder until real shoot, cache-friendly reused local image.',
     description_ko: '노을 에어쿨 트렁크 2팩 — 실제 촬영 전까지 재사용 로컬 이미지로 구성된 합성 플레이스홀더입니다.',

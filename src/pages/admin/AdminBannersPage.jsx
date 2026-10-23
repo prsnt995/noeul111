@@ -81,7 +81,7 @@ export function AdminBannersPage() {
       title_en: '',
       subtitle_ko: '',
       subtitle_en: '',
-      image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
+      image_url: '/products/men/tshirts/classic-tshirt/1.svg',
       mobile_image_url: '',
       link_url: '/shop',
       button_text_ko: '신규 컬렉션 쇼핑하기',

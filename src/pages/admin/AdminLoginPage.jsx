@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
+import { api } from '../../utils/api.js';
 import { Shield, Lock, Mail, ArrowRight, KeyRound } from 'lucide-react';
 
 export function AdminLoginPage() {
-  const { isAdmin, adminLogin } = useAuth();
+  const { isAdmin } = useAuth();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -23,9 +24,11 @@ export function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await adminLogin();
-      showToast('관리자 인증에 성공했습니다.', 'success');
-      setLocation('/admin');
+      const result = await api.post('/auth/admin/login', { email: email.trim(), password });
+      if (result.success) {
+        showToast('관리자 인증에 성공했습니다.', 'success');
+        setLocation('/admin');
+      }
     } catch (err) {
       showToast(err.message || '관리자 로그인 실패', 'error');
     } finally {
@@ -90,7 +93,6 @@ export function AdminLoginPage() {
               <Mail size={16} color="#71717a" style={{ position: 'absolute', top: '14px', left: '12px' }} />
               <input
                 type="email"
-                disabled
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@noeul.kr"
@@ -116,7 +118,6 @@ export function AdminLoginPage() {
               <Lock size={16} color="#71717a" style={{ position: 'absolute', top: '14px', left: '12px' }} />
               <input
                 type="password"
-                disabled
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"

@@ -352,7 +352,7 @@ export function AdminCategoriesPage() {
                         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
                           {(sampleProducts[cat.slug] || []).map(p => (
                             <a key={p.id} href={`/shop?category=${cat.slug}`} style={{ flexShrink: 0, width: 56, textAlign: 'center', textDecoration: 'none' }}>
-                              <img src={p.images?.[0] || p.image_url || '/products/men/tshirts/classic-tshirt/1.jpg'} alt={p.name_ko} style={{ width: 56, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid #e4e4e7' }} loading="lazy" />
+                              <img src={p.images?.[0] || p.image_url || '/products/men/tshirts/classic-tshirt/1.svg'} alt={p.name_ko} style={{ width: 56, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid #e4e4e7' }} loading="lazy" />
                               <div style={{ fontSize: '0.625rem', color: '#52525b', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 56 }}>{p.name_ko}</div>
                             </a>
                           ))}

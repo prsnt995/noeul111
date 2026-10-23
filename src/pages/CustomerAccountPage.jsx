@@ -622,7 +622,7 @@ export function CustomerAccountPage() {
                   >
                     <Link href={`/product/${item.slug || item.id}`} style={{ display: 'block', aspectRatio: '3 / 4' }}>
                       <img
-                        src={item.images?.[0] || '/products/men/tshirts/classic-tshirt/1.jpg'}
+                        src={item.images?.[0] || '/products/men/tshirts/classic-tshirt/1.svg'}
                         alt={item.name_ko || item.name}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />

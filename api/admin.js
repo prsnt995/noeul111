@@ -1,7 +1,6 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import multer from 'multer';
 import path from 'node:path';
-import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   normalizeOrderSource,
@@ -1807,7 +1806,6 @@ export function registerAdminRoutes(app, ctx) {
   });
   // ---------- Media library (content 'media' doc) + uploads ----------
   const __adminDirname = path.dirname(fileURLToPath(import.meta.url));
-  const uploadDir = path.join(__adminDirname, '../uploads');
   const MIME_TO_EXT = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif' };
   // Per-file validation happens in the handler (per-file results) — multer
   // enforces the shared 8 MB DoS guard (see src/config/upload.js) plus the request cap.

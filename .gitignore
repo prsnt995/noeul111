@@ -28,7 +28,6 @@ scratch/
 .receipts/
 # TypeScript reference files (not runnable) — keep JS reference implementation tracked
 api/*.ts
-!api/*.js
 
 # Original delivery archive and private credentials
 /noeul111-main.zip
@@ -40,3 +39,5 @@ api/*.ts
 *.keystore
 .vercel
 .env*
+
+!.env.example

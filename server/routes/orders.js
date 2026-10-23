@@ -3,7 +3,6 @@ import { query, db } from '../db/database.js';
 import { verifyToken } from '../middleware/auth.js';
 import { paymentService } from '../services/paymentService.js';
 import { notificationService } from '../services/notificationService.js';
-import { CONFIG } from '../config.js';
 import { upload } from '../utils/uploader.js';
 
 const router = express.Router();

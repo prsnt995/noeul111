@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
-import { getOptimizedImageUrl, getProductImages } from '../../utils/imageHelper.js';
+import { getOptimizedImageUrl, getProductImages, getSrcSet } from '../../utils/imageHelper.js';
 
 export function ProductCard({ product, variant = 'classic', eager = false }) {
   const { t } = useLanguage();
@@ -70,7 +70,7 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
   return (
     <article ref={cardRef} aria-label={accessibleName} title={accessibleName} className={`noeul-product-card product-card${isOverlay ? ' overlay' : ''}${revealed ? ' revealed' : ''}`} onMouseEnter={()=>setPaused(true)} onMouseLeave={()=>{setPaused(false); if (isOverlay) setRevealed(false);}} onFocus={()=>setPaused(true)} onBlur={()=>setPaused(false)} onClick={open} onKeyDown={e=>{if (e.target !== e.currentTarget) return; if(e.key==='Enter'||e.key===' '){e.preventDefault();open(e);}}} tabIndex={0}>
       <div className="product-card-media" onTouchStart={e=>{if (cardRef.current) cardRef.current._touchX=e.touches[0].clientX;setPaused(true);}} onTouchEnd={handleTouchEnd}>
-        {images[index] && <img key={images[index]} src={getOptimizedImageUrl(images[index], 480)} alt={name} loading={eager ? 'eager' : 'lazy'} fetchPriority={eager ? 'high' : 'low'} decoding="async" className="product-card-image" />}
+        {images[index] && <img key={images[index]} src={getOptimizedImageUrl(images[index], 480)} srcSet={getSrcSet(images[index], [320, 480, 800])} sizes="(max-width: 640px) 50vw, 300px" alt={name} loading={eager ? 'eager' : 'lazy'} fetchPriority={eager ? 'high' : 'low'} decoding="async" className="product-card-image" />}
         <div className="product-card-badges">{soldOut&&<span>{t('product.sold_out')}</span>}{product.is_sale&&!soldOut&&<span className="sale">{t('product.sale')}</span>}{product.is_new&&!product.is_sale&&!soldOut&&<span>{t('product.new')}</span>}</div>
         {images.length>1&&<div className="product-card-dots" role="group" aria-label={t('product.images')}>{images.map((_,i)=><button key={i} type="button" aria-label={t('product.image_n', { n: i + 1 })} aria-current={i===index ? true : undefined} onClick={e=>{e.stopPropagation();setIndex(i);setPaused(true);}} />)}</div>}
         {isOverlay && (

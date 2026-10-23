@@ -7,9 +7,13 @@ import { getOptimizedImageUrl, safeHttpUrl } from '../../utils/imageHelper.js';
  * (heading / text / image / image_grid) stored in products.detail_blocks.
  * Renders nothing when the product has no blocks.
  */
-export function DetailContentBand({ blocks = [] }) {
+export function DetailContentBand({ blocks: initialBlocks = [] }) {
+  let blocks = initialBlocks;
   const { lang } = useLanguage();
-  if (!Array.isArray(blocks) || blocks.length === 0) return null;
+  let parsed = blocks;
+  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { parsed = []; } }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  blocks = parsed;
 
   const pick = (bilingual) => {
     if (!bilingual) return '';

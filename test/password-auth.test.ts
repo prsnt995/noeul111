@@ -59,7 +59,7 @@ describe('Password auth — backend wiring', () => {
     }
     // Commas are literal in LIKE — stripping them corrupts the pattern.
     const escLine = app.split('\n').find(l => l.includes('const escapeIlike'));
-    expect(escLine.includes('/,/')).toBe(false);
+    expect(escLine?.includes('/,/')).toBe(false);
   });
 
   it('rejects over-long emails before matching (no truncation confusion)', () => {

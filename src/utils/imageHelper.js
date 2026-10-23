@@ -64,14 +64,50 @@ export function safeHttpUrl(url) {
   return null;
 }
 
+const PRECONNECTED_HOSTS = new Set();
+
+// One-time <link rel="preconnect"> per cross-origin image host so the
+// first remote image doesn't pay DNS + TLS setup. Zero-config: the host
+// is derived from the URL being rendered (no env var needed).
+function ensureImagePreconnect(origin) {
+  if (typeof document === 'undefined' || !origin || PRECONNECTED_HOSTS.has(origin)) return;
+  PRECONNECTED_HOSTS.add(origin);
+  const link = document.createElement('link');
+  link.rel = 'preconnect';
+  link.href = origin;
+  document.head.appendChild(link);
+}
+
+// Supabase serves FULL ORIGINALS from /storage/v1/object/* — width/quality
+// params appended there are silently ignored (only /render/image/* applies
+// transformations). Rewrite public object URLs to the render endpoint
+// before setting params; signed/object-sign URLs are left untouched.
 export function getOptimizedImageUrl(url, width = 800) {
   if (!url || typeof url !== 'string') return url;
   try {
     const parsed = new URL(url, window.location.origin);
-    if (!parsed.pathname.includes('/storage/v1/object/')) return url;
-    parsed.searchParams.set('width', String(width));
-    parsed.searchParams.set('quality', width <= 480 ? '70' : '78');
+    if (parsed.origin !== window.location.origin) ensureImagePreconnect(parsed.origin);
+    if (!parsed.pathname.startsWith('/storage/v1/object/public/')) return url;
+    parsed.pathname = parsed.pathname.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/');
+    const w = Math.min(2500, Math.max(1, Math.round(Number(width) || 800)));
+    parsed.searchParams.set('width', String(w));
+    parsed.searchParams.set('quality', w <= 480 ? '70' : '78');
     parsed.searchParams.set('resize', 'contain');
     return parsed.toString();
   } catch { return url; }
+}
+
+/**
+ * srcset for transformable (Supabase-renderable) images only — local
+ * paths and non-storage URLs return undefined so the plain src is used.
+ */
+export function getSrcSet(url, widths = [320, 480, 800]) {
+  if (!url || typeof url !== 'string') return undefined;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const transformable = parsed.origin !== window.location.origin
+      && parsed.pathname.startsWith('/storage/v1/object/public/');
+    if (!transformable) return undefined;
+    return widths.map((w) => `${getOptimizedImageUrl(url, w)} ${w}w`).join(', ');
+  } catch { return undefined; }
 }

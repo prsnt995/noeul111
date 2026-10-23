@@ -12,11 +12,12 @@ export const UPLOAD_MAX_FILES_PER_REQUEST = 20;
 /** Max bytes per file accepted by the API (8 MB, mirrors the bucket). */
 export const UPLOAD_MAX_FILE_BYTES = 8 * 1024 * 1024;
 
-/** Files above this size are downscaled client-side before upload. */
-export const UPLOAD_DOWNSCALE_ABOVE_BYTES = 2 * 1024 * 1024;
+/** Files above this size are compressed client-side before upload. */
+export const UPLOAD_DOWNSCALE_ABOVE_BYTES = 512 * 1024;
 
-/** Longest edge (px) after client-side downscale. */
-export const UPLOAD_DOWNSCALE_MAX_DIM = 2048;
+/** Longest edge (px) after client-side downscale — originals stay small so
+ * pages don't download multi-megabyte source files. */
+export const UPLOAD_DOWNSCALE_MAX_DIM = 1600;
 
 /** Frontend upload batch size (sequential requests dodge serverless body caps). */
 export const UPLOAD_BATCH_SIZE = 3;

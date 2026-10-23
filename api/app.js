@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { createClient } from '@supabase/supabase-js';
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import bcrypt from 'bcryptjs';
 import { emailService } from '../server/services/emailService.js';
 import { notificationService } from '../server/services/notificationService.js';
@@ -70,7 +71,10 @@ const quoteLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: t
 const cancelLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const passwordResetLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
 app.use(express.json({ limit: '256kb', strict: true }));
-app.use((req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Referrer-Policy', 'strict-origin-when-cross-origin'); res.set('Cache-Control', req.method === 'GET' ? 'private, max-age=0' : 'no-store'); next(); });
+const PUBLIC_CACHE_CONTROL = 'public, max-age=0, s-maxage=30, stale-while-revalidate=60';
+const PUBLIC_CACHE_PATHS = ['/api/v1/store/settings/public'];
+const PUBLIC_CACHE_PREFIXES = ['/api/v1/catalog/', '/api/v1/content/', '/api/v1/pages/', '/api/v1/products/'];
+app.use((req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Referrer-Policy', 'strict-origin-when-cross-origin'); if (req.method !== 'GET') { res.set('Cache-Control', 'no-store'); return next(); } const p = req.path; const pub = PUBLIC_CACHE_PATHS.includes(p) || PUBLIC_CACHE_PREFIXES.some(pre => p.startsWith(pre)); res.set('Cache-Control', pub ? PUBLIC_CACHE_CONTROL : 'private, max-age=0'); next(); });
 
 const serverSb = env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY) ? createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }) : null;
 const cookieName = production ? 'noeul_session' : 'noeul_session';
@@ -128,9 +132,12 @@ function aggregateDemand(items) {
 
 function normalizeProduct(product) {
   if (!product) return null;
+  let detailBlocks = product.detail_blocks;
+  if (typeof detailBlocks === 'string') { try { detailBlocks = JSON.parse(detailBlocks); } catch { detailBlocks = []; } }
+  if (!Array.isArray(detailBlocks)) detailBlocks = [];
   const media = Array.isArray(product.product_media) ? product.product_media.filter(m => m.published !== false).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : [];
   const variants = Array.isArray(product.product_variants) ? product.product_variants.filter(v => v.active !== false) : [];
-  return { ...product, images: media.map(m => m.url), media, variants, sizes: [...new Set(variants.map(v => v.size))], colors: [...new Map(variants.map(v => [v.color, { name_ko: v.color, name_en: v.color, hex: v.swatch }])).values()], stock: variants.reduce((sum, v) => sum + Math.max(0, (v.stock || 0) - (v.reserved || 0)), 0) };
+  return { ...product, detail_blocks: detailBlocks, images: media.map(m => m.url), media, variants, sizes: [...new Set(variants.map(v => v.size))], colors: [...new Map(variants.map(v => [v.color, { name_ko: v.color, name_en: v.color, hex: v.swatch }])).values()], stock: variants.reduce((sum, v) => sum + Math.max(0, (v.stock || 0) - (v.reserved || 0)), 0) };
 }
 
 async function session(req, res, required = true) {
@@ -424,6 +431,35 @@ app.post('/api/v1/auth/login', authLimiter, async (req, res) => {
   }
 });
 
+// POST /api/v1/auth/admin/login {email, password} — staff-only email/password login.
+app.post('/api/v1/auth/admin/login', authLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+    if (rawEmailTooLong(req.body?.email) || !isValidEmail(email) || !password) {
+      return error(res, 401, 'INVALID_CREDENTIALS');
+    }
+    const { data: cred } = await database().from('credentials').select('user_id,email,password_hash').ilike('email', escapeIlike(email)).limit(10);
+    const row = (cred || []).find(r => String(r.email || '').toLowerCase() === email);
+    if (!row) return error(res, 401, 'INVALID_CREDENTIALS');
+    const ok = bcrypt.compareSync(password, row.password_hash);
+    if (!ok) return error(res, 401, 'INVALID_CREDENTIALS');
+    const { data: profile } = await database().from('profiles').select('id,disabled,name,email').eq('id', row.user_id).maybeSingle();
+    if (!profile || profile.disabled) return error(res, 401, 'SESSION_EXPIRED');
+    const { data: staffRow } = await database().from('staff_members').select('role,active').eq('user_id', row.user_id).maybeSingle();
+    if (!staffRow?.active || !['super_admin', 'admin'].includes(staffRow.role)) {
+      return error(res, 403, 'ADMIN_ONLY');
+    }
+    const { csrf } = await issuePasswordSession(res, row.user_id);
+    await auditLog(req, 'AUTH_ADMIN_LOGIN', { table: 'profiles', id: row.user_id, after: { role: staffRow.role } });
+    res.json({ success: true, user: { id: profile.id, uid: profile.id, name: profile.name, email: profile.email, role: staffRow.role }, csrf });
+  } catch (e) {
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[admin login] error', e);
+    error(res, 503, 'LOGIN_UNAVAILABLE');
+  }
+});
+
 // POST /api/v1/auth/request-password-reset {email} — always 200 (anti-enumeration).
 app.post('/api/v1/auth/request-password-reset', passwordResetLimiter, async (req, res) => {
   try {
@@ -536,9 +572,6 @@ app.get('/api/v1/me/coupons', authenticate, async (req, res) => { try { const s 
 // REWARD POINTS
 app.get('/api/v1/me/reward-points', authenticate, async (req, res) => { try { const s = req.locals.session; const { data, error: e } = await database().from('reward_points').select('*').eq('user_id', s.user_id).maybeSingle(); if (e) throw e; const balance = data?.balance || 0; res.json({ success: true, data: { balance, total_earned: data?.total_earned || 0, total_used: data?.total_used || 0 } }); } catch { error(res, 503, 'REWARDS_UNAVAILABLE'); } });
 app.get('/api/v1/me/reward-points/log', authenticate, async (req, res) => { try { const s = req.locals.session; const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100); const offset = Math.max(Number(req.query.offset) || 0, 0); const { data, error: e } = await database().from('reward_points_log').select('*').eq('user_id', s.user_id).order('created_at', { ascending: false }).range(offset, offset + limit - 1); if (e) throw e; res.json({ success: true, data: data || [] }); } catch { error(res, 503, 'REWARDS_UNAVAILABLE'); } });
-
-// Helper: earn reward points on order completion
-async function earnRewardPoints(userId, orderId, amount) { try { const points = Math.floor(amount / 100); if (points < 1) return; const { data: rp } = await database().from('reward_points').select('*').eq('user_id', userId).maybeSingle(); if (rp) { await database().from('reward_points').update({ balance: rp.balance + points, total_earned: rp.total_earned + points, updated_at: new Date().toISOString() }).eq('user_id', userId); } else { await database().from('reward_points').insert({ user_id: userId, balance: points, total_earned: points, total_used: 0 }); } await database().from('reward_points_log').insert({ user_id: userId, order_id: orderId, points_change: points, balance_after: (rp?.balance || 0) + points, reason: 'ORDER_COMPLETED' }); } catch { /* non-blocking */ } }
 
 // CATALOG
 app.get('/api/v1/catalog/products', async (req, res) => { try { let q = database().from('products').select('*,categories(slug),product_variants(*),product_media(*)', { count: 'exact' }).eq('is_active', true); if (req.query.search) { const term = String(req.query.search).replace(/\\/g, '\\\\').replace(/[%_,]/g, c => `\\${c}`).replace(/,/g, '').slice(0, 80).trim(); if (term) { let arms = `name_ko.ilike.%${term}%,name_en.ilike.%${term}%,description_ko.ilike.%${term}%,description_en.ilike.%${term}%`; try { const { data: matchCats } = await database().from('categories').select('id').or(`slug.ilike.%${term}%,name_ko.ilike.%${term}%,name_en.ilike.%${term}%`).limit(20); const ids = (matchCats || []).map(r => r.id).filter(Number.isInteger); if (ids.length) arms += `,category_id.in.(${ids.join(',')})`; } catch { /* category match is best-effort */ } q = q.or(arms); } } if (req.query.category) {
@@ -859,4 +892,4 @@ app.use((err, req, res, next) => { /* eslint-disable-line no-unused-vars */ cons
 const port = Number(env.PORT || 5001);
 export default app;
 export const router = app;
-if (process.argv[1] === new URL(import.meta.url).pathname) { app.listen(port, () => { console.log(`NOEUL production API listening on ${port}`); if (process.env.WORKERS_ENABLED !== '0') { startOutboxWorker().catch(err => console.error('[Outbox] start failed:', err.message)); startPaymentRecoveryWorker({ service: paymentService, store: paymentStore }); startExpiryWorker().catch(err => console.error('[Expiry] start failed:', err.message)); } }); }
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) { app.listen(port, () => { console.log(`NOEUL production API listening on ${port}`); if (process.env.WORKERS_ENABLED !== '0') { startOutboxWorker().catch(err => console.error('[Outbox] start failed:', err.message)); startPaymentRecoveryWorker({ service: paymentService, store: paymentStore }); startExpiryWorker().catch(err => console.error('[Expiry] start failed:', err.message)); } }); }

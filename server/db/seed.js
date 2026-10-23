@@ -11,15 +11,15 @@ export function seed() {
 
   // 2. Seed Categories (Upsert)
   const categoriesData = [
-    { slug: 'outerwear', name_ko: '아우터', name_en: 'Outerwear', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 1 },
-    { slug: 'tops', name_ko: '상의', name_en: 'Tops', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 2 },
-    { slug: 'shirts', name_ko: '셔츠/블라우스', name_en: 'Shirts & Blouses', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 3 },
-    { slug: 'knitwear', name_ko: '니트웨어', name_en: 'Knitwear', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 4 },
-    { slug: 'pants', name_ko: '팬츠/데님', name_en: 'Pants & Denim', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 5 },
-    { slug: 'skirts', name_ko: '스커트', name_en: 'Skirts', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 6 },
-    { slug: 'dresses', name_ko: '원피스', name_en: 'Dresses', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 7 },
-    { slug: 'accessories', name_ko: '악세사리/가방', name_en: 'Accessories & Bags', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 8 },
-    { slug: 'socks', name_ko: '양말/삭스', name_en: 'Socks', image_url: '/products/men/tshirts/classic-tshirt/1.jpg', sort_order: 9 }
+    { slug: 'outerwear', name_ko: '아우터', name_en: 'Outerwear', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 1 },
+    { slug: 'tops', name_ko: '상의', name_en: 'Tops', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 2 },
+    { slug: 'shirts', name_ko: '셔츠/블라우스', name_en: 'Shirts & Blouses', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 3 },
+    { slug: 'knitwear', name_ko: '니트웨어', name_en: 'Knitwear', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 4 },
+    { slug: 'pants', name_ko: '팬츠/데님', name_en: 'Pants & Denim', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 5 },
+    { slug: 'skirts', name_ko: '스커트', name_en: 'Skirts', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 6 },
+    { slug: 'dresses', name_ko: '원피스', name_en: 'Dresses', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 7 },
+    { slug: 'accessories', name_ko: '악세사리/가방', name_en: 'Accessories & Bags', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 8 },
+    { slug: 'socks', name_ko: '양말/삭스', name_en: 'Socks', image_url: '/products/men/tshirts/classic-tshirt/1.svg', sort_order: 9 }
   ];
 
   for (const cat of categoriesData) {
@@ -48,8 +48,8 @@ export function seed() {
       subtitle_ko: '간절기 데일리룩의 정석',
       subtitle_en: 'Daily seasonal street essentials',
       content_json: JSON.stringify({
-        image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
-        secondary_image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
+        image_url: '/products/men/tshirts/classic-tshirt/1.svg',
+        secondary_image_url: '/products/men/tshirts/classic-tshirt/1.svg',
         button_link: '/shop?filter=new'
       }),
       sort_order: 1,
@@ -69,7 +69,7 @@ export function seed() {
             tag_sub: '간절기',
             title: '셔츠코디',
             subtitle_script: 'Season of Shirt',
-            image: '/products/men/tshirts/classic-tshirt/1.jpg',
+            image: '/products/men/tshirts/classic-tshirt/1.svg',
             label: '셔츠의 계절',
             hashtags: ['#셔츠', '#체크셔츠', '#코디추천'],
             link: '/shop?category=shirts'
@@ -78,7 +78,7 @@ export function seed() {
             tag_sub: 'BRAND',
             title: 'SlgTho',
             subtitle_script: 'Slog & Thought',
-            image: '/products/men/tshirts/classic-tshirt/1.jpg',
+            image: '/products/men/tshirts/classic-tshirt/1.svg',
             label: 'SlgTho 슬토',
             hashtags: ['#Slog', '#Thought', '#브랜드'],
             link: '/shop?filter=featured'
@@ -87,7 +87,7 @@ export function seed() {
             tag_sub: 'CUSTOM',
             title: '노을 데님',
             subtitle_script: 'now, here...',
-            image: '/products/men/tshirts/classic-tshirt/1.jpg',
+            image: '/products/men/tshirts/classic-tshirt/1.svg',
             label: 'now, here...',
             hashtags: ['#잘만든', '#데님', '#와이드핏'],
             link: '/shop?category=pants'
@@ -122,7 +122,7 @@ export function seed() {
       subtitle_ko: '신규 가입 시 첫 주문 10% 할인 쿠폰 & 전 상품 무료배송 혜택',
       subtitle_en: 'Enjoy 10% off your first order & complimentary nationwide shipping upon signup',
       content_json: JSON.stringify({
-        image_url: '/products/men/tshirts/classic-tshirt/1.jpg',
+        image_url: '/products/men/tshirts/classic-tshirt/1.svg',
         button_text_ko: '회원가입하고 혜택 받기',
         button_link: '/auth?mode=register',
         coupon_code: 'WELCOME10'
@@ -140,12 +140,12 @@ export function seed() {
       subtitle_en: '#NOEUL Customer OOTD styling feed',
       content_json: JSON.stringify({
         images: [
-          '/products/men/tshirts/classic-tshirt/1.jpg',
-          '/products/men/tshirts/classic-tshirt/1.jpg',
-          '/products/men/tshirts/classic-tshirt/1.jpg',
-          '/products/men/tshirts/classic-tshirt/1.jpg',
-          '/products/men/tshirts/classic-tshirt/1.jpg',
-          '/products/men/tshirts/classic-tshirt/1.jpg'
+          '/products/men/tshirts/classic-tshirt/1.svg',
+          '/products/men/tshirts/classic-tshirt/1.svg',
+          '/products/men/tshirts/classic-tshirt/1.svg',
+          '/products/men/tshirts/classic-tshirt/1.svg',
+          '/products/men/tshirts/classic-tshirt/1.svg',
+          '/products/men/tshirts/classic-tshirt/1.svg'
         ]
       }),
       sort_order: 5,
@@ -211,81 +211,81 @@ export function seed() {
     {
       id: 1,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     },
     {
       id: 2,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     },
     {
       id: 3,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     },
     {
       id: 4,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     },
     {
       id: 5,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     },
     {
       id: 6,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     },
     {
       id: 7,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     },
     {
       id: 8,
       images: [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg'
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg'
       ]
     }
   ];

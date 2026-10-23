@@ -150,7 +150,6 @@ export function calculateBusinessMetrics({ orders = [], expenses = [], products 
   let productSalesRevenue = 0;
   let shippingRevenue = 0;
   let discountsTotal = 0;
-  let totalOrderAmountSum = 0;
 
   for (const o of orders) {
     const st = String(o.status || o.order_status || '').toLowerCase();
@@ -165,7 +164,6 @@ export function calculateBusinessMetrics({ orders = [], expenses = [], products 
       // Shipping fee counted STRICTLY ONCE per order
       shippingRevenue += (Number(o.shipping_fee ?? o.shipping ?? 0));
       discountsTotal += (Number(o.discount_amount ?? o.discount ?? 0));
-      totalOrderAmountSum += (Number(o.total_amount ?? o.amount ?? (productSalesRevenue + shippingRevenue - discountsTotal)));
     } else if (st === 'pending_payment' || st === 'pending_verification') {
       pendingOrdersCount += 1;
     } else if (st === 'canceled' || st === 'cancelled') {

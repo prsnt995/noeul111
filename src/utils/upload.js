@@ -9,6 +9,7 @@ import {
   UPLOAD_FAILED_STORAGE,
   UPLOAD_FAILED_GENERIC,
   UPLOAD_DOWNSCALE_MAX_DIM,
+  UPLOAD_DOWNSCALE_ABOVE_BYTES,
 } from '../config/upload.js';
 
 /** Pure helpers for resilient uploads. validateImageFiles touches no DOM so it is unit-testable. */
@@ -80,11 +81,14 @@ export function uploadErrorText(code, lang = 'ko', fileName = '', vars = {}) {
 }
 
 /**
- * Downscale oversized rasters in-browser (dependency-free canvas path).
- * Never throws: returns the original file on any failure or when the
- * browser cannot process the format (GIF/HEIC pass through untouched).
+ * Downscale/compress oversized rasters in-browser (dependency-free canvas
+ * path). Resizes anything past maxDim (1600px default) and re-encodes
+ * anything past maxBytes (512KB default); small JPEG/WebP files return
+ * untouched. Never throws: returns the original file on any failure or
+ * when the browser cannot process the format (GIF/HEIC/PNG-safe pass
+ * through where re-encoding wouldn't help).
  */
-export function downscaleImage(file, { maxDim = UPLOAD_DOWNSCALE_MAX_DIM, quality = 0.85 } = {}) {
+export function downscaleImage(file, { maxDim = UPLOAD_DOWNSCALE_MAX_DIM, maxBytes = UPLOAD_DOWNSCALE_ABOVE_BYTES, quality = 0.82 } = {}) {
   return new Promise((resolve) => {
     try {
       const mime = String(file?.type || '').toLowerCase();
@@ -95,7 +99,11 @@ export function downscaleImage(file, { maxDim = UPLOAD_DOWNSCALE_MAX_DIM, qualit
       img.onload = () => {
         try {
           const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-          if (scale >= 1) { URL.revokeObjectURL(url); return resolve(file); }
+          const needsResize = scale < 1;
+          // Re-encoding an in-limit PNG neither shrinks it nor keeps us honest
+          // about transparency — only JPEG/WebP-family bytes get compressed.
+          const needsCompress = mime !== 'image/png' && file.size > maxBytes;
+          if (!needsResize && !needsCompress) { URL.revokeObjectURL(url); return resolve(file); }
           const canvas = document.createElement('canvas');
           canvas.width = Math.round(img.width * scale);
           canvas.height = Math.round(img.height * scale);
@@ -106,6 +114,8 @@ export function downscaleImage(file, { maxDim = UPLOAD_DOWNSCALE_MAX_DIM, qualit
           canvas.toBlob((blob) => {
             URL.revokeObjectURL(url);
             if (!blob) return resolve(file);
+            // Never keep a "compressed" file that grew past the original.
+            if (blob.size >= file.size && !needsResize) return resolve(file);
             const name = outMime === 'image/jpeg' && /\.(png|webp|avif)$/i.test(file.name)
               ? file.name.replace(/\.(png|webp|avif)$/i, '.jpg')
               : file.name;

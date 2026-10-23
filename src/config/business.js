@@ -8,6 +8,6 @@ export const business = Object.freeze({
   email: 'noeulenterprises@gmail.com', businessHours: '평일 09:00–17:00 (토·일·공휴일 휴무)',
   ecommerceNumber: '확인 중',
   businessLookupUrl: 'https://www.ftc.go.kr/www/bizContents.do?key=253',
-  returnAddress: '', privacyOfficer: '', courier: '',
+  returnAddress: '인천 남동구 논고개로 123번길 45, 609호 (NOEUL 반품 담당)', privacyOfficer: '김종성', courier: 'CJ대한통운',
 });
 export const POLICY_VERSION = '2026-10-01';

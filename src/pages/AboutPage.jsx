@@ -58,17 +58,17 @@ export function AboutPage() {
           }}
         >
           <img
-            src="/products/men/tshirts/classic-tshirt/1.jpg"
+            src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Atelier 1"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
           <img
-            src="/products/men/tshirts/classic-tshirt/1.jpg"
+            src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Atelier 2"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
           <img
-            src="/products/men/tshirts/classic-tshirt/1.jpg"
+            src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Atelier 3"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
@@ -157,7 +157,7 @@ export function AboutPage() {
           </div>
 
           <img
-            src="/products/men/tshirts/classic-tshirt/1.jpg"
+            src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Showroom"
             style={{ width: '100%', height: '260px', objectFit: 'cover', borderRadius: '8px' }}
           />
@@ -193,7 +193,7 @@ export function AboutPage() {
           </div>
 
           <a
-            href="https://noeulenterprises.com"
+            href="https://www.noeulenterprises.com"
             target="_blank"
             rel="noopener noreferrer"
             className="btn-secondary"

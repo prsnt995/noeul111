@@ -3,7 +3,7 @@ import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ProductCard } from './ProductCard.jsx';
 import { api } from '../../utils/api.js';
-import { safeHttpUrl } from '../../utils/imageHelper.js';
+import { safeHttpUrl, getOptimizedImageUrl } from '../../utils/imageHelper.js';
 import { ArrowRight, Truck, ShieldCheck, RefreshCw, Sparkles, Tag, Camera, ChevronRight } from 'lucide-react';
 
 export function SectionRenderer({ section }) {
@@ -50,8 +50,8 @@ export function SectionRenderer({ section }) {
     // 1. KOREAN SPLIT HERO COLLAGE (Matches 66girls hero photo layout)
     case 'hero': {
       const heroPhotos = content.images || [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
       ];
       const mainPhoto = content.image_url || heroPhotos[0];
       const secondPhoto = content.secondary_image_url || heroPhotos[1];
@@ -69,11 +69,14 @@ export function SectionRenderer({ section }) {
                 cursor: 'pointer',
               }}
             >
-              {/* Left Main Lifestyle Photo */}
+              {/* Left Main Lifestyle Photo (LCP — eager, prioritized) */}
               <div style={{ position: 'relative', height: '100%', overflow: 'hidden', backgroundColor: '#eee' }}>
                 <img
-                  src={mainPhoto}
+                  src={getOptimizedImageUrl(mainPhoto, 1600)}
                   alt={title}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               </div>
@@ -81,8 +84,10 @@ export function SectionRenderer({ section }) {
               {/* Right Secondary Model Photo */}
               <div style={{ position: 'relative', height: '100%', overflow: 'hidden', backgroundColor: '#eee' }}>
                 <img
-                  src={secondPhoto}
+                  src={getOptimizedImageUrl(secondPhoto, 800)}
                   alt={title}
+                  loading="eager"
+                  decoding="async"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               </div>
@@ -100,7 +105,7 @@ export function SectionRenderer({ section }) {
           tag_sub: '간절기',
           title: '셔츠코디',
           subtitle_script: 'Season of Shirt',
-          image: '/products/men/tshirts/classic-tshirt/1.jpg',
+          image: '/products/men/tshirts/classic-tshirt/1.svg',
           label: '셔츠의 계절',
           hashtags: ['#셔츠', '#체크셔츠', '#코디추천'],
           link: '/shop?category=shirts',
@@ -109,7 +114,7 @@ export function SectionRenderer({ section }) {
           tag_sub: 'BRAND',
           title: 'SlgTho',
           subtitle_script: 'Slog & Thought',
-          image: '/products/men/tshirts/classic-tshirt/1.jpg',
+          image: '/products/men/tshirts/classic-tshirt/1.svg',
           label: 'SlgTho 슬토',
           hashtags: ['#Slog', '#Thought', '#브랜드'],
           link: '/shop',
@@ -118,7 +123,7 @@ export function SectionRenderer({ section }) {
           tag_sub: 'CUSTOM',
           title: '노을 데님',
           subtitle_script: 'now, here...',
-          image: '/products/men/tshirts/classic-tshirt/1.jpg',
+          image: '/products/men/tshirts/classic-tshirt/1.svg',
           label: 'now, here...',
           hashtags: ['#잘만든', '#데님', '#와이드핏'],
           link: '/shop?category=pants',
@@ -150,8 +155,10 @@ export function SectionRenderer({ section }) {
                     }}
                   >
                     <img
-                      src={t.image}
+                      src={getOptimizedImageUrl(t.image, 640)}
                       alt={t.title}
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s ease' }}
                       onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.04)')}
                       onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
@@ -395,8 +402,10 @@ export function SectionRenderer({ section }) {
         <section style={{ backgroundColor: '#18181b', color: '#ffffff', padding: '60px 0', position: 'relative', overflow: 'hidden' }}>
           {content.image_url && (
             <img
-              src={content.image_url}
+              src={getOptimizedImageUrl(content.image_url, 1600)}
               alt=""
+              loading="lazy"
+              decoding="async"
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.25 }}
             />
           )}
@@ -427,12 +436,12 @@ export function SectionRenderer({ section }) {
       const instagramUsername = content.instagram_username || '@noeul.me';
       const instagramUrl = content.instagram_url || 'https://www.instagram.com/noeul.me/';
       const images = content.images || [
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
-        '/products/men/tshirts/classic-tshirt/1.jpg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
+        '/products/men/tshirts/classic-tshirt/1.svg',
       ];
 
       // Instagram gradient SVG icon
@@ -600,8 +609,10 @@ export function SectionRenderer({ section }) {
                   }}
                 >
                   <img
-                    src={imgUrl}
+                    src={getOptimizedImageUrl(imgUrl, 480)}
                     alt={`NOEUL Instagram ${idx + 1}`}
+                    loading="lazy"
+                    decoding="async"
                     style={{
                       width: '100%',
                       height: '100%',

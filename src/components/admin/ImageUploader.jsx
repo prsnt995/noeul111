@@ -6,7 +6,6 @@ import { MediaPickerModal } from '../common/MediaPickerModal.jsx';
 import {
   PRODUCT_IMAGE_MAX,
   UPLOAD_BATCH_SIZE,
-  UPLOAD_DOWNSCALE_ABOVE_BYTES,
   UPLOAD_FAILED_GENERIC,
 } from '../../config/upload.js';
 import {
@@ -50,14 +49,15 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
     }
     if (accepted.length === 0) return;
 
-    // 2 + 3. Downscale heavy rasters, then upload sequentially in small
-    // batches (dodges serverless body caps; one blip fails one batch).
+    // 2 + 3. Every file passes the downscale/compress helper (over-limit
+    // rasters shrink, small files return untouched), then uploads go out
+    // sequentially in small batches (dodges serverless body caps).
     setUploading(true);
     setProgress({ done: 0, total: accepted.length });
     try {
       const prepared = [];
       for (const f of accepted) {
-        prepared.push(f.size > UPLOAD_DOWNSCALE_ABOVE_BYTES ? await downscaleImage(f) : f);
+        prepared.push(await downscaleImage(f));
       }
       const uploaded = [];
       const failed = [];
@@ -83,7 +83,10 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
         }
         setProgress({ done: Math.min(prepared.length, i + UPLOAD_BATCH_SIZE), total: prepared.length });
       }
-      if (uploaded.length) onChange([...normalized, ...uploaded]);
+      if (uploaded.length) {
+        if (maxImages === 1) onChange(uploaded.slice(0, 1));
+        else onChange([...normalized, ...uploaded].slice(0, maxImages));
+      }
       if (uploaded.length && !failed.length) {
         showToast(`${uploaded.length}장의 사진이 성공적으로 업로드되었습니다.`, 'success');
       } else if (uploaded.length && failed.length) {
@@ -371,7 +374,9 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
         isOpen={isMediaPickerOpen}
         onClose={() => setIsMediaPickerOpen(false)}
         onSelect={(url) => {
-          if (normalized.length < maxImages) {
+          if (maxImages === 1) {
+            onChange([{ url, color: null }]);
+          } else if (normalized.length < maxImages) {
             onChange([...normalized, { url, color: null }]);
           }
         }}

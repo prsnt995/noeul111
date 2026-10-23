@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRoute, useLocation, Link } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
-import { getOptimizedImageUrl, getProductPlaceholder } from '../utils/imageHelper.js';
+import { getOptimizedImageUrl, getProductPlaceholder, getSrcSet } from '../utils/imageHelper.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useWishlist } from '../context/WishlistContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
@@ -275,7 +275,12 @@ export function ProductDetailPage() {
             >
               <img
                 src={getOptimizedImageUrl(currentMainImage, 1200)}
+                srcSet={getSrcSet(currentMainImage, [640, 1200])}
+                sizes="(max-width: 800px) calc(100vw - 32px), 560px"
                 alt={productName}
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
                 style={{
                   width: '100%',
                   height: '100%',

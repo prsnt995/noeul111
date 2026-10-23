@@ -285,7 +285,7 @@ export function AdminMediaPage() {
                   <input
                     type="url"
                     required
-                    placeholder="/products/men/tshirts/classic-tshirt/1.jpg"
+                    placeholder="/products/men/tshirts/classic-tshirt/1.svg"
                     value={formData.url}
                     onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                     className="form-input"
