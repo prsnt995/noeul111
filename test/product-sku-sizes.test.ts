@@ -96,7 +96,9 @@ describe('Feature 2: Multi-Size Selection including Free Size (F)', () => {
     expect(COMMON_SIZES).toContain('XL');
     expect(COMMON_SIZES).toContain('XXL');
     expect(COMMON_SIZES).toContain('XXXL');
-    expect(COMMON_SIZES.length).toBe(8);
+    expect(COMMON_SIZES).toContain('Long');
+    expect(COMMON_SIZES).toContain('Short');
+    expect(COMMON_SIZES.length).toBe(10);
   });
 });
 

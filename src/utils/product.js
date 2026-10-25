@@ -141,7 +141,7 @@ export const KOREAN_CATEGORY_PREFIX_MAP = {
   '속옷': 'UW',
 };
 
-export const COMMON_SIZES = ['FREE', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+export const COMMON_SIZES = ['FREE', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'Long', 'Short'];
 export const DEFAULT_SIZE_STOCK = 50;
 
 /**
