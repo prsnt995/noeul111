@@ -1,12 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useToast } from './ToastContext.jsx';
+import { api } from '../utils/api.js';
 
 const CartContext = createContext();
 
-const FREE_SHIPPING_THRESHOLD = 0;
-const DEFAULT_SHIPPING_FEE = 0;
 const STORAGE_KEY = 'noeul_cart';
 const STORAGE_VERSION = 2;
+
+const DEFAULT_SHIPPING_POLICY = { threshold: 0, fee: 0, socks_fee: 3000, socks_free_pairs: 3 };
+
+function isSocksCartItem(item) {
+  const category = String(item?.category || item?.product_category || '').toLowerCase();
+  if (category === 'socks' || category === 'sock') return true;
+  const name = `${item?.name_ko || ''} ${item?.name_en || ''}`.toLowerCase();
+  return name.includes('sock') || name.includes('양말') || name.includes('삭스');
+}
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {
@@ -25,7 +33,26 @@ export function CartProvider({ children }) {
   });
 
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [shippingPolicy, setShippingPolicy] = useState(DEFAULT_SHIPPING_POLICY);
   const { showToast } = useToast();
+
+  useEffect(() => {
+    let active = true;
+    api.get('/store/settings/public')
+      .then((r) => {
+        if (active && r?.success) {
+          const sp = r.data?.shipping_policy || {};
+          setShippingPolicy({
+            threshold: Number(sp.threshold ?? 0),
+            fee: Number(sp.fee ?? 0),
+            socks_fee: Number(sp.socks_fee ?? 3000),
+            socks_free_pairs: Number(sp.socks_free_pairs ?? 3),
+          });
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
@@ -84,6 +111,7 @@ export function CartProvider({ children }) {
         updated[existingIndex].quantity += quantity;
         // Keep variant_id stable if already stored
         if (variant_id && !updated[existingIndex].variant_id) updated[existingIndex].variant_id = variant_id;
+        if (!updated[existingIndex].category) updated[existingIndex].category = product.categories?.slug || product.category || product.subcategory || '';
         return updated;
       } else {
         return [
@@ -92,6 +120,7 @@ export function CartProvider({ children }) {
             id: cartItemId,
             variant_id,
             product_id: product.id,
+            category: product.categories?.slug || product.category || product.subcategory || '',
             sku: variant_sku,
             name_ko: product.name_ko,
             name_en: product.name_en,
@@ -152,20 +181,31 @@ export function CartProvider({ children }) {
   }, [items]);
 
   const shippingFee = useMemo(() => {
-    return 0;
-  }, []);
+    if (items.length === 0) return 0;
+    const sockQty = items.reduce((sum, item) => (isSocksCartItem(item) ? sum + (item.quantity || 0) : sum), 0);
+    const hasOther = items.some((item) => !isSocksCartItem(item));
+    if (!hasOther) {
+      const threshold = shippingPolicy.socks_free_pairs || 3;
+      return (sockQty >= 1 && sockQty < threshold) ? (shippingPolicy.socks_fee || 0) : 0;
+    }
+    const net = subtotal;
+    return net >= (shippingPolicy.threshold || 0) ? 0 : (shippingPolicy.fee || 0);
+  }, [items, subtotal, shippingPolicy]);
 
   const totalAmount = useMemo(() => {
-    return subtotal;
-  }, [subtotal]);
+    return subtotal + shippingFee;
+  }, [subtotal, shippingFee]);
 
+  const hasOtherItems = useMemo(() => items.some((item) => !isSocksCartItem(item)), [items]);
   const freeShippingRemaining = useMemo(() => {
-    return 0;
-  }, []);
+    if (!hasOtherItems || !shippingPolicy.threshold) return 0;
+    return Math.max(0, shippingPolicy.threshold - subtotal);
+  }, [hasOtherItems, shippingPolicy.threshold, subtotal]);
 
   const freeShippingProgress = useMemo(() => {
-    return 100;
-  }, []);
+    if (!hasOtherItems || !shippingPolicy.threshold) return 100;
+    return Math.min(100, Math.round((subtotal / shippingPolicy.threshold) * 100));
+  }, [hasOtherItems, shippingPolicy.threshold, subtotal]);
 
   return (
     <CartContext.Provider
@@ -177,7 +217,7 @@ export function CartProvider({ children }) {
         totalAmount,
         freeShippingRemaining,
         freeShippingProgress,
-        freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+        freeShippingThreshold: shippingPolicy.threshold,
         isCartOpen,
         openCart,
         closeCart,

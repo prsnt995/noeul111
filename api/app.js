@@ -106,9 +106,49 @@ const requestId = req => req.headers['x-request-id'] || random().slice(2);
 app.use((req, res, next) => { req.requestId = requestId(req); res.set('X-Request-ID', req.requestId); next(); });
 const database = () => { if (!serverSb) throw new Error('Supabase is not configured'); return serverSb.schema('app'); };
 
-// Authoritative shipping configuration: all orders receive free delivery
+// Authoritative shipping configuration.
+// General products are free by default; socks-only orders of 1-2 pairs pay a fee.
 async function getShippingConfig() {
-  return { threshold: 0, fee: 0 };
+  const defaults = { threshold: 0, fee: 0, socks_fee: 3000, socks_free_pairs: 3 };
+  try {
+    const { data: row } = await database().from('content').select('value').eq('key', 'shipping').eq('published', true).maybeSingle();
+    const policy = row?.value || {};
+    const threshold = Number(policy.threshold ?? policy.free_threshold ?? defaults.threshold);
+    const fee = Number(policy.fee ?? policy.general_fee ?? defaults.fee);
+    const socks_fee = Number(policy.socks_fee ?? defaults.socks_fee);
+    const socks_free_pairs = Number(policy.socks_free_pairs ?? defaults.socks_free_pairs);
+    if ([threshold, fee, socks_fee, socks_free_pairs].every(Number.isFinite)) {
+      return { threshold, fee, socks_fee, socks_free_pairs };
+    }
+  } catch { /* fall through to defaults */ }
+  return defaults;
+}
+
+function isSocksProduct(product) {
+  const slug = String(product?.categories?.slug || product?.category || product?.category_slug || '').toLowerCase();
+  if (slug === 'socks' || slug === 'sock') return true;
+  const name = `${product?.name_ko || ''} ${product?.name_en || ''} ${product?.name || ''}`.toLowerCase();
+  return name.includes('sock') || name.includes('양말') || name.includes('삭스');
+}
+
+function calculateShippingFee(lines, variants, cfg, subtotal, discount) {
+  if (!Array.isArray(lines) || lines.length === 0) return 0;
+  const c = cfg || { threshold: 0, fee: 0, socks_fee: 3000, socks_free_pairs: 3 };
+  let sockQty = 0;
+  let hasOther = false;
+  for (const line of lines) {
+    const variant = (variants || []).find(v => v.id === line.variant_id);
+    const product = variant?.products || {};
+    if (isSocksProduct(product)) sockQty += Number(line.quantity || 0);
+    else hasOther = true;
+  }
+  // Socks-only orders: charge for 1-2 pairs, free from 3 pairs up.
+  if (!hasOther) {
+    return (sockQty >= 1 && sockQty < (c.socks_free_pairs || 3)) ? (c.socks_fee || 0) : 0;
+  }
+  // Mixed / other products: general rule.
+  const net = (subtotal || 0) - (discount || 0);
+  return net >= (c.threshold || 0) ? 0 : (c.fee || 0);
 }
 
 // Finding #10: strict line validation shared by quote and order creation.
@@ -597,10 +637,10 @@ app.get('/api/v1/pages/:slug', async (req, res) => { try { const slug = String(r
 // CMS / SETTINGS
 app.get('/api/v1/content/home', async (req, res) => { try { const { data, error: e } = await database().from('content').select('value').eq('key', 'home').eq('published', true).maybeSingle(); if (e || !data) return error(res, 404, 'CONTENT_NOT_FOUND'); const value = data.value || {}; res.json({ success: true, data: value.sections || value }); } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); } });
 app.get('/api/v1/content/menu', async (req, res) => { try { const { data, error: e } = await database().from('content').select('value').eq('key', 'menu').eq('published', true).maybeSingle(); if (e || !data) return error(res, 404, 'CONTENT_NOT_FOUND'); res.json({ success: true, data: data.value || [] }); } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); } });
-app.get('/api/v1/store/settings/public', async (req, res) => { try { const { data, error: e } = await database().from('content').select('key,value').in('key', ['shipping','site']).eq('published', true); if (e) throw e; const rows = {}; (data || []).forEach(r => { rows[r.key] = r.value; }); const site = rows.site || {}; res.json({ success: true, data: { site_name: site.name || 'NOEUL', currency: 'KRW', shipping_policy: { threshold: 0, fee: 0 }, free_shipping_threshold: 0, shipping_fee: 0 } }); } catch { error(res, 503, 'SETTINGS_UNAVAILABLE'); } });
+app.get('/api/v1/store/settings/public', async (req, res) => { try { const { data, error: e } = await database().from('content').select('key,value').in('key', ['shipping','site']).eq('published', true); if (e) throw e; const rows = {}; (data || []).forEach(r => { rows[r.key] = r.value; }); const site = rows.site || {}; const shipCfg = await getShippingConfig(); res.json({ success: true, data: { site_name: site.name || 'NOEUL', currency: 'KRW', shipping_policy: { threshold: shipCfg.threshold, fee: shipCfg.fee, socks_fee: shipCfg.socks_fee, socks_free_pairs: shipCfg.socks_free_pairs }, free_shipping_threshold: shipCfg.threshold, shipping_fee: shipCfg.fee } }); } catch { error(res, 503, 'SETTINGS_UNAVAILABLE'); } });
 
 // CART (finding #20: shipping quote comes from saved settings)
-app.get('/api/v1/cart', authenticate, async (req, res) => { try { const uid = req.locals.session.user_id; const { data: rows, error: e } = await database().from('cart_items').select('quantity,variant_id,product_variants(*,products(*))').eq('user_id', uid); if (e) throw e; const items = (rows || []).map(r => ({ variant_id: r.variant_id, quantity: r.quantity, product_variants: r.product_variants })); const subtotal = items.reduce((sum, i) => { const base = i.product_variants?.products || {}; return sum + (Math.max(1, (base.discount_price || base.price || 0) + (i.product_variants?.price_delta || 0)) * i.quantity); }, 0); const { threshold, fee } = await getShippingConfig(); const shippingFee = items.length === 0 ? 0 : (subtotal >= threshold ? 0 : fee); res.json({ success: true, data: { items, subtotal, shipping_fee: shippingFee, total_amount: subtotal + shippingFee, item_count: items.reduce((s, i) => s + i.quantity, 0) } }); } catch { error(res, 503, 'CART_UNAVAILABLE'); } });
+app.get('/api/v1/cart', authenticate, async (req, res) => { try { const uid = req.locals.session.user_id; const { data: rows, error: e } = await database().from('cart_items').select('quantity,variant_id,product_variants(*,products(*,categories(slug)))').eq('user_id', uid); if (e) throw e; const items = (rows || []).map(r => ({ variant_id: r.variant_id, quantity: r.quantity, product_variants: r.product_variants })); const subtotal = items.reduce((sum, i) => { const base = i.product_variants?.products || {}; return sum + (Math.max(1, (base.discount_price || base.price || 0) + (i.product_variants?.price_delta || 0)) * i.quantity); }, 0); const shipCfg = await getShippingConfig(); const shippingFee = items.length === 0 ? 0 : calculateShippingFee(items, items.map(i => i.product_variants), shipCfg, subtotal, 0); res.json({ success: true, data: { items, subtotal, shipping_fee: shippingFee, total_amount: subtotal + shippingFee, item_count: items.reduce((s, i) => s + i.quantity, 0) } }); } catch { error(res, 503, 'CART_UNAVAILABLE'); } });
 app.post('/api/v1/cart/items', authenticate, async (req, res) => { try { const { variant_id, quantity } = req.body || {}; const s = req.locals.session; if (typeof variant_id !== 'string' || !variant_id || !Number.isInteger(quantity) || quantity < 1 || quantity > 99) return error(res, 400, 'INVALID_ITEM'); const { data: pv } = await database().from('product_variants').select('stock,reserved,active').eq('id', variant_id).maybeSingle(); if (!pv || !pv.active) return error(res, 404, 'VARIANT_UNAVAILABLE'); const { data: row } = await database().from('cart_items').select('quantity').eq('user_id', s.user_id).eq('variant_id', variant_id).maybeSingle(); const next = (row?.quantity || 0) + quantity; if (next > 99 || (pv.stock || 0) - (pv.reserved || 0) < next) return error(res, 409, 'INSUFFICIENT_STOCK'); await database().from('cart_items').upsert({ user_id: s.user_id, variant_id, quantity: next }, { onConflict: 'user_id,variant_id' }); const { data: check } = await database().from('cart_items').select('quantity').eq('user_id', s.user_id).eq('variant_id', variant_id).maybeSingle(); const { data: avail } = await database().from('product_variants').select('stock,reserved').eq('id', variant_id).maybeSingle(); const maxAllowed = Math.min(99, Math.max(0, (avail?.stock || 0) - (avail?.reserved || 0))); let final = Math.min(check?.quantity || next, maxAllowed); if ((check?.quantity || 0) !== final) { if (final < 1) await database().from('cart_items').delete().eq('user_id', s.user_id).eq('variant_id', variant_id); else await database().from('cart_items').update({ quantity: final }).eq('user_id', s.user_id).eq('variant_id', variant_id); } if (final < quantity && final < next) return error(res, 409, 'INSUFFICIENT_STOCK'); res.json({ success: true, data: { variant_id, quantity: final } }); } catch { error(res, 503, 'CART_UNAVAILABLE'); } });
 app.delete('/api/v1/cart/items/:id', authenticate, async (req, res) => { try { const { data: removed, error: e } = await database().from('cart_items').delete().eq('user_id', req.locals.session.user_id).eq('variant_id', req.params.id).select('variant_id').maybeSingle(); if (e) throw e; if (!removed) return error(res, 404, 'CART_ITEM_NOT_FOUND'); res.json({ success: true }); } catch { error(res, 503, 'CART_UNAVAILABLE'); } });
 
@@ -623,7 +663,7 @@ async function hasBestRank() { if (bestRankColumn !== null) return bestRankColum
 // A claimed coupon must belong to the buyer: user_coupons(user_id, coupon_code)
 // with status active. Prevents code-guessing discounts (P0).
 async function ownsCoupon(userId, code) { try { const { data } = await database().from('user_coupons').select('id').eq('user_id', userId).eq('coupon_code', code).eq('status', 'active').maybeSingle(); return !!data; } catch { return false; } }
-app.post('/api/v1/checkout/quote', authenticate, quoteLimiter, async (req, res) => { try { const { items, coupon_code } = req.body; const invalid = validateOrderLines(items); if (invalid) return error(res, 400, invalid); const demand = aggregateDemand(items); const ids = [...demand.keys()]; const { data: variants } = await database().from('product_variants').select('*,products(*)').in('id', ids); if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE'); let subtotal = 0; const lines = []; for (const [variantId, totalQty] of demand) { const v = variants.find(x => x.id === variantId); if (!v || !v.active) return error(res, 400, 'VARIANT_UNAVAILABLE'); if ((v.stock || 0) - (v.reserved || 0) < totalQty) return error(res, 409, 'INSUFFICIENT_STOCK'); } for (const item of items) { const v = variants.find(x => x.id === item.variant_id); const base = v.products || {}; const unit = Math.max(1, (base.discount_price || base.price || 0) + (v.price_delta || 0)); subtotal += unit * item.quantity; lines.push({ variant_id: v.id, quantity: item.quantity, unit_price: unit }); } let discount = 0; let couponReason = null; if (coupon_code) { const code = String(coupon_code).toUpperCase().trim(); const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle(); const todayIso = new Date().toISOString(); if (!coupon) couponReason = 'COUPON_INVALID'; else if ((coupon.starts_at || '') > todayIso || (coupon.ends_at || '') < todayIso) couponReason = 'COUPON_EXPIRED'; else if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) couponReason = 'COUPON_LIMIT_REACHED'; else if (!await ownsCoupon(req.locals.session.user_id, code)) couponReason = 'COUPON_NOT_OWNED'; else if (subtotal < (coupon.minimum || 0)) couponReason = 'COUPON_MINIMUM_NOT_MET'; else { discount = couponDiscountForSubtotal(subtotal, coupon); } } const shipCfg = await getShippingConfig(); const shippingFee = subtotal - discount >= shipCfg.threshold ? 0 : shipCfg.fee; const quoted = subtotal - discount + shippingFee; if (quoted < 1) return error(res, 400, 'MINIMUM_AMOUNT'); res.json({ success: true, data: { subtotal, discount, shipping: shippingFee, amount: quoted, items: lines, coupon: discount > 0 ? 'applied' : null, coupon_reason: couponReason } }); } catch { error(res, 503, 'QUOTE_UNAVAILABLE'); } });
+app.post('/api/v1/checkout/quote', authenticate, quoteLimiter, async (req, res) => { try { const { items, coupon_code } = req.body; const invalid = validateOrderLines(items); if (invalid) return error(res, 400, invalid); const demand = aggregateDemand(items); const ids = [...demand.keys()]; const { data: variants } = await database().from('product_variants').select('*,products(*,categories(slug))').in('id', ids); if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE'); let subtotal = 0; const lines = []; for (const [variantId, totalQty] of demand) { const v = variants.find(x => x.id === variantId); if (!v || !v.active) return error(res, 400, 'VARIANT_UNAVAILABLE'); if ((v.stock || 0) - (v.reserved || 0) < totalQty) return error(res, 409, 'INSUFFICIENT_STOCK'); } for (const item of items) { const v = variants.find(x => x.id === item.variant_id); const base = v.products || {}; const unit = Math.max(1, (base.discount_price || base.price || 0) + (v.price_delta || 0)); subtotal += unit * item.quantity; lines.push({ variant_id: v.id, quantity: item.quantity, unit_price: unit }); } let discount = 0; let couponReason = null; if (coupon_code) { const code = String(coupon_code).toUpperCase().trim(); const { data: coupon } = await database().from('coupons').select('*').eq('code', code).maybeSingle(); const todayIso = new Date().toISOString(); if (!coupon) couponReason = 'COUPON_INVALID'; else if ((coupon.starts_at || '') > todayIso || (coupon.ends_at || '') < todayIso) couponReason = 'COUPON_EXPIRED'; else if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) couponReason = 'COUPON_LIMIT_REACHED'; else if (!await ownsCoupon(req.locals.session.user_id, code)) couponReason = 'COUPON_NOT_OWNED'; else if (subtotal < (coupon.minimum || 0)) couponReason = 'COUPON_MINIMUM_NOT_MET'; else { discount = couponDiscountForSubtotal(subtotal, coupon); } } const shipCfg = await getShippingConfig(); const shippingFee = calculateShippingFee(items, variants, shipCfg, subtotal, discount); const quoted = subtotal - discount + shippingFee; if (quoted < 1) return error(res, 400, 'MINIMUM_AMOUNT'); res.json({ success: true, data: { subtotal, discount, shipping: shippingFee, amount: quoted, items: lines, coupon: discount > 0 ? 'applied' : null, coupon_reason: couponReason } }); } catch { error(res, 503, 'QUOTE_UNAVAILABLE'); } });
 
 app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
   try {
@@ -646,7 +686,7 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
     /* Authoritative pricing */
     const demand = aggregateDemand(items);
     const ids = [...demand.keys()];
-    const { data: variants } = await database().from('product_variants').select('*,products(*)').in('id', ids);
+    const { data: variants } = await database().from('product_variants').select('*,products(*,categories(slug))').in('id', ids);
     if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE');
     let subtotal = 0;
     const lines = [];
@@ -674,7 +714,7 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
       couponCode = coupon.code;
     }
     const shipCfg = await getShippingConfig();
-    const shippingFee = subtotal - discount >= shipCfg.threshold ? 0 : shipCfg.fee;
+    const shippingFee = calculateShippingFee(items, variants, shipCfg, subtotal, discount);
     const amount = subtotal - discount + shippingFee;
     if (amount < 1) return error(res, 400, 'MINIMUM_AMOUNT');
     const number = `NE${Date.now().toString(36).toUpperCase()}${random().slice(2, 8).toUpperCase()}`;

@@ -74,6 +74,31 @@ function couponDiscount(subtotal, coupon) {
   return Math.min(subtotal, coupon.amount || 0);
 }
 
+function isSocksProduct(product) {
+  const slug = String(product?.categories?.slug || product?.category || product?.category_slug || '').toLowerCase();
+  if (slug === 'socks' || slug === 'sock') return true;
+  const name = `${product?.name_ko || ''} ${product?.name_en || ''} ${product?.name || ''}`.toLowerCase();
+  return name.includes('sock') || name.includes('양말') || name.includes('삭스');
+}
+
+function calculateShippingFee(lines, variants, cfg, subtotal, discount) {
+  if (!Array.isArray(lines) || lines.length === 0) return 0;
+  const c = cfg || { threshold: 0, fee: 0, socks_fee: 3000, socks_free_pairs: 3 };
+  let sockQty = 0;
+  let hasOther = false;
+  for (const line of lines) {
+    const variant = (variants || []).find(v => v.id === line.variant_id);
+    const product = variant?.products || {};
+    if (isSocksProduct(product)) sockQty += Number(line.quantity || 0);
+    else hasOther = true;
+  }
+  if (!hasOther) {
+    return (sockQty >= 1 && sockQty < (c.socks_free_pairs || 3)) ? (c.socks_fee || 0) : 0;
+  }
+  const net = (subtotal || 0) - (discount || 0);
+  return net >= (c.threshold || 0) ? 0 : (c.fee || 0);
+}
+
 function slugify(text, fallback = 'item') {
   const base = String(text || '')
     .toLowerCase()
@@ -1532,7 +1557,7 @@ export function registerAdminRoutes(app, ctx) {
       const demand = new Map();
       for (const it of items) demand.set(it.variant_id, (demand.get(it.variant_id) || 0) + it.quantity);
       const ids = [...demand.keys()];
-      const { data: variants } = await database().from('product_variants').select('*,products(*)').in('id', ids);
+      const { data: variants } = await database().from('product_variants').select('*,products(*,categories(slug))').in('id', ids);
       if (!variants || variants.length !== ids.length) return error(res, 404, 'VARIANT_UNAVAILABLE');
       for (const [vid, qty] of demand) {
         const v = variants.find(x => x.id === vid);
@@ -1561,9 +1586,18 @@ export function registerAdminRoutes(app, ctx) {
         discount = couponDiscount(subtotal, coupon);
         couponCode = coupon.code;
       }
-      let threshold = 0;
-      let fee = 0;
-      const shippingFee = 0;
+      let shipCfg = { threshold: 0, fee: 0, socks_fee: 3000, socks_free_pairs: 3 };
+      try {
+        const { data: shipRow } = await database().from('content').select('value').eq('key', 'shipping').eq('published', true).maybeSingle();
+        const p = shipRow?.value || {};
+        shipCfg = {
+          threshold: Number(p.threshold ?? p.free_threshold ?? 0),
+          fee: Number(p.fee ?? p.general_fee ?? 0),
+          socks_fee: Number(p.socks_fee ?? 3000),
+          socks_free_pairs: Number(p.socks_free_pairs ?? 3),
+        };
+      } catch { /* defaults */ }
+      const shippingFee = calculateShippingFee(items, variants, shipCfg, subtotal, discount);
       const amount = subtotal - discount + shippingFee;
       if (amount < 1) return error(res, 400, 'MINIMUM_AMOUNT');
       // Link to an existing member when possible; otherwise the admin owns
@@ -1978,7 +2012,13 @@ export function registerAdminRoutes(app, ctx) {
       // Keep the checkout source of truth in sync with saved shipping policy.
       const sp = settings.shipping_policy;
       if (sp && Number.isFinite(Number(sp.threshold)) && Number.isFinite(Number(sp.fee))) {
-        await writeDoc(database, 'shipping', { fee: Number(sp.fee), free_threshold: Number(sp.threshold) });
+        await writeDoc(database, 'shipping', {
+          fee: Number(sp.fee),
+          free_threshold: Number(sp.threshold),
+          threshold: Number(sp.threshold),
+          socks_fee: Number.isFinite(Number(sp.socks_fee)) ? Number(sp.socks_fee) : 3000,
+          socks_free_pairs: Number.isFinite(Number(sp.socks_free_pairs)) ? Number(sp.socks_free_pairs) : 3,
+        });
       }
       await auditLog(req, 'SETTINGS_UPDATE', { table: 'content', id: 'settings' });
       res.json({ success: true });

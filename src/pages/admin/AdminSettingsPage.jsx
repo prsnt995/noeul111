@@ -29,7 +29,9 @@ export function AdminSettingsPage() {
     },
     shipping_policy: {
       threshold: 0,
-      fee: 0
+      fee: 0,
+      socks_fee: 3000,
+      socks_free_pairs: 3
     },
     header_config: {
       announcement_enabled: true,
@@ -383,6 +385,32 @@ export function AdminSettingsPage() {
                     onChange={(e) => setSettings({
                       ...settings,
                       shipping_policy: { ...settings.shipping_policy, fee: Number(e.target.value) }
+                    })}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">양말 배송비 (1~2kelas, 원)</label>
+                  <input
+                    type="number"
+                    value={settings.shipping_policy?.socks_fee ?? 3000}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      shipping_policy: { ...settings.shipping_policy, socks_fee: Number(e.target.value) }
+                    })}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">양말 무료배송 기준 (kelas)</label>
+                  <input
+                    type="number"
+                    value={settings.shipping_policy?.socks_free_pairs ?? 3}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      shipping_policy: { ...settings.shipping_policy, socks_free_pairs: Number(e.target.value) }
                     })}
                     className="form-input"
                   />
