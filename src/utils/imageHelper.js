@@ -82,17 +82,22 @@ function ensureImagePreconnect(origin) {
 // params appended there are silently ignored (only /render/image/* applies
 // transformations). Rewrite public object URLs to the render endpoint
 // before setting params; signed/object-sign URLs are left untouched.
-export function getOptimizedImageUrl(url, width = 800) {
+export function getOptimizedImageUrl(url, width = 800, version = null) {
   if (!url || typeof url !== 'string') return url;
   try {
     const parsed = new URL(url, window.location.origin);
     if (parsed.origin !== window.location.origin) ensureImagePreconnect(parsed.origin);
-    if (!parsed.pathname.startsWith('/storage/v1/object/public/')) return url;
+    if (!parsed.pathname.startsWith('/storage/v1/object/public/')) {
+      // Still allow cache-busting for non-transformable URLs.
+      if (version) parsed.searchParams.set('v', String(version));
+      return parsed.toString();
+    }
     parsed.pathname = parsed.pathname.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/');
     const w = Math.min(2500, Math.max(1, Math.round(Number(width) || 800)));
     parsed.searchParams.set('width', String(w));
     parsed.searchParams.set('quality', w <= 480 ? '70' : '78');
     parsed.searchParams.set('resize', 'contain');
+    if (version) parsed.searchParams.set('v', String(version));
     return parsed.toString();
   } catch { return url; }
 }
@@ -101,13 +106,13 @@ export function getOptimizedImageUrl(url, width = 800) {
  * srcset for transformable (Supabase-renderable) images only — local
  * paths and non-storage URLs return undefined so the plain src is used.
  */
-export function getSrcSet(url, widths = [320, 480, 800]) {
+export function getSrcSet(url, widths = [320, 480, 800], version = null) {
   if (!url || typeof url !== 'string') return undefined;
   try {
     const parsed = new URL(url, window.location.origin);
     const transformable = parsed.origin !== window.location.origin
       && parsed.pathname.startsWith('/storage/v1/object/public/');
     if (!transformable) return undefined;
-    return widths.map((w) => `${getOptimizedImageUrl(url, w)} ${w}w`).join(', ');
+    return widths.map((w) => `${getOptimizedImageUrl(url, w, version)} ${w}w`).join(', ');
   } catch { return undefined; }
 }

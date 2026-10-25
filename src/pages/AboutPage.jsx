@@ -60,16 +60,22 @@ export function AboutPage() {
           <img
             src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Atelier 1"
+            loading="lazy"
+            decoding="async"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
           <img
             src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Atelier 2"
+            loading="lazy"
+            decoding="async"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
           <img
             src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Atelier 3"
+            loading="lazy"
+            decoding="async"
             style={{ width: '100%', height: '420px', objectFit: 'cover', borderRadius: '6px' }}
           />
         </div>
@@ -159,6 +165,8 @@ export function AboutPage() {
           <img
             src="/products/men/tshirts/classic-tshirt/1.svg"
             alt="Showroom"
+            loading="lazy"
+            decoding="async"
             style={{ width: '100%', height: '260px', objectFit: 'cover', borderRadius: '8px' }}
           />
         </div>

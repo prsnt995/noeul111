@@ -5,6 +5,7 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Star, Plus, X, MessageSquare } from 'lucide-react';
+import { getOptimizedImageUrl } from '../../utils/imageHelper.js';
 
 export function ProductReviews({ productId }) {
   const { lang, t } = useLanguage();
@@ -156,8 +157,10 @@ export function ProductReviews({ productId }) {
               {r.image_url && (
                 <div style={{ marginTop: '12px' }}>
                   <img
-                    src={r.image_url}
+                    src={getOptimizedImageUrl(r.image_url, 160)}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #eee' }}
                   />
                 </div>

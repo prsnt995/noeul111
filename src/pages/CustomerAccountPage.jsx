@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useLanguage } from '../context/LanguageContext.jsx';
+import { getOptimizedImageUrl } from '../utils/imageHelper.js';
 import { useWishlist } from '../context/WishlistContext.jsx';
 import { useCart } from '../context/CartContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -221,8 +222,10 @@ export function CustomerAccountPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {user?.avatar_url || user?.photoURL || user?.user_metadata?.avatar_url ? (
               <img
-                src={user?.avatar_url || user?.photoURL || user?.user_metadata?.avatar_url}
+                src={getOptimizedImageUrl(user?.avatar_url || user?.photoURL || user?.user_metadata?.avatar_url, 128)}
                 alt={user?.name || 'User Profile'}
+                loading="lazy"
+                decoding="async"
                 style={{
                   width: '56px',
                   height: '56px',
@@ -457,8 +460,10 @@ export function CustomerAccountPage() {
                         {order.items?.map((item, idx) => (
                           <div key={idx} style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                             <img
-                              src={item.image_url}
+                              src={getOptimizedImageUrl(item.image_url, 120)}
                               alt={item.product_name_ko}
+                              loading="lazy"
+                              decoding="async"
                               style={{ width: '56px', height: '70px', objectFit: 'cover', borderRadius: '4px' }}
                             />
                             <div style={{ flex: 1 }}>
@@ -622,8 +627,10 @@ export function CustomerAccountPage() {
                   >
                     <Link href={`/product/${item.slug || item.id}`} style={{ display: 'block', aspectRatio: '3 / 4' }}>
                       <img
-                        src={item.images?.[0] || '/products/men/tshirts/classic-tshirt/1.svg'}
+                        src={getOptimizedImageUrl(item.images?.[0] || '/products/men/tshirts/classic-tshirt/1.svg', 480)}
                         alt={item.name_ko || item.name}
+                        loading="lazy"
+                        decoding="async"
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     </Link>

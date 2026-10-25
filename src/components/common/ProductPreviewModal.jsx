@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { X } from 'lucide-react';
-import { getPrimaryProductImage } from '../../utils/imageHelper.js';
+import { getPrimaryProductImage, getOptimizedImageUrl } from '../../utils/imageHelper.js';
 import { useDialogFocus } from '../../utils/dialogFocus.js';
 
 export function ProductPreviewModal({ product, isOpen, onClose }) {
@@ -128,8 +128,10 @@ export function ProductPreviewModal({ product, isOpen, onClose }) {
           title={productName}
         >
           <img
-            src={displayImage}
+            src={getOptimizedImageUrl(displayImage, 640)}
             alt={productName}
+            loading="lazy"
+            decoding="async"
             style={{
               width: '100%',
               height: '100%',

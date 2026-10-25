@@ -3,6 +3,7 @@ import { Link, useLocation } from 'wouter';
 import { useCart } from '../context/CartContext.jsx';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import { getOptimizedImageUrl } from '../utils/imageHelper.js';
 import { Trash2, Plus, Minus, ArrowRight, Truck, ShoppingBag, Tag } from 'lucide-react';
 
 export function CartPage() {
@@ -134,8 +135,10 @@ export function CartPage() {
                   }}
                 >
                   <img
-                    src={item.image_url}
+                    src={getOptimizedImageUrl(item.image_url, 240)}
                     alt={item.name_ko}
+                    loading="lazy"
+                    decoding="async"
                     style={{ width: '90px', height: '115px', objectFit: 'cover', borderRadius: '4px' }}
                   />
 

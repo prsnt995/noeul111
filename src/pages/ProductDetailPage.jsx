@@ -274,8 +274,8 @@ export function ProductDetailPage() {
               }}
             >
               <img
-                src={getOptimizedImageUrl(currentMainImage, 1200)}
-                srcSet={getSrcSet(currentMainImage, [640, 1200])}
+                src={getOptimizedImageUrl(currentMainImage, 1200, product?.updated_at)}
+                srcSet={getSrcSet(currentMainImage, [640, 1200], product?.updated_at)}
                 sizes="(max-width: 800px) calc(100vw - 32px), 560px"
                 alt={productName}
                 loading="eager"
@@ -314,7 +314,7 @@ export function ProductDetailPage() {
                     }}
                   >
                     <img
-                      src={getOptimizedImageUrl(img, 240)}
+                      src={getOptimizedImageUrl(img, 240, product?.updated_at)}
                       loading="lazy"
                       decoding="async"
                       alt={`Thumbnail ${idx + 1}`}

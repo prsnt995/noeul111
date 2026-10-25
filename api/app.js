@@ -71,7 +71,7 @@ const quoteLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: t
 const cancelLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const passwordResetLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
 app.use(express.json({ limit: '256kb', strict: true }));
-const PUBLIC_CACHE_CONTROL = 'public, max-age=0, s-maxage=30, stale-while-revalidate=60';
+const PUBLIC_CACHE_CONTROL = 'public, max-age=30, s-maxage=60, stale-while-revalidate=120';
 const PUBLIC_CACHE_PATHS = ['/api/v1/store/settings/public'];
 const PUBLIC_CACHE_PREFIXES = ['/api/v1/catalog/', '/api/v1/content/', '/api/v1/pages/', '/api/v1/products/'];
 app.use((req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Referrer-Policy', 'strict-origin-when-cross-origin'); if (req.method !== 'GET') { res.set('Cache-Control', 'no-store'); return next(); } const p = req.path; const pub = PUBLIC_CACHE_PATHS.includes(p) || PUBLIC_CACHE_PREFIXES.some(pre => p.startsWith(pre)); res.set('Cache-Control', pub ? PUBLIC_CACHE_CONTROL : 'private, max-age=0'); next(); });

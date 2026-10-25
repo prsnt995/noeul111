@@ -3,7 +3,7 @@ import { Link } from 'wouter';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ProductCard } from './ProductCard.jsx';
 import { api } from '../../utils/api.js';
-import { safeHttpUrl, getOptimizedImageUrl } from '../../utils/imageHelper.js';
+import { safeHttpUrl, getOptimizedImageUrl, getSrcSet } from '../../utils/imageHelper.js';
 import { ArrowRight, Truck, ShieldCheck, RefreshCw, Sparkles, Tag, Camera, ChevronRight } from 'lucide-react';
 
 export function SectionRenderer({ section }) {
@@ -73,6 +73,8 @@ export function SectionRenderer({ section }) {
               <div style={{ position: 'relative', height: '100%', overflow: 'hidden', backgroundColor: '#eee' }}>
                 <img
                   src={getOptimizedImageUrl(mainPhoto, 1600)}
+                  srcSet={getSrcSet(mainPhoto, [800, 1200, 1600])}
+                  sizes="(max-width: 768px) 100vw, 66vw"
                   alt={title}
                   loading="eager"
                   fetchPriority="high"
@@ -85,8 +87,11 @@ export function SectionRenderer({ section }) {
               <div style={{ position: 'relative', height: '100%', overflow: 'hidden', backgroundColor: '#eee' }}>
                 <img
                   src={getOptimizedImageUrl(secondPhoto, 800)}
+                  srcSet={getSrcSet(secondPhoto, [480, 800])}
+                  sizes="(max-width: 768px) 100vw, 34vw"
                   alt={title}
                   loading="eager"
+                  fetchPriority="low"
                   decoding="async"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
@@ -156,6 +161,8 @@ export function SectionRenderer({ section }) {
                   >
                     <img
                       src={getOptimizedImageUrl(t.image, 640)}
+                      srcSet={getSrcSet(t.image, [320, 480, 640])}
+                      sizes="(max-width: 768px) 100vw, 33vw"
                       alt={t.title}
                       loading="lazy"
                       decoding="async"
@@ -403,6 +410,8 @@ export function SectionRenderer({ section }) {
           {content.image_url && (
             <img
               src={getOptimizedImageUrl(content.image_url, 1600)}
+              srcSet={getSrcSet(content.image_url, [800, 1200, 1600])}
+              sizes="100vw"
               alt=""
               loading="lazy"
               decoding="async"
@@ -610,6 +619,8 @@ export function SectionRenderer({ section }) {
                 >
                   <img
                     src={getOptimizedImageUrl(imgUrl, 480)}
+                    srcSet={getSrcSet(imgUrl, [240, 480])}
+                    sizes="(max-width: 768px) 16vw, 16vw"
                     alt={`NOEUL Instagram ${idx + 1}`}
                     loading="lazy"
                     decoding="async"

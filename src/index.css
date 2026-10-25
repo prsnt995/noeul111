@@ -383,6 +383,9 @@ img {
   max-width: 100%;
   box-sizing: border-box;
   padding: 8px 20px 0;
+  /* Defer rendering work for off-screen grids to improve scroll/input responsiveness. */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 600px;
 }
 
 /* Left-side Category Sidebar */

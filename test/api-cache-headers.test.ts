@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 // Cache-header contract tests. Supabase env is blanked BEFORE the app module
 // loads (dotenv never overrides existing vars), so every database-backed path
 // 503s without network access while the middleware headers remain observable.
-const PUBLIC_CACHE = 'public, max-age=0, s-maxage=30, stale-while-revalidate=60';
+const PUBLIC_CACHE = 'public, max-age=30, s-maxage=60, stale-while-revalidate=120';
 
 describe('API cache headers', () => {
   let app: any;

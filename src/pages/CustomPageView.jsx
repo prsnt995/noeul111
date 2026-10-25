@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify';
 import { useRoute, Link } from 'wouter';
 import { api } from '../utils/api.js';
 import { ArrowLeft } from 'lucide-react';
-import { safeHttpUrl } from '../utils/imageHelper.js';
+import { safeHttpUrl, getOptimizedImageUrl } from '../utils/imageHelper.js';
 
 export function CustomPageView() {
   const [match, params] = useRoute('/p/:slug');
@@ -59,8 +59,10 @@ export function CustomPageView() {
       {safeHttpUrl(page.banner_image) && (
         <div style={{ position: 'relative', height: '320px', backgroundColor: '#121213', overflow: 'hidden' }}>
           <img
-            src={safeHttpUrl(page.banner_image)}
+            src={getOptimizedImageUrl(safeHttpUrl(page.banner_image), 1600)}
             alt=""
+            loading="lazy"
+            decoding="async"
             style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
           />
           <div

@@ -4,6 +4,7 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { api } from '../../utils/api.js';
 import { Search, X, TrendingUp, ArrowRight } from 'lucide-react';
 import { useDialogFocus } from '../../utils/dialogFocus.js';
+import { getOptimizedImageUrl } from '../../utils/imageHelper.js';
 
 export function QuickSearch({ isOpen, onClose }) {
   const [query, setQuery] = useState('');
@@ -197,8 +198,10 @@ export function QuickSearch({ isOpen, onClose }) {
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     <img
-                      src={product.images?.[0] || ''}
+                      src={getOptimizedImageUrl(product.images?.[0] || '', 120)}
                       alt={product.name_ko}
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: '56px', height: '68px', objectFit: 'cover', borderRadius: '4px' }}
                     />
                     <div style={{ flex: 1 }}>

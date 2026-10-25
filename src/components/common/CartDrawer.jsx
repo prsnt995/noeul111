@@ -3,6 +3,7 @@ import { Link, useLocation } from 'wouter';
 import { useCart } from '../../context/CartContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useDialogFocus } from '../../utils/dialogFocus.js';
+import { getOptimizedImageUrl } from '../../utils/imageHelper.js';
 import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight, Truck } from 'lucide-react';
 
 export function CartDrawer() {
@@ -166,8 +167,10 @@ export function CartDrawer() {
                     }}
                   >
                     <img
-                      src={item.image_url}
+                      src={getOptimizedImageUrl(item.image_url, 240)}
                       alt={item.name_ko}
+                      loading="lazy"
+                      decoding="async"
                       style={{
                         width: '100%',
                         height: '100%',
