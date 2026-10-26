@@ -159,16 +159,16 @@ export function AdminProductsPage() {
 
   // Merged, de-duplicated color palette: built-in presets + DB-saved colors.
   const colorPalette = useMemo(() => {
-    const seen = new Set();
+    const seenNames = new Set();
+    const seenHexes = new Set();
     const out = [];
     const add = (c) => {
       if (!c) return;
-      const hex = String(c.hex || '').trim().toLowerCase();
-      const key = hex
-        ? `hex:${hex}`
-        : `name:${String(c.name_ko || '').trim().toLowerCase()}|${String(c.name_en || '').trim().toLowerCase()}`;
-      if (seen.has(key)) return;
-      seen.add(key);
+      const nameKey = `${String(c.name_ko || '').trim().toLowerCase()}|${String(c.name_en || '').trim().toLowerCase()}`;
+      const hexKey = String(c.hex || '').trim().toLowerCase();
+      if (seenNames.has(nameKey) || (hexKey && seenHexes.has(hexKey))) return;
+      seenNames.add(nameKey);
+      if (hexKey) seenHexes.add(hexKey);
       out.push(c);
     };
     PRESET_COLORS.forEach(add);
@@ -263,13 +263,15 @@ export function AdminProductsPage() {
           if (aKo !== bKo) return aKo - bKo;
           return (Number(a?.sort_order) || 0) - (Number(b?.sort_order) || 0);
         });
-        const seen = new Set();
+        const seenNames = new Set();
+        const seenHexes = new Set();
         const unique = [];
         for (const c of rows) {
-          const hex = String(c?.hex || '').trim().toLowerCase();
-          const key = hex ? `hex:${hex}` : `name:${String(c?.name_ko || '').trim().toLowerCase()}|${String(c?.name_en || '').trim().toLowerCase()}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
+          const nameKey = `${String(c?.name_ko || '').trim().toLowerCase()}|${String(c?.name_en || '').trim().toLowerCase()}`;
+          const hexKey = String(c?.hex || '').trim().toLowerCase();
+          if (seenNames.has(nameKey) || (hexKey && seenHexes.has(hexKey))) continue;
+          seenNames.add(nameKey);
+          if (hexKey) seenHexes.add(hexKey);
           unique.push(c);
         }
         setSavedColors(unique);
