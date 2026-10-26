@@ -163,7 +163,10 @@ export function AdminProductsPage() {
     const out = [];
     const add = (c) => {
       if (!c) return;
-      const key = `${String(c.name_ko || '').trim().toLowerCase()}|${String(c.name_en || '').trim().toLowerCase()}|${String(c.hex || '').trim().toLowerCase()}`;
+      const hex = String(c.hex || '').trim().toLowerCase();
+      const key = hex
+        ? `hex:${hex}`
+        : `name:${String(c.name_ko || '').trim().toLowerCase()}|${String(c.name_en || '').trim().toLowerCase()}`;
       if (seen.has(key)) return;
       seen.add(key);
       out.push(c);
@@ -249,7 +252,28 @@ export function AdminProductsPage() {
   const fetchColors = async () => {
     try {
       const res = await adminApi.get('/admin/colors');
-      if (res?.success) setSavedColors(res.data || []);
+      if (res?.success) {
+        const rows = Array.isArray(res.data) ? [...res.data] : [];
+        // Prefer Korean-labelled rows when the same hex appears more than once
+        // (e.g. preset '블랙' vs backfilled 'Black'), so the palette doesn't
+        // show the same colour multiple times.
+        rows.sort((a, b) => {
+          const aKo = /[가-힣]/.test(String(a?.name_ko || '')) ? 0 : 1;
+          const bKo = /[가-힣]/.test(String(b?.name_ko || '')) ? 0 : 1;
+          if (aKo !== bKo) return aKo - bKo;
+          return (Number(a?.sort_order) || 0) - (Number(b?.sort_order) || 0);
+        });
+        const seen = new Set();
+        const unique = [];
+        for (const c of rows) {
+          const hex = String(c?.hex || '').trim().toLowerCase();
+          const key = hex ? `hex:${hex}` : `name:${String(c?.name_ko || '').trim().toLowerCase()}|${String(c?.name_en || '').trim().toLowerCase()}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          unique.push(c);
+        }
+        setSavedColors(unique);
+      }
     } catch (err) {
       console.error('Fetch colors failed:', err?.message);
     }
