@@ -37,6 +37,7 @@ export function ProductDetailPage() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState(null);
+  const [selectedLength, setSelectedLength] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('details');
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
@@ -51,6 +52,7 @@ export function ProductDetailPage() {
       setSelectedImageIndex(0);
       setSelectedSize('');
       setSelectedColor(null);
+      setSelectedLength('');
       setQuantity(1);
       setRelated([]);
       try {
@@ -118,17 +120,33 @@ export function ProductDetailPage() {
   // Price/URL may fall back to any same-color variant (older products), but
   // availability must match the exact color+size combo — unoffered combos
   // (no variant row) are never purchasable.
-  const getVariant = (colorObj, sizeVal) => {
+  const getVariant = (colorObj, sizeVal, lengthVal = selectedLength) => {
     const cName = colorObj?.name_ko || colorObj?.name || colorObj?.name_en || colorObj;
-    return variants.find(v => v.color === cName && v.size === sizeVal) || variants.find(v => v.color === cName) || variants.find(v => v.size === sizeVal) || null;
+    const len = lengthVal || null;
+    return variants.find(v => v.color === cName && v.size === sizeVal && (v.length_type || null) === len)
+      || variants.find(v => v.color === cName && v.size === sizeVal)
+      || variants.find(v => v.color === cName && (v.length_type || null) === len)
+      || variants.find(v => v.size === sizeVal && (v.length_type || null) === len)
+      || variants.find(v => v.color === cName)
+      || variants.find(v => v.size === sizeVal)
+      || null;
   };
   const currentVariant = getVariant(selectedColor, selectedSize) || variants[0] || null;
+  const lengthOptions = [...new Set(variants.map((v) => v.length_type).filter(Boolean))];
+  useEffect(() => {
+    if (lengthOptions.length > 0 && !lengthOptions.includes(selectedLength)) {
+      setSelectedLength(lengthOptions[0]);
+    } else if (lengthOptions.length === 0 && selectedLength) {
+      setSelectedLength('');
+    }
+  }, [lengthOptions, selectedLength]);
   const basePrice = product ? (product.discount_price || product.price) : 0;
   const finalPrice = currentVariant ? Math.max(1, basePrice + (currentVariant.price_delta || 0)) : basePrice;
-  const isVariantAvailable = (colorObj, sizeVal) => {
+  const isVariantAvailable = (colorObj, sizeVal, lengthVal = selectedLength) => {
     const cName = colorObj?.name_ko || colorObj?.name || colorObj?.name_en || colorObj;
     const sz = sizeVal ?? selectedSize;
-    const v = variants.find(x => x.color === cName && x.size === sz && x.active !== false);
+    const len = lengthVal || null;
+    const v = variants.find(x => x.color === cName && x.size === sz && (x.length_type || null) === len && x.active !== false);
     if (!v) return false;
     const stock = (v.stock ?? 0);
     const reserved = (v.reserved ?? 0);
@@ -201,12 +219,12 @@ export function ProductDetailPage() {
 
 
   const handleAddToCart = () => {
-    addToCart(product, selectedSize, selectedColor, quantity);
+    addToCart(product, selectedSize, selectedColor, quantity, selectedLength);
     openCart();
   };
 
   const handleBuyNow = () => {
-    addToCart(product, selectedSize, selectedColor, quantity);
+    addToCart(product, selectedSize, selectedColor, quantity, selectedLength);
     setLocation('/checkout');
   };
 
@@ -520,6 +538,42 @@ export function ProductDetailPage() {
                         }}
                       >
                         {sz}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {lengthOptions.length > 0 && (
+              <div>
+                <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#18181b', marginBottom: '8px' }}>
+                  길이 타입
+                </span>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {lengthOptions.map((lt) => {
+                    const isSelected = selectedLength === lt;
+                    const available = isVariantAvailable(selectedColor, selectedSize, lt);
+                    return (
+                      <button
+                        key={lt}
+                        type="button"
+                        disabled={!available}
+                        onClick={() => { if (available) setSelectedLength(lt); }}
+                        style={{
+                          minWidth: '54px',
+                          padding: '8px 14px',
+                          fontSize: '0.8125rem',
+                          fontWeight: isSelected ? 700 : 500,
+                          borderRadius: '2px',
+                          border: isSelected ? '1.5px solid #18181b' : '1px solid #e4e4e7',
+                          backgroundColor: !available ? '#f4f4f5' : isSelected ? '#18181b' : '#ffffff',
+                          color: !available ? '#a1a1aa' : isSelected ? '#ffffff' : '#18181b',
+                          cursor: available ? 'pointer' : 'not-allowed',
+                          opacity: available ? 1 : 0.6,
+                        }}
+                      >
+                        {lt}
                       </button>
                     );
                   })}

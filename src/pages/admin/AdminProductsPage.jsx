@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { ImageUploader } from '../../components/admin/ImageUploader.jsx';
 import {
@@ -59,7 +59,7 @@ const PRESET_COLORS = [
 // Same priority as the backend combosFromBody (api/admin.js) so table keys
 // always match variant rows: name_en first, then name_ko, name, DEFAULT.
 const colorKey = (c) => (typeof c === 'string' ? c : (c?.name_en || c?.name_ko || c?.name || 'DEFAULT'));
-const comboKey = (c, size) => `${colorKey(c)}|||${size}`;
+const comboKey = (c, size, length = '') => `${colorKey(c)}|||${size}|||${length || ''}`;
 const cellFilled = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 const cellHeadStyle = {
   padding: '8px 10px',
@@ -123,7 +123,8 @@ export function AdminProductsPage() {
     images: [],
     sizes: ['S', 'M', 'L'],
     colors: [{ name_ko: '블랙', hex: '#111112' }],
-    // Color×Size combo stock: key `${color}|||${size}`, value '' = not offered.
+    length_types: [],
+    // Color×Size×Length combo stock: key `${color}|||${size}|||${length}`, value '' = not offered.
     variant_stock: {},
     // Rich blocks rendered in the PDP band below the tabs.
     detail_blocks: [],
@@ -131,8 +132,46 @@ export function AdminProductsPage() {
 
   // Custom color draft (name + hex picker) appended to presets
   const [newColor, setNewColor] = useState({ name_ko: '', name_en: '', hex: '#18181b' });
+  // Reusable color palette loaded from the database (presets + custom colors).
+  const [savedColors, setSavedColors] = useState([]);
   // Tracks whether the admin typed the SKU manually (stops auto-suggest).
   const [skuDirty, setSkuDirty] = useState(false);
+  // Drag-and-drop state for detail content blocks.
+  const [dragBlockIndex, setDragBlockIndex] = useState(null);
+  // Collapsed block indices (UI only).
+  const [collapsedDetailBlocks, setCollapsedDetailBlocks] = useState(new Set());
+
+  useEffect(() => {
+    if (!isModalOpen) { setDetailDraft(null); return; }
+    const keyId = isEditMode ? editingId : 'new';
+    setDetailDraft(loadDetailDraft(keyId));
+  }, [isModalOpen, isEditMode, editingId]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const keyId = isEditMode ? editingId : 'new';
+    try {
+      localStorage.setItem(`noeul:detail-draft:${keyId}`, JSON.stringify({ savedAt: Date.now(), blocks: formData.detail_blocks || [] }));
+    } catch { /* ignore */ }
+  }, [formData.detail_blocks, isModalOpen, isEditMode, editingId]);
+  // Autosaved detail-block draft (UI only).
+  const [detailDraft, setDetailDraft] = useState(null);
+
+  // Merged, de-duplicated color palette: built-in presets + DB-saved colors.
+  const colorPalette = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    const add = (c) => {
+      if (!c) return;
+      const key = `${String(c.name_ko || '').trim().toLowerCase()}|${String(c.name_en || '').trim().toLowerCase()}|${String(c.hex || '').trim().toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(c);
+    };
+    PRESET_COLORS.forEach(add);
+    (savedColors || []).forEach(add);
+    return out;
+  }, [savedColors]);
 
   // Next auto SKU preview for a category (best-effort seq+1; the server
   // assigns authoritatively and skips taken codes).
@@ -207,9 +246,42 @@ export function AdminProductsPage() {
     }
   };
 
+  const fetchColors = async () => {
+    try {
+      const res = await adminApi.get('/admin/colors');
+      if (res?.success) setSavedColors(res.data || []);
+    } catch (err) {
+      console.error('Fetch colors failed:', err?.message);
+    }
+  };
+
   useEffect(() => {
     fetchCategories();
+    fetchColors();
   }, []);
+
+  // Keyboard shortcuts for the product admin.
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable);
+      if (e.key === 'Escape' && isModalOpen) {
+        setIsModalOpen(false);
+        return;
+      }
+      if (typing) return;
+      if ((e.key === 'n' || e.key === 'N') && !isModalOpen) {
+        e.preventDefault();
+        openAddModal();
+      } else if (e.key === '/') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="search"], input[placeholder*="검색"]');
+        if (searchInput) searchInput.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isModalOpen]);
 
   useEffect(() => {
     fetchProducts();
@@ -218,6 +290,16 @@ export function AdminProductsPage() {
   const handleSort = (key) => {
     const dir = sort.key === key ? (sort.dir === 'asc' ? 'desc' : 'asc') : 'desc';
     listParams.set({ sort: key, order: dir });
+  };
+
+  const loadDetailDraft = (keyId) => {
+    try {
+      const raw = localStorage.getItem(`noeul:detail-draft:${keyId}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.blocks)) return parsed;
+    } catch { /* ignore */ }
+    return null;
   };
 
   const openAddModal = () => {
@@ -276,8 +358,11 @@ export function AdminProductsPage() {
       : (p.images || []).map(url => (typeof url === 'string' ? { url, color: null } : url));
     // Prefill combo stock from existing variants (blank = combo not offered)
     const variant_stock = {};
+    const lengthSet = new Set();
     (p.variants || []).forEach(v => {
-      variant_stock[comboKey({ name_ko: v.color, name_en: v.color }, v.size)] = String(v.stock ?? 0);
+      const len = v.length_type || '';
+      if (len) lengthSet.add(len);
+      variant_stock[comboKey({ name_ko: v.color, name_en: v.color }, v.size, len)] = String(v.stock ?? 0);
     });
     setFormData({
       sku: p.sku || '',
@@ -296,6 +381,7 @@ export function AdminProductsPage() {
       images: mediaWithColor,
       sizes: p.sizes?.length > 0 ? p.sizes : ['FREE'],
       colors: p.colors?.length > 0 ? p.colors : [{ name_ko: '블랙', hex: '#111' }],
+      length_types: Array.from(lengthSet),
       variant_stock,
       detail_blocks: (() => { let b = p.detail_blocks; if (typeof b === 'string') { try { b = JSON.parse(b); } catch { b = []; } } return Array.isArray(b) ? b : []; })(),
     });
@@ -308,7 +394,11 @@ export function AdminProductsPage() {
       ? { type, text: { ko: '', en: '' } }
       : type === 'image'
         ? { type, url: '', alt: '', caption: { ko: '', en: '' } }
-        : { type, images: [] };
+        : type === 'quote'
+          ? { type, text: { ko: '', en: '' }, author: '' }
+          : type === 'divider'
+            ? { type }
+            : { type, images: [] };
     setFormData((fd) => ({ ...fd, detail_blocks: [...fd.detail_blocks, blank] }));
   };
   const updateDetailBlock = (i, patch) => {
@@ -319,6 +409,14 @@ export function AdminProductsPage() {
   };
   const removeDetailBlock = (i) => {
     setFormData((fd) => ({ ...fd, detail_blocks: fd.detail_blocks.filter((_, idx) => idx !== i) }));
+  };
+  const duplicateDetailBlock = (i) => {
+    setFormData((fd) => {
+      const next = [...fd.detail_blocks];
+      const clone = JSON.parse(JSON.stringify(next[i] || {}));
+      next.splice(i + 1, 0, clone);
+      return { ...fd, detail_blocks: next };
+    });
   };
   const moveDetailBlock = (i, dir) => {
     setFormData((fd) => {
@@ -334,20 +432,24 @@ export function AdminProductsPage() {
     e.preventDefault();
     // Build the offered-combo map: only filled cells are sent (blank = not
     // offered), validated as integers 0..99999.
+    const lengths = formData.length_types && formData.length_types.length ? formData.length_types : [null];
     const variant_stock = {};
     for (const c of formData.colors) {
       for (const sz of formData.sizes) {
-        const raw = formData.variant_stock[comboKey(c, sz)];
-        if (!cellFilled(raw)) continue;
-        const n = Math.round(Number(raw));
-        if (!Number.isFinite(n) || n < 0 || n > 99999) {
-          showToast(`재고 값이 올바르지 않습니다: ${colorKey(c)} / ${sz}`, 'error');
-          return;
+        for (const len of lengths) {
+          const key = comboKey(c, sz, len || '');
+          const raw = formData.variant_stock[key];
+          if (!cellFilled(raw)) continue;
+          const n = Math.round(Number(raw));
+          if (!Number.isFinite(n) || n < 0 || n > 99999) {
+            showToast(`재고 값이 올바르지 않습니다: ${colorKey(c)} / ${sz} / ${len || '-'}`, 'error');
+            return;
+          }
+          variant_stock[key] = n;
         }
-        variant_stock[comboKey(c, sz)] = n;
       }
     }
-    const emptyColors = formData.colors.filter(c => !formData.sizes.some(sz => cellFilled(formData.variant_stock[comboKey(c, sz)])));
+    const emptyColors = formData.colors.filter(c => !formData.sizes.some(sz => lengths.some(len => cellFilled(formData.variant_stock[comboKey(c, sz, len || '')]))));
     // Detail blocks: mirror backend caps so fixable mistakes never round trip.
     const blocks = formData.detail_blocks || [];
     if (blocks.length > 50) {
@@ -409,6 +511,10 @@ export function AdminProductsPage() {
         showToast(`판매 조합 없는 색상(고객에게 숨김): ${emptyColors.map(colorKey).join(', ')}`, 'info');
       }
 
+      try {
+        localStorage.removeItem(`noeul:detail-draft:${isEditMode ? editingId : 'new'}`);
+      } catch { /* ignore */ }
+      setDetailDraft(null);
       setIsModalOpen(false);
       fetchProducts();
     }, isEditMode ? '상품 수정 중...' : '상품 등록 중...').catch((err) => {
@@ -569,13 +675,36 @@ export function AdminProductsPage() {
       current.push(size);
       // Default quantity to 50 for every newly selected size
       for (const c of formData.colors) {
-        const k = comboKey(c, size);
-        if (!cellFilled(nextStock[k])) {
-          nextStock[k] = String(DEFAULT_SIZE_STOCK);
+        for (const len of (formData.length_types && formData.length_types.length ? formData.length_types : [null])) {
+          const k = comboKey(c, size, len || '');
+          if (!cellFilled(nextStock[k])) {
+            nextStock[k] = String(DEFAULT_SIZE_STOCK);
+          }
         }
       }
     }
     setFormData({ ...formData, sizes: current, variant_stock: nextStock });
+  };
+
+  const toggleLengthType = (lengthType) => {
+    const current = [...(formData.length_types || [])];
+    const index = current.indexOf(lengthType);
+    const nextStock = { ...formData.variant_stock };
+    if (index > -1) {
+      current.splice(index, 1);
+    } else {
+      current.push(lengthType);
+      // Default quantity to 50 for every newly selected length type
+      for (const c of formData.colors) {
+        for (const sz of formData.sizes) {
+          const k = comboKey(c, sz, lengthType);
+          if (!cellFilled(nextStock[k])) {
+            nextStock[k] = String(DEFAULT_SIZE_STOCK);
+          }
+        }
+      }
+    }
+    setFormData({ ...formData, length_types: current, variant_stock: nextStock });
   };
 
   const toggleColorSelection = (colorObj) => {
@@ -587,17 +716,20 @@ export function AdminProductsPage() {
       setFormData({ ...formData, colors: next.length > 0 ? next : [colorObj] });
     } else {
       const nextStock = { ...formData.variant_stock };
+      const lengths = (formData.length_types && formData.length_types.length) ? formData.length_types : [null];
       for (const sz of formData.sizes) {
-        const k = comboKey(colorObj, sz);
-        if (!cellFilled(nextStock[k])) {
-          nextStock[k] = String(DEFAULT_SIZE_STOCK);
+        for (const len of lengths) {
+          const k = comboKey(colorObj, sz, len || '');
+          if (!cellFilled(nextStock[k])) {
+            nextStock[k] = String(DEFAULT_SIZE_STOCK);
+          }
         }
       }
       setFormData({ ...formData, colors: [...current, colorObj], variant_stock: nextStock });
     }
   };
 
-  const addCustomColor = () => {
+  const addCustomColor = async () => {
     const name_ko = newColor.name_ko.trim();
     if (!name_ko) {
       showToast('색상명을 입력하세요 (예: 더스티 블루)', 'error');
@@ -607,32 +739,59 @@ export function AdminProductsPage() {
       showToast('이미 존재하는 색상입니다.', 'error');
       return;
     }
-    const customColor = { name_ko, name_en: name_ko, hex: newColor.hex };
+    let colorObj = { name_ko, name_en: name_ko, hex: newColor.hex };
+    try {
+      const res = await adminApi.post('/admin/colors', { name_ko, name_en: name_ko, hex: newColor.hex });
+      if (res?.success && res.data) {
+        colorObj = { ...res.data };
+        setSavedColors((prev) => {
+          const exists = prev.some((c) => String(c.id) === String(res.data.id));
+          return exists ? prev : [...prev, res.data];
+        });
+      }
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (/COLOR_EXISTS/i.test(msg)) {
+        try {
+          const listRes = await adminApi.get('/admin/colors');
+          if (listRes?.success) {
+            setSavedColors(listRes.data || []);
+            const found = (listRes.data || []).find((c) => (c.name_ko || c.name_en) === name_ko);
+            if (found) colorObj = { ...found };
+          }
+        } catch { /* fall through to local use */ }
+      } else {
+        showToast(msg || '색상 저장에 실패했습니다.', 'error');
+      }
+    }
     const nextStock = { ...formData.variant_stock };
     for (const sz of formData.sizes) {
-      const k = comboKey(customColor, sz);
+      const k = comboKey(colorObj, sz);
       if (!cellFilled(nextStock[k])) {
         nextStock[k] = String(DEFAULT_SIZE_STOCK);
       }
     }
     setFormData({
       ...formData,
-      colors: [...formData.colors, customColor],
+      colors: [...formData.colors, colorObj],
       variant_stock: nextStock,
     });
     setNewColor({ name_ko: '', hex: '#18181b' });
   };
 
-  const setComboCell = (color, size, value) => {
-    setFormData({ ...formData, variant_stock: { ...formData.variant_stock, [comboKey(color, size)]: value } });
+  const setComboCell = (color, size, value, length = '') => {
+    setFormData({ ...formData, variant_stock: { ...formData.variant_stock, [comboKey(color, size, length)]: value } });
   };
 
   const fillAllBlankWithZero = () => {
     const next = { ...formData.variant_stock };
+    const lengths = (formData.length_types && formData.length_types.length) ? formData.length_types : [null];
     for (const c of formData.colors) {
       for (const sz of formData.sizes) {
-        const k = comboKey(c, sz);
-        if (!cellFilled(next[k])) next[k] = '0';
+        for (const len of lengths) {
+          const k = comboKey(c, sz, len || '');
+          if (!cellFilled(next[k])) next[k] = '0';
+        }
       }
     }
     setFormData({ ...formData, variant_stock: next });
@@ -640,8 +799,11 @@ export function AdminProductsPage() {
 
   const clearAllCells = () => {
     const next = {};
+    const lengths = (formData.length_types && formData.length_types.length) ? formData.length_types : [null];
     for (const c of formData.colors) {
-      for (const sz of formData.sizes) next[comboKey(c, sz)] = '';
+      for (const sz of formData.sizes) {
+        for (const len of lengths) next[comboKey(c, sz, len || '')] = '';
+      }
     }
     setFormData({ ...formData, variant_stock: next });
   };
@@ -1139,11 +1301,21 @@ export function AdminProductsPage() {
                     상품 페이지 탭 영역 아래에 별도 밴드로 표시됩니다. 설명 아래에 텍스트·이미지 블록을 자유롭게 쌓으세요. (첫 블록부터 순서대로 노출)
                   </p>
 
+                  {detailDraft && (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px', padding: '8px 10px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#9a3412' }}>자동 저장된 초안이 있습니다.</span>
+                      <button type="button" className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => { setFormData((fd) => ({ ...fd, detail_blocks: detailDraft.blocks })); setDetailDraft(null); }}>초안 복원</button>
+                      <button type="button" className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => { const key = `noeul:detail-draft:${isEditMode ? editingId : 'new'}`; try { localStorage.removeItem(key); } catch {} setDetailDraft(null); }}>초안 삭제</button>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
                     <button type="button" className="btn-secondary" onClick={() => addDetailBlock('heading')}>+ 제목</button>
                     <button type="button" className="btn-secondary" onClick={() => addDetailBlock('text')}>+ 텍스트</button>
                     <button type="button" className="btn-secondary" onClick={() => addDetailBlock('image')}>+ 이미지</button>
                     <button type="button" className="btn-secondary" onClick={() => addDetailBlock('image_grid')}>+ 이미지 그리드</button>
+                    <button type="button" className="btn-secondary" onClick={() => addDetailBlock('quote')}>+ 인용구</button>
+                    <button type="button" className="btn-secondary" onClick={() => addDetailBlock('divider')}>+ 구분선</button>
                   </div>
 
                   {formData.detail_blocks.length === 0 && (
@@ -1155,7 +1327,24 @@ export function AdminProductsPage() {
                   {formData.detail_blocks.map((block, i) => {
                     const typeLabel = { heading: '제목', text: '텍스트', image: '이미지', image_grid: '이미지 그리드' }[block.type] || block.type;
                     return (
-                      <div key={i} style={{ border: '1px solid #e4e4e7', borderRadius: '8px', padding: '12px', marginBottom: '10px', backgroundColor: '#ffffff' }}>
+                      <div
+                        key={i}
+                        draggable
+                        onDragStart={() => setDragBlockIndex(i)}
+                        onDragOver={(e) => { e.preventDefault(); }}
+                        onDrop={() => {
+                          if (dragBlockIndex === null || dragBlockIndex === i) return;
+                          setFormData((fd) => {
+                            const next = [...fd.detail_blocks];
+                            const [moved] = next.splice(dragBlockIndex, 1);
+                            next.splice(i, 0, moved);
+                            return { ...fd, detail_blocks: next };
+                          });
+                          setDragBlockIndex(null);
+                        }}
+                        onDragEnd={() => setDragBlockIndex(null)}
+                        style={{ border: '1px solid #e4e4e7', borderRadius: '8px', padding: '12px', marginBottom: '10px', backgroundColor: dragBlockIndex === i ? '#f4f4f5' : '#ffffff', cursor: 'move' }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                           <span style={{ fontSize: '0.6875rem', fontWeight: 800, backgroundColor: '#18181b', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>
                             {i + 1}. {typeLabel}
@@ -1163,10 +1352,15 @@ export function AdminProductsPage() {
                           <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
                             <button type="button" onClick={() => moveDetailBlock(i, -1)} disabled={i === 0} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', opacity: i === 0 ? 0.4 : 1 }}>↑</button>
                             <button type="button" onClick={() => moveDetailBlock(i, 1)} disabled={i === formData.detail_blocks.length - 1} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', opacity: i === formData.detail_blocks.length - 1 ? 0.4 : 1 }}>↓</button>
+                            <button type="button" onClick={() => duplicateDetailBlock(i)} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>복제</button>
                             <button type="button" onClick={() => removeDetailBlock(i)} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#dc2626', borderColor: '#fecaca' }}>삭제</button>
                           </span>
+                          <button type="button" onClick={() => setCollapsedDetailBlocks((prev) => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; })} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
+                            {collapsedDetailBlocks.has(i) ? '펼치기' : '접기'}
+                          </button>
                         </div>
 
+                        <div style={{ display: collapsedDetailBlocks.has(i) ? 'none' : 'block' }}>
                         {(block.type === 'heading' || block.type === 'text') && (
                           <div className="form-group" style={{ marginBottom: 0 }}>
                             <label className="form-label">{block.type === 'heading' ? '제목' : '본문 내용'}</label>
@@ -1176,6 +1370,18 @@ export function AdminProductsPage() {
                               <textarea rows={4} maxLength={4000} className="form-textarea" value={block.text?.ko || ''} placeholder="한글 본문을 입력하세요." onChange={(e) => updateDetailBlock(i, { text: { ko: e.target.value, en: e.target.value } })} />
                             )}
                           </div>
+                        )}
+
+                        {block.type === 'quote' && (
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">인용구</label>
+                            <textarea rows={3} maxLength={1000} className="form-textarea" value={block.text?.ko || ''} placeholder="인용할 문구를 입력하세요." onChange={(e) => updateDetailBlock(i, { text: { ko: e.target.value, en: e.target.value } })} />
+                            <input type="text" maxLength={100} className="form-input" style={{ marginTop: '6px' }} placeholder="출처 (선택)" value={block.author || ''} onChange={(e) => updateDetailBlock(i, { author: e.target.value })} />
+                          </div>
+                        )}
+
+                        {block.type === 'divider' && (
+                          <p style={{ fontSize: '0.75rem', color: '#a1a1aa', margin: 0 }}>구분선 블록 — 저장 시 가로선으로 표시됩니다.</p>
                         )}
 
                         {block.type === 'image' && (
@@ -1195,14 +1401,51 @@ export function AdminProductsPage() {
                         )}
 
                         {block.type === 'image_grid' && (
-                          <ImageUploader
-                            mode="block"
-                            maxImages={6}
-                            label="그리드 이미지 (2열로 표시)"
-                            images={(block.images || []).map((im) => ({ url: im.url, color: null }))}
-                            onChange={(imgs) => updateDetailBlock(i, { images: imgs.map((im) => ({ url: im.url, alt: '' })) })}
-                          />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <ImageUploader
+                              mode="block"
+                              maxImages={50}
+                              label="그리드 이미지 (2열로 표시 · 최대 50장)"
+                              images={(block.images || []).map((im) => ({ url: im.url, color: null }))}
+                              onChange={(imgs) => {
+                                const prev = block.images || [];
+                                const byUrl = new Map(prev.map((im) => [im.url, im]));
+                                updateDetailBlock(i, {
+                                  images: imgs.map((im) => {
+                                    const old = byUrl.get(im.url);
+                                    return {
+                                      url: im.url,
+                                      alt: old?.alt || '',
+                                      caption: old?.caption || { ko: '', en: '' },
+                                    };
+                                  }),
+                                });
+                              }}
+                            />
+                            {(block.images || []).length > 0 && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {(block.images || []).map((im, idx) => (
+                                  <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.6875rem', color: '#71717a', minWidth: '24px' }}>{idx + 1}.</span>
+                                    <input
+                                      type="text"
+                                      className="form-input"
+                                      style={{ flex: 1, padding: '4px 6px', fontSize: '0.75rem' }}
+                                      placeholder="캡션 (선택)"
+                                      value={im.caption?.ko || ''}
+                                      onChange={(e) => {
+                                        const next = [...(block.images || [])];
+                                        next[idx] = { ...next[idx], caption: { ko: e.target.value, en: e.target.value } };
+                                        updateDetailBlock(i, { images: next });
+                                      }}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1244,11 +1487,45 @@ export function AdminProductsPage() {
                     </div>
                   </div>
 
+                  {/* Length Types */}
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label className="form-label">길이 타입 (Long/Short)</label>
+                      <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>
+                        선택 시 기본 재고 {DEFAULT_SIZE_STOCK}개 자동 설정
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                      {['Long', 'Short'].map((lt) => {
+                        const selected = (formData.length_types || []).includes(lt);
+                        return (
+                          <button
+                            key={lt}
+                            type="button"
+                            onClick={() => toggleLengthType(lt)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '4px',
+                              fontSize: '0.8125rem',
+                              fontWeight: 700,
+                              backgroundColor: selected ? 'var(--accent-sunset)' : '#f4f4f5',
+                              color: selected ? '#ffffff' : '#52525b',
+                              border: selected ? 'none' : '1px solid #e4e4e7',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {lt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Colors */}
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">선택 가능한 색상</label>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
-                      {PRESET_COLORS.map((cObj) => {
+                      {colorPalette.map((cObj) => {
                         const selected = formData.colors.some((c) => (c.name_ko === cObj.name_ko) || (c.name_en === cObj.name_en));
                         return (
                           <button
@@ -1320,9 +1597,9 @@ export function AdminProductsPage() {
                     </div>
 
                     {/* Custom colors added beyond presets (removable) */}
-                    {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en || p.name_ko === c.name_ko)).length > 0 && (
+                    {formData.colors.filter((c) => !colorPalette.some((p) => p.name_en === c.name_en || p.name_ko === c.name_ko)).length > 0 && (
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-                        {formData.colors.filter((c) => !PRESET_COLORS.some((p) => p.name_en === c.name_en || p.name_ko === c.name_ko)).map((cObj) => (
+                        {formData.colors.filter((c) => !colorPalette.some((p) => p.name_en === c.name_en || p.name_ko === c.name_ko)).map((cObj) => (
                           <span
                             key={cObj.name_ko || cObj.name_en}
                             style={{
@@ -1368,7 +1645,10 @@ export function AdminProductsPage() {
                           const next = { ...formData.variant_stock };
                           for (const c of formData.colors) {
                             for (const sz of formData.sizes) {
-                              next[comboKey(c, sz)] = String(DEFAULT_SIZE_STOCK);
+                              const lengths = (formData.length_types && formData.length_types.length) ? formData.length_types : [null];
+                              for (const len of lengths) {
+                                next[comboKey(c, sz, len || '')] = String(DEFAULT_SIZE_STOCK);
+                              }
                             }
                           }
                           setFormData({ ...formData, variant_stock: next });
@@ -1398,18 +1678,18 @@ export function AdminProductsPage() {
                         <thead>
                           <tr>
                             <th style={{ ...cellHeadStyle, textAlign: 'left' }}>색상 \\ 사이즈</th>
-                            {formData.sizes.map((sz) => (
-                              <th key={sz} style={cellHeadStyle}>{sz}</th>
-                            ))}
+                            {formData.sizes.flatMap((sz) => ((formData.length_types && formData.length_types.length) ? formData.length_types : [null]).map((len) => (
+                              <th key={`${sz}|||${len || ''}`} style={cellHeadStyle}>{sz}{len ? ` (${len})` : ''}</th>
+                            )))}
                             <th style={{ ...cellHeadStyle, backgroundColor: '#f4f4f5' }}>합계</th>
                           </tr>
                         </thead>
                         <tbody>
                           {formData.colors.map((c) => {
-                            const rowTotals = formData.sizes.map((sz) => {
-                              const raw = formData.variant_stock[comboKey(c, sz)];
+                            const rowTotals = formData.sizes.flatMap((sz) => ((formData.length_types && formData.length_types.length) ? formData.length_types : [null]).map((len) => {
+                              const raw = formData.variant_stock[comboKey(c, sz, len || '')];
                               return cellFilled(raw) ? Math.max(0, Math.round(Number(raw)) || 0) : null;
-                            });
+                            }));
                             const rowSum = rowTotals.reduce((s, v) => s + (v || 0), 0);
                             const hasAny = rowTotals.some((v) => v !== null);
                             return (
@@ -1420,20 +1700,20 @@ export function AdminProductsPage() {
                                     {c.name_ko} ({colorKey(c)})
                                   </span>
                                 </th>
-                                {formData.sizes.map((sz) => {
-                                  const key = comboKey(c, sz);
+                                {formData.sizes.flatMap((sz) => ((formData.length_types && formData.length_types.length) ? formData.length_types : [null]).map((len) => {
+                                  const key = comboKey(c, sz, len || '');
                                   const val = formData.variant_stock[key] ?? '';
                                   const filled = cellFilled(val);
                                   return (
-                                    <td key={sz} style={{ border: '1px solid #e4e4e7', padding: '4px', textAlign: 'center' }}>
+                                    <td key={`${sz}|||${len || ''}`} style={{ border: '1px solid #e4e4e7', padding: '4px', textAlign: 'center' }}>
                                       <input
                                         type="number"
                                         min="0"
                                         max="99999"
                                         value={val}
-                                        onChange={(e) => setComboCell(c, sz, e.target.value)}
+                                        onChange={(e) => setComboCell(c, sz, e.target.value, len || '')}
                                         placeholder="–"
-                                        aria-label={`${colorKey(c)} ${sz} 재고`}
+                                        aria-label={`${colorKey(c)} ${sz} ${len || ''} 재고`}
                                         style={{
                                           width: '58px',
                                           padding: '6px 4px',
@@ -1449,7 +1729,7 @@ export function AdminProductsPage() {
                                       />
                                     </td>
                                   );
-                                })}
+                                }))}
                                 <td style={{ border: '1px solid #e4e4e7', padding: '4px 8px', textAlign: 'center', fontWeight: 700, backgroundColor: '#fafafa', color: hasAny ? '#18181b' : '#a1a1aa' }}>
                                   {hasAny ? rowSum : '–'}
                                 </td>
@@ -1458,22 +1738,25 @@ export function AdminProductsPage() {
                           })}
                           <tr>
                             <th style={{ ...cellHeadStyle, textAlign: 'left', backgroundColor: '#f4f4f5' }}>사이즈 합계</th>
-                            {formData.sizes.map((sz) => {
+                            {formData.sizes.flatMap((sz) => ((formData.length_types && formData.length_types.length) ? formData.length_types : [null]).map((len) => {
                               const colSum = formData.colors.reduce((s, c) => {
-                                const raw = formData.variant_stock[comboKey(c, sz)];
+                                const raw = formData.variant_stock[comboKey(c, sz, len || '')];
                                 return s + (cellFilled(raw) ? Math.max(0, Math.round(Number(raw)) || 0) : 0);
                               }, 0);
-                              const any = formData.colors.some((c) => cellFilled(formData.variant_stock[comboKey(c, sz)]));
+                              const any = formData.colors.some((c) => cellFilled(formData.variant_stock[comboKey(c, sz, len || '')]));
                               return (
-                                <td key={sz} style={{ ...cellHeadStyle, backgroundColor: '#f4f4f5', textAlign: 'center' }}>
+                                <td key={`${sz}|||${len || ''}`} style={{ ...cellHeadStyle, backgroundColor: '#f4f4f5', textAlign: 'center' }}>
                                   {any ? colSum : '–'}
                                 </td>
                               );
-                            })}
+                            }))}
                             <td style={{ ...cellHeadStyle, backgroundColor: '#ececec', textAlign: 'center' }}>
                               {formData.colors.reduce((s, c) => s + formData.sizes.reduce((ss, sz) => {
-                                const raw = formData.variant_stock[comboKey(c, sz)];
-                                return ss + (cellFilled(raw) ? Math.max(0, Math.round(Number(raw)) || 0) : 0);
+                                const lengths = (formData.length_types && formData.length_types.length) ? formData.length_types : [null];
+                                return ss + lengths.reduce((sss, len) => {
+                                  const raw = formData.variant_stock[comboKey(c, sz, len || '')];
+                                  return sss + (cellFilled(raw) ? Math.max(0, Math.round(Number(raw)) || 0) : 0);
+                                }, 0);
                               }, 0), 0)}
                             </td>
                           </tr>

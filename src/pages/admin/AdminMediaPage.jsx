@@ -66,23 +66,32 @@ export function AdminMediaPage() {
     if (files.length === 0) return;
 
     setUploading(true);
-    const fd = new FormData();
-    files.forEach((file) => {
-      fd.append('images', file);
-    });
-
     try {
-      // Cookie session via adminApi (CSRF + credentials included); the legacy
-      // Bearer-token path is retired with password auth.
-      const data = await adminApi.post('/admin/upload-multiple', fd);
-      if (data.success) {
-        showToast(`${data.data?.length || files.length}개의 사진 파일이 업로드되었습니다.`, 'success');
-        fetchMedia();
-      } else {
-        showToast(data.message || '업로드 실패', 'error');
-      }
-    } catch (err) {
-      showToast('업로드 중 오류 발생', 'error');
+      const batches = [];
+      for (let i = 0; i < files.length; i += 3) batches.push(files.slice(i, i + 3));
+      const queue = [...batches];
+      let uploadedCount = 0;
+      const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+        while (queue.length) {
+          const batch = queue.shift();
+          if (!batch) continue;
+          const fd = new FormData();
+          batch.forEach((file) => fd.append('images', file));
+          try {
+            const data = await adminApi.post('/admin/upload-multiple', fd);
+            if (data.success) {
+              uploadedCount += data.data?.length || batch.length;
+            } else {
+              showToast(data.message || '업로드 실패', 'error');
+            }
+          } catch (err) {
+            showToast('업로드 중 오류 발생', 'error');
+          }
+        }
+      });
+      await Promise.all(workers);
+      showToast(`${uploadedCount || files.length}개의 사진 파일이 업로드되었습니다.`, 'success');
+      fetchMedia();
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

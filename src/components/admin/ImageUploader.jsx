@@ -6,6 +6,7 @@ import { MediaPickerModal } from '../common/MediaPickerModal.jsx';
 import {
   PRODUCT_IMAGE_MAX,
   UPLOAD_BATCH_SIZE,
+  UPLOAD_CONCURRENCY,
   UPLOAD_FAILED_GENERIC,
 } from '../../config/upload.js';
 import {
@@ -25,7 +26,10 @@ function normalizeImages(images) {
 export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE_MAX, label = '상품 사진 (Product Images)', availableColors = [], mode = 'gallery' }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [lastFiles, setLastFiles] = useState([]);
+  const [failedCount, setFailedCount] = useState(0);
   const fileInputRef = useRef(null);
   const { showToast } = useToast();
   const { lang } = useLanguage() || { lang: 'ko' };
@@ -37,36 +41,29 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
     'STORAGE_FULL', 'UPLOAD_FAILED', 'NO_FILES',
   ]);
 
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (files.length === 0) return;
-
-    // 1. Pre-flight: name every bad file before any network traffic.
-    const { accepted, issues } = validateImageFiles(files, { existingCount: images.length, max: maxImages });
-    for (const issue of issues) {
-      showToast(uploadErrorText(issue.code, lang, issue.name, { max: maxImages }), 'error');
-    }
-    if (accepted.length === 0) return;
-
+  const uploadFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    setFailedCount(0);
     // 2 + 3. Every file passes the downscale/compress helper (over-limit
     // rasters shrink, small files return untouched), then uploads go out
     // sequentially in small batches (dodges serverless body caps).
     setUploading(true);
-    setProgress({ done: 0, total: accepted.length });
+    setProgress({ done: 0, total: files.length });
     try {
       const prepared = [];
-      for (const f of accepted) {
+      for (const f of files) {
         prepared.push(await downscaleImage(f));
       }
       const uploaded = [];
       const failed = [];
+      const batches = [];
       for (let i = 0; i < prepared.length; i += UPLOAD_BATCH_SIZE) {
-        const chunk = prepared.slice(i, i + UPLOAD_BATCH_SIZE);
+        batches.push(prepared.slice(i, i + UPLOAD_BATCH_SIZE));
+      }
+      let doneCount = 0;
+      const runBatch = async (chunk) => {
         const formData = new FormData();
-        chunk.forEach((file) => {
-          formData.append('images', file);
-        });
+        chunk.forEach((file) => formData.append('images', file));
         try {
           const data = await adminApi.post('/admin/upload-multiple', formData);
           if (data?.success) {
@@ -81,8 +78,17 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
           const code = KNOWN_CODES.has(err?.message) ? err.message : UPLOAD_FAILED_GENERIC;
           chunk.forEach((file) => failed.push({ name: file.name, code }));
         }
-        setProgress({ done: Math.min(prepared.length, i + UPLOAD_BATCH_SIZE), total: prepared.length });
-      }
+        doneCount += chunk.length;
+        setProgress({ done: Math.min(prepared.length, doneCount), total: prepared.length });
+      };
+      const queue = [...batches];
+      const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, queue.length) }, async () => {
+        while (queue.length) {
+          const batch = queue.shift();
+          if (batch) await runBatch(batch);
+        }
+      });
+      await Promise.all(workers);
       if (uploaded.length) {
         if (maxImages === 1) onChange(uploaded.slice(0, 1));
         else onChange([...normalized, ...uploaded].slice(0, maxImages));
@@ -98,10 +104,41 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
       if (failed.length > 5) {
         showToast(`그 외 ${failed.length - 5}건의 실패가 더 있습니다.`, 'error');
       }
+      setFailedCount(failed.length);
     } finally {
       setUploading(false);
       setProgress(null);
     }
+  };
+
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (files.length === 0) return;
+
+    // 1. Pre-flight: name every bad file before any network traffic.
+    const { accepted, issues } = validateImageFiles(files, { existingCount: images.length, max: maxImages });
+    for (const issue of issues) {
+      showToast(uploadErrorText(issue.code, lang, issue.name, { max: maxImages }), 'error');
+    }
+    if (accepted.length === 0) return;
+
+    setLastFiles(accepted);
+    await uploadFiles(accepted);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length === 0) return;
+    const { accepted, issues } = validateImageFiles(files, { existingCount: images.length, max: maxImages });
+    for (const issue of issues) {
+      showToast(uploadErrorText(issue.code, lang, issue.name, { max: maxImages }), 'error');
+    }
+    if (accepted.length === 0) return;
+    setLastFiles(accepted);
+    await uploadFiles(accepted);
   };
 
   const handleRemoveImage = (index) => {
@@ -162,12 +199,15 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
       {/* Upload Drop Zone / Button */}
       <div
         onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
         style={{
-          border: '2px dashed #d4d4d8',
+          border: `2px dashed ${dragOver ? 'var(--accent-sunset)' : '#d4d4d8'}`,
+          backgroundColor: dragOver ? '#fff5f5' : '#fafafa',
           borderRadius: '8px',
           padding: '24px',
           textAlign: 'center',
-          backgroundColor: '#fafafa',
           cursor: uploading ? 'not-allowed' : 'pointer',
           transition: 'all 0.15s ease',
           display: 'flex',
@@ -184,6 +224,19 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
             <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#52525b' }}>
               사진을 서버로 업로드하는 중입니다{progress ? ` (${progress.done}/${progress.total})` : '...'}
             </p>
+            {progress && (
+              <div style={{ width: '100%', maxWidth: '320px', height: '8px', backgroundColor: '#e4e4e7', borderRadius: '999px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%`,
+                    height: '100%',
+                    backgroundColor: 'var(--accent-sunset)',
+                    borderRadius: '999px',
+                    transition: 'width 0.25s ease',
+                  }}
+                />
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -368,6 +421,16 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
       <p style={{ fontSize: '0.6875rem', color: '#71717a', margin: 0 }}>
         색상을 지정하면 상품 상세에서 해당 색상 선택 시 지정된 이미지가 먼저 표시됩니다 (reorder). 미지정 이미지는 모든 색상에서 표시됩니다. 예: 5장 중 2장 파랑, 3장 초록.
       </p>
+
+      {failedCount > 0 && lastFiles.length > 0 && !uploading && (
+        <button
+          type="button"
+          onClick={() => uploadFiles(lastFiles)}
+          style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
+        >
+          실패한 파일 재시도 ({failedCount}장)
+        </button>
+      )}
 
       {/* Media Picker Modal */}
       <MediaPickerModal

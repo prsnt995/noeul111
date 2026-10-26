@@ -62,23 +62,26 @@ export function CartProvider({ children }) {
   const closeCart = () => setIsCartOpen(false);
 
   // Resolve variant_id from product.variants when available (authoritative stock SKU)
-  const resolveVariant = (product, sizeVal, colorNameKo, colorNameEn, colorRaw) => {
+  const resolveVariant = (product, sizeVal, colorNameKo, colorNameEn, colorRaw, lengthVal) => {
     const variants = Array.isArray(product.variants) ? product.variants : Array.isArray(product.product_variants) ? product.product_variants : [];
     if (variants.length === 0) return null;
     const norm = (s) => String(s || '').trim().toUpperCase();
     const colorRawName = typeof colorRaw === 'object' ? (colorRaw.name || colorRaw.name_en || colorRaw.name_ko) : colorRaw;
     // 1. Exact match by size and any color representation
+    const lenOk = (x) => !lengthVal || norm(x.length_type) === norm(lengthVal);
     const match = variants.find(x =>
       norm(x.size) === norm(sizeVal) &&
-      (norm(x.color) === norm(colorNameKo) || norm(x.color) === norm(colorNameEn) || norm(x.color) === norm(colorRawName))
+      (norm(x.color) === norm(colorNameKo) || norm(x.color) === norm(colorNameEn) || norm(x.color) === norm(colorRawName)) &&
+      lenOk(x)
     );
     if (match) return match;
     // 2. Match by size
-    const sizeMatch = variants.find(x => norm(x.size) === norm(sizeVal));
+    const sizeMatch = variants.find(x => norm(x.size) === norm(sizeVal) && lenOk(x));
     if (sizeMatch) return sizeMatch;
     // 3. Match by color
     const colorMatch = variants.find(x =>
-      norm(x.color) === norm(colorNameKo) || norm(x.color) === norm(colorNameEn) || norm(x.color) === norm(colorRawName)
+      (norm(x.color) === norm(colorNameKo) || norm(x.color) === norm(colorNameEn) || norm(x.color) === norm(colorRawName)) &&
+      lenOk(x)
     );
     if (colorMatch) return colorMatch;
     // 4. Fallback to active variant or first variant
@@ -86,7 +89,7 @@ export function CartProvider({ children }) {
   };
 
   // Add Item to Cart — now stores variant_id for backend checkout compatibility
-  const addToCart = (product, size, color, quantity = 1) => {
+  const addToCart = (product, size, color, quantity = 1, length = null) => {
     if (!product) return;
 
     const sizeVal = size || (product.sizes?.[0] || 'FREE');
@@ -95,7 +98,7 @@ export function CartProvider({ children }) {
     const colorNameEn = typeof colorObj === 'object' ? (colorObj.name_en || colorObj.name || colorObj.name_ko) : colorObj;
     const hex = typeof colorObj === 'object' ? colorObj.hex : undefined;
 
-    const variant = resolveVariant(product, sizeVal, colorNameKo, colorNameEn, colorObj);
+    const variant = resolveVariant(product, sizeVal, colorNameKo, colorNameEn, colorObj, length);
     const variant_id = variant?.id || variant?.variant_id || null;
     const variant_sku = variant?.sku || product.sku;
 
@@ -112,6 +115,7 @@ export function CartProvider({ children }) {
         // Keep variant_id stable if already stored
         if (variant_id && !updated[existingIndex].variant_id) updated[existingIndex].variant_id = variant_id;
         if (!updated[existingIndex].category) updated[existingIndex].category = product.categories?.slug || product.category || product.subcategory || '';
+        if (length && !updated[existingIndex].length_type) updated[existingIndex].length_type = length;
         return updated;
       } else {
         return [
@@ -129,6 +133,7 @@ export function CartProvider({ children }) {
             unit_price: unitPrice,
             image_url: Array.isArray(product.images) ? product.images[0] : (product.image_url || ''),
             size: sizeVal,
+            length_type: variant?.length_type || length || null,
             color_ko: colorNameKo,
             color_en: colorNameEn,
             color_hex: hex,

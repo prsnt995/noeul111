@@ -22,6 +22,9 @@ export const UPLOAD_DOWNSCALE_MAX_DIM = 1600;
 /** Frontend upload batch size (sequential requests dodge serverless body caps). */
 export const UPLOAD_BATCH_SIZE = 3;
 
+/** Max concurrent upload batches — makes multi-file uploads feel instant. */
+export const UPLOAD_CONCURRENCY = 3;
+
 /** Extensions accepted end-to-end (picker filter, pre-flight, API, bucket). */
 export const UPLOAD_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'];
 

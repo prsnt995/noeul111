@@ -511,11 +511,14 @@ export function registerAdminRoutes(app, ctx) {
   // types / oversized payloads are rejected (400) so a bad client can't
   // store garbage the renderer would choke on.
   const DETAIL_BLOCK_MAX = 50;
-  const detailBlockTypes = new Set(['heading', 'text', 'image', 'image_grid']);
+  const detailBlockTypes = new Set(['heading', 'text', 'image', 'image_grid', 'divider', 'quote']);
   function sanitizeDetailBlocks(raw) {
     if (raw === undefined) return undefined;
     if (!Array.isArray(raw) || raw.length > DETAIL_BLOCK_MAX) return null;
     const clean = [];
+    let totalImages = 0;
+    const MAX_GRID_IMAGES = 50;
+    const MAX_TOTAL_IMAGES = 250;
     for (const b of raw) {
       if (!b || typeof b !== 'object' || !detailBlockTypes.has(b.type)) return null;
       if (b.type === 'heading' || b.type === 'text') {
@@ -525,8 +528,19 @@ export function registerAdminRoutes(app, ctx) {
         const ko = String(t.ko || ''), en = String(t.en || '');
         if (ko.length > cap || en.length > cap) return null;
         clean.push({ type: b.type, text: { ko, en } });
+      } else if (b.type === 'divider') {
+        clean.push({ type: 'divider' });
+      } else if (b.type === 'quote') {
+        const t = b.text;
+        if (!t || typeof t !== 'object') return null;
+        const ko = String(t.ko || ''), en = String(t.en || '');
+        if (ko.length > 1000 || en.length > 1000) return null;
+        const author = String(b.author || '').slice(0, 100);
+        clean.push({ type: 'quote', text: { ko, en }, author });
       } else if (b.type === 'image') {
         if (typeof b.url !== 'string' || !b.url || b.url.length > 500) return null;
+        if (totalImages + 1 > MAX_TOTAL_IMAGES) return null;
+        totalImages += 1;
         const cap = b.caption;
         if (cap !== undefined && (typeof cap !== 'object' || cap === null)) return null;
         const ko = String(cap?.ko || ''), en = String(cap?.en || '');
@@ -534,11 +548,18 @@ export function registerAdminRoutes(app, ctx) {
         clean.push({ type: 'image', url: b.url, alt: String(b.alt || '').slice(0, 200), caption: { ko, en } });
       } else {
         const imgs = b.images;
-        if (!Array.isArray(imgs) || imgs.length === 0 || imgs.length > 6) return null;
+        if (!Array.isArray(imgs) || imgs.length === 0 || imgs.length > MAX_GRID_IMAGES) return null;
+        if (totalImages + imgs.length > MAX_TOTAL_IMAGES) return null;
+        totalImages += imgs.length;
         const images = [];
         for (const it of imgs) {
           if (!it || typeof it !== 'object' || typeof it.url !== 'string' || !it.url || it.url.length > 500) return null;
-          images.push({ url: it.url, alt: String(it.alt || '').slice(0, 200) });
+          const alt = String(it.alt || '').slice(0, 200);
+          const cap = it.caption;
+          if (cap !== undefined && (typeof cap !== 'object' || cap === null)) return null;
+          const cko = String(cap?.ko || ''), cen = String(cap?.en || '');
+          if (cko.length > 300 || cen.length > 300) return null;
+          images.push({ url: it.url, alt, caption: { ko: cko, en: cen } });
         }
         clean.push({ type: 'image_grid', images });
       }
@@ -552,6 +573,7 @@ export function registerAdminRoutes(app, ctx) {
       database().from('product_media').select('*').eq('product_id', p.id).order('sort_order'),
       p.category_id ? database().from('categories').select('slug,name_ko,name_en').eq('id', p.category_id).maybeSingle().then(r => r.data) : null,
     ]);
+    const detailBlocks = await readDetailBlocks(p.id);
     const list = variants || [];
     return {
       ...p,
@@ -560,12 +582,13 @@ export function registerAdminRoutes(app, ctx) {
       category_slug: cat?.slug || '',
       sizes: [...new Set(list.map(v => v.size))],
       colors: [...new Map(list.map(v => [v.color, { name_ko: v.color, name_en: v.color, hex: v.swatch || '' }])).values()],
+      length_types: [...new Set(list.map(v => v.length_type).filter(Boolean))],
       images: (media || []).map(m => m.url),
       media: media || [],
-      // Raw variants (id/color/size/stock/reserved) for the manual-order
-      // picker, which hides out-of-stock color/size combos per variant.
+      // Raw variants (id/color/size/length_type/stock/reserved) for the manual-order
+      // picker, which hides out-of-stock combos per variant.
       variants: list.map(v => ({
-        id: v.id, color: v.color, size: v.size, stock: v.stock || 0,
+        id: v.id, color: v.color, size: v.size, length_type: v.length_type || null, stock: v.stock || 0,
         reserved: v.reserved || 0, active: v.active !== false, sku: v.sku,
       })),
       stock: list.reduce((s, v) => s + (v.stock || 0), 0),
@@ -575,7 +598,88 @@ export function registerAdminRoutes(app, ctx) {
       is_sale: !!(p.discount_price && p.discount_price < p.price),
       is_featured: false,
       discount_rate: p.discount_price && p.discount_price < p.price ? Math.round(((p.price - p.discount_price) / p.price) * 100) : 0,
+      detail_blocks: detailBlocks !== null ? detailBlocks : (p.detail_blocks || []),
     };
+  }
+
+  function assembleDetailBlock(block, images) {
+    if (block.type === 'image') {
+      return { type: 'image', url: block.url || '', alt: block.alt || '', caption: { ko: block.caption_ko || '', en: block.caption_en || '' } };
+    }
+    if (block.type === 'image_grid') {
+      return {
+        type: 'image_grid',
+        images: (images || []).sort((a, b) => a.sort_order - b.sort_order).map((im) => ({
+          url: im.url, alt: im.alt || '', caption: { ko: im.caption_ko || '', en: im.caption_en || '' },
+        })),
+      };
+    }
+    if (block.type === 'quote') {
+      return { type: 'quote', text: { ko: block.text_ko || '', en: block.text_en || '' }, author: block.author || '' };
+    }
+    if (block.type === 'divider') {
+      return { type: 'divider' };
+    }
+    return { type: block.type, text: { ko: block.text_ko || '', en: block.text_en || '' } };
+  }
+
+  async function readDetailBlocks(productId) {
+    const { data: blocks } = await database().from('product_detail_blocks').select('*').eq('product_id', productId).order('sort_order');
+    if (!blocks || !blocks.length) return null;
+    const blockIds = blocks.map((b) => b.id);
+    const { data: images } = await database().from('product_detail_images').select('*').in('block_id', blockIds);
+    const imagesByBlock = new Map();
+    for (const im of (images || [])) {
+      if (!imagesByBlock.has(im.block_id)) imagesByBlock.set(im.block_id, []);
+      imagesByBlock.get(im.block_id).push(im);
+    }
+    return blocks.map((b) => assembleDetailBlock(b, imagesByBlock.get(b.id) || []));
+  }
+
+  async function writeDetailBlocks(productId, blocks) {
+    const { data: existing } = await database().from('product_detail_blocks').select('id').eq('product_id', productId);
+    const ids = (existing || []).map((b) => b.id);
+    if (ids.length) {
+      await database().from('product_detail_images').delete().in('block_id', ids);
+    }
+    await database().from('product_detail_blocks').delete().eq('product_id', productId);
+    for (let i = 0; i < (blocks || []).length; i++) {
+      const b = blocks[i];
+      const row = {
+        product_id: productId,
+        type: b.type,
+        sort_order: i,
+        text_ko: b.text?.ko || '',
+        text_en: b.text?.en || '',
+        author: b.author || '',
+        url: b.url || null,
+        alt: b.alt || '',
+        caption_ko: b.caption?.ko || '',
+        caption_en: b.caption?.en || '',
+      };
+      const { data: inserted, error } = await database().from('product_detail_blocks').insert(row).select().maybeSingle();
+      if (error || !inserted) throw error || new Error('DETAIL_BLOCK_WRITE_FAILED');
+      if (b.type === 'image_grid') {
+        const imgs = (b.images || []).map((im, idx) => ({
+          block_id: inserted.id,
+          url: im.url,
+          alt: im.alt || '',
+          caption_ko: im.caption?.ko || '',
+          caption_en: im.caption?.en || '',
+          sort_order: idx,
+        }));
+        if (imgs.length) {
+          const { error: ie } = await database().from('product_detail_images').insert(imgs);
+          if (ie) throw ie;
+        }
+      }
+    }
+  }
+
+  function normalizeComboKey(key) {
+    const parts = String(key).split('|||');
+    while (parts.length < 3) parts.push('');
+    return parts.slice(0, 3).join('|||');
   }
 
   function combosFromBody(body) {
@@ -583,9 +687,14 @@ export function registerAdminRoutes(app, ctx) {
     const colors = (Array.isArray(body.colors) && body.colors.length ? body.colors : [{ name_ko: 'DEFAULT', name_en: 'DEFAULT', hex: '' }])
       .map(c => (typeof c === 'string' ? { name: c } : c))
       .map(c => ({ color: c.name_en || c.name_ko || c.name || 'DEFAULT', swatch: c.hex || '' }));
-    // Per-combo stock map: keys are `${color}|||${size}`. When provided it is
-    // the single source of truth for WHICH combos are offered (absent key =
-    // combo not sold) and each value is that combo's stock.
+    // Length types (Long/Short). Empty/absent => single null dimension (backward compat).
+    const lengthTypes = Array.isArray(body.length_types) && body.length_types.length
+      ? body.length_types.map(String).filter(Boolean)
+      : [];
+    const lengths = lengthTypes.length ? lengthTypes : [null];
+    // Per-combo stock map: keys are `${color}|||${size}|||${length}`. When
+    // provided it is the single source of truth for WHICH combos are offered
+    // (absent key = combo not sold) and each value is that combo's stock.
     const stockMap = new Map();
     const raw = body.variant_stock;
     const hasStockMap = Boolean(raw && typeof raw === 'object' && !Array.isArray(raw));
@@ -594,42 +703,45 @@ export function registerAdminRoutes(app, ctx) {
         if (typeof key !== 'string' || key.indexOf('|||') <= 0) continue;
         const n = Math.round(Number(val));
         if (!Number.isFinite(n) || n < 0) continue;
-        stockMap.set(key, Math.min(n, 99999));
+        stockMap.set(normalizeComboKey(key), Math.min(n, 99999));
       }
     }
-    return { sizes, colors, stockMap, hasStockMap };
+    return { sizes, colors, lengths, stockMap, hasStockMap };
   }
 
   async function syncVariants(productId, productSku, body) {
-    const { sizes, colors, stockMap, hasStockMap } = combosFromBody(body);
+    const { sizes, colors, lengths, stockMap, hasStockMap } = combosFromBody(body);
     const { data: existing } = await database().from('product_variants').select('*').eq('product_id', productId);
-    const have = new Map((existing || []).map(v => [`${v.color}|||${v.size}`, v]));
+    const have = new Map((existing || []).map(v => [`${v.color}|||${v.size}|||${v.length_type || ''}`, v]));
     const swatchByColor = new Map(colors.map(c => [c.color, c.swatch]));
     const want = new Set();
     if (hasStockMap) {
       for (const key of stockMap.keys()) want.add(key);
     } else {
-      for (const c of colors) for (const size of sizes) want.add(`${c.color}|||${size}`);
+      for (const c of colors) for (const size of sizes) for (const length of lengths) {
+        want.add(`${c.color}|||${size}|||${length || ''}`);
+      }
     }
     let n = 0;
     for (const key of want) {
-      const sep = key.indexOf('|||');
-      const color = key.slice(0, sep);
-      const size = key.slice(sep + 3);
+      const parts = key.split('|||');
+      const color = parts[0];
+      const size = parts[1];
+      const length = parts[2] ? parts[2] : null;
       const requested = hasStockMap ? (stockMap.get(key) ?? 0) : 0;
       n += 1;
       const prev = have.get(key);
       if (!prev) {
-        let sku = `${productSku}-${String(color).slice(0, 8)}-${String(size).slice(0, 8)}`.toUpperCase().replace(/[^A-Z0-9-]+/g, '-');
+        let sku = `${productSku}-${String(color).slice(0, 8)}-${String(size).slice(0, 8)}-${String(length || 'NA').slice(0, 4)}`.toUpperCase().replace(/[^A-Z0-9-]+/g, '-');
         const { error } = await database().from('product_variants').insert({
           product_id: productId, sku: `${sku}-${random().slice(0, 4)}`,
-          color, size, swatch: swatchByColor.get(color) || '', stock: requested, active: true,
+          color, size, length_type: length, swatch: swatchByColor.get(color) || '', stock: requested, active: true,
         });
         if (error) throw error;
       } else if (hasStockMap && (prev.stock || 0) !== requested) {
         // DB check: reserved <= stock, so a lowering can't dip under holds.
         const target = Math.max(requested, prev.reserved || 0);
-        const { error } = await database().from('product_variants').update({ stock: target }).eq('id', prev.id);
+        const { error } = await database().from('product_variants').update({ stock: target, length_type: length }).eq('id', prev.id);
         if (error) throw error;
       }
     }
@@ -795,6 +907,7 @@ export function registerAdminRoutes(app, ctx) {
       let variantsByProduct = new Map();
       let mediaByProduct = new Map();
       let catById = new Map();
+      const detailBlocksByProduct = new Map();
       if (ids.length) {
         const [{ data: variants }, { data: media }, { data: cats }] = await Promise.all([
           database().from('product_variants').select('*').in('product_id', ids).then(r => r, () => ({ data: [] })),
@@ -810,6 +923,29 @@ export function registerAdminRoutes(app, ctx) {
           mediaByProduct.get(m.product_id).push(m);
         }
         for (const c of (cats || [])) catById.set(c.id, c);
+
+        const { data: dbBlocks } = await database().from('product_detail_blocks').select('*').in('product_id', ids).then(r => r, () => ({ data: [] }));
+        const blockIds = (dbBlocks || []).map((b) => b.id);
+        let dbImages = [];
+        if (blockIds.length) {
+          const { data: imgs } = await database().from('product_detail_images').select('*').in('block_id', blockIds).then(r => r, () => ({ data: [] }));
+          dbImages = imgs || [];
+        }
+        const imagesByBlock = new Map();
+        for (const im of dbImages) {
+          if (!imagesByBlock.has(im.block_id)) imagesByBlock.set(im.block_id, []);
+          imagesByBlock.get(im.block_id).push(im);
+        }
+        const blocksByProduct = new Map();
+        for (const blk of (dbBlocks || [])) {
+          if (!blocksByProduct.has(blk.product_id)) blocksByProduct.set(blk.product_id, []);
+          blocksByProduct.get(blk.product_id).push({ block: blk, images: imagesByBlock.get(blk.id) || [] });
+        }
+        for (const pid of ids) {
+          const grouped = (blocksByProduct.get(pid) || []).sort((a, b) => a.block.sort_order - b.block.sort_order);
+          const assembled = grouped.map(({ block, images }) => assembleDetailBlock(block, images));
+          if (assembled.length) detailBlocksByProduct.set(pid, assembled);
+        }
       }
       const composed = (data || []).map(p => {
         const list = variantsByProduct.get(p.id) || [];
@@ -837,6 +973,7 @@ export function registerAdminRoutes(app, ctx) {
           is_sale: !!(p.discount_price && p.discount_price < p.price),
           is_featured: false,
           discount_rate: p.discount_price && p.discount_price < p.price ? Math.round(((p.price - p.discount_price) / p.price) * 100) : 0,
+          detail_blocks: detailBlocksByProduct.has(p.id) ? detailBlocksByProduct.get(p.id) : (p.detail_blocks || []),
         };
       });
       res.json(pageEnvelope({ data: composed, total, page, pageSize }));
@@ -952,6 +1089,14 @@ export function registerAdminRoutes(app, ctx) {
         console.error('PRODUCT_CREATE media failed for product', created.id, e?.message);
         return error(res, 503, 'MEDIA_FAILED');
       }
+      if (detailBlocks !== undefined) {
+        try {
+          await writeDetailBlocks(created.id, detailBlocks);
+        } catch (e) {
+          console.error('PRODUCT_CREATE detail blocks failed for product', created.id, e?.message);
+          return error(res, 503, 'DETAIL_BLOCKS_FAILED');
+        }
+      }
       await auditLog(req, 'PRODUCT_CREATE', { table: 'products', id: created.id });
       if (autoAssigned) {
         // Advance the category hint past the consumed sequence (best-effort;
@@ -1014,6 +1159,16 @@ export function registerAdminRoutes(app, ctx) {
       }
       if (b.sizes !== undefined || b.colors !== undefined || b.variant_stock !== undefined) await syncVariants(p.id, patch.sku || p.sku, b);
       if (b.images !== undefined) await syncMedia(p.id, b.images);
+      if (b.detail_blocks !== undefined) {
+        const blocks = sanitizeDetailBlocks(b.detail_blocks);
+        if (blocks === null) return error(res, 400, 'INVALID_DETAIL_BLOCKS');
+        try {
+          await writeDetailBlocks(p.id, blocks);
+        } catch (e) {
+          console.error('PRODUCT_UPDATE detail blocks failed for product', p.id, e?.message);
+          return error(res, 503, 'DETAIL_BLOCKS_FAILED');
+        }
+      }
       await auditLog(req, 'PRODUCT_UPDATE', { table: 'products', id: p.id });
       const { data: updated } = await database().from('products').select('*').eq('id', p.id).maybeSingle();
       res.json({ success: true, data: await composeAdminProduct(updated) });
@@ -1218,6 +1373,82 @@ export function registerAdminRoutes(app, ctx) {
       await auditLog(req, 'CATEGORY_DELETE', { table: 'categories', id: req.params.id });
       res.json({ success: true });
     } catch { error(res, 503, 'CATEGORY_DELETE_FAILED'); }
+  });
+
+  // ---------- Colors (reusable product color palette) ----------
+  app.get('/api/v1/admin/colors', ...need(R.catalog), async (req, res) => {
+    try {
+      const { data, error: e } = await database().from('colors').select('*').eq('is_active', true).order('sort_order').order('id');
+      if (e) throw e;
+      res.json({ success: true, data: data || [] });
+    } catch { error(res, 503, 'COLORS_UNAVAILABLE'); }
+  });
+
+  app.post('/api/v1/admin/colors', ...need(R.catalog), async (req, res) => {
+    try {
+      const b = req.body || {};
+      const name_ko = String(b.name_ko || b.name || '').trim().slice(0, 100);
+      if (!name_ko) return error(res, 400, 'COLOR_NAME_REQUIRED');
+      const name_en = String(b.name_en || name_ko).trim().slice(0, 100);
+      const hex = String(b.hex || b.swatch || '').trim().slice(0, 32);
+      const sort_order = Number.isFinite(Number(b.sort_order)) ? Number(b.sort_order) : 0;
+      const { data, error: e } = await database().from('colors').insert({
+        name_ko, name_en, hex, sort_order, is_active: true,
+      }).select().maybeSingle();
+      if (e) {
+        const msg = String(e.message || '');
+        if (e.code === '23505' || /duplicate|unique/i.test(msg)) return error(res, 409, 'COLOR_EXISTS');
+        if (/column .* does not exist|schema cache/i.test(msg)) return error(res, 503, 'SCHEMA_MISMATCH');
+        throw e;
+      }
+      if (!data) throw new Error('COLOR_CREATE_FAILED');
+      await auditLog(req, 'COLOR_CREATE', { table: 'colors', id: data.id });
+      res.status(201).json({ success: true, data });
+    } catch { error(res, 503, 'COLOR_CREATE_FAILED'); }
+  });
+
+  app.put('/api/v1/admin/colors/:id', ...need(R.catalog), async (req, res) => {
+    try {
+      const b = req.body || {};
+      const patch = {};
+      if (b.name_ko !== undefined) {
+        const name_ko = String(b.name_ko).trim().slice(0, 100);
+        if (!name_ko) return error(res, 400, 'COLOR_NAME_REQUIRED');
+        patch.name_ko = name_ko;
+        if (b.name_en === undefined) patch.name_en = name_ko;
+      }
+      if (b.name_en !== undefined) patch.name_en = String(b.name_en).trim().slice(0, 100);
+      if (b.hex !== undefined || b.swatch !== undefined) patch.hex = String(b.hex ?? b.swatch ?? '').trim().slice(0, 32);
+      if (b.sort_order !== undefined) patch.sort_order = Number(b.sort_order) || 0;
+      if (b.is_active !== undefined) patch.is_active = !!b.is_active;
+      patch.updated_at = new Date().toISOString();
+      const { data, error: e } = await database().from('colors').update(patch).eq('id', req.params.id).select().maybeSingle();
+      if (e) {
+        if (e.code === '23505' || /duplicate|unique/i.test(String(e.message || ''))) return error(res, 409, 'COLOR_EXISTS');
+        throw e;
+      }
+      if (!data) return error(res, 404, 'COLOR_NOT_FOUND');
+      await auditLog(req, 'COLOR_UPDATE', { table: 'colors', id: req.params.id });
+      res.json({ success: true, data });
+    } catch { error(res, 503, 'COLOR_UPDATE_FAILED'); }
+  });
+
+  app.delete('/api/v1/admin/colors/:id', ...need(R.catalog), async (req, res) => {
+    try {
+      const { data: color } = await database().from('colors').select('name_en,name_ko').eq('id', req.params.id).maybeSingle();
+      if (!color) return error(res, 404, 'COLOR_NOT_FOUND');
+      const colorNames = [color.name_en, color.name_ko].filter(Boolean);
+      let inUse = false;
+      for (const name of colorNames) {
+        const { data: refs } = await database().from('product_variants').select('id').eq('color', name).limit(1);
+        if ((refs || []).length) { inUse = true; break; }
+      }
+      if (inUse) return error(res, 400, 'COLOR_IN_USE');
+      const { error: e } = await database().from('colors').delete().eq('id', req.params.id);
+      if (e) throw e;
+      await auditLog(req, 'COLOR_DELETE', { table: 'colors', id: req.params.id });
+      res.json({ success: true });
+    } catch { error(res, 503, 'COLOR_DELETE_FAILED'); }
   });
 
   // ---------- Coupons (supports fixed-amount and percentage with max cap) ----------
