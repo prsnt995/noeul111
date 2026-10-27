@@ -1934,6 +1934,124 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
+  // Ads monitoring stats: attributed revenue, conversions, low-stock alerts.
+  // Spend data comes from ad_spend_daily (populated by cron sync) or 0 if not yet synced.
+  app.get('/api/v1/admin/ads/stats', ...need(R.dashboard), async (req, res) => {
+    try {
+      const { from, to, platform, format } = req.query;
+      const cap = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000);
+      let q = database().from('orders').select('id,order_number,status,amount,created_at,order_source,utm_source,utm_medium,utm_campaign,utm_content,utm_term').order('created_at', { ascending: false }).limit(cap);
+      if (from) q = q.gte('created_at', String(from));
+      if (to) q = q.lte('created_at', String(to));
+      let { data: orders, error: e } = await q;
+      if (e) {
+        const retry = await database().from('orders').select('id,order_number,status,amount,created_at,order_source').order('created_at', { ascending: false }).limit(cap);
+        if (retry.error) throw retry.error;
+        orders = retry.data;
+      }
+
+      const attributedOrders = (orders || []).filter(o =>
+        o.utm_campaign || o.utm_source || (o.order_source && o.order_source !== 'website')
+      );
+      const revenue = attributedOrders
+        .filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status))
+        .reduce((s, o) => s + (Number(o.amount) || 0), 0);
+      const conversions = attributedOrders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).length;
+
+      let spend = 0;
+      let impressions = 0;
+      let clicks = 0;
+      let spendByCampaign = [];
+      try {
+        let spendQuery = database().from('ad_spend_daily').select('*');
+        if (from) spendQuery = spendQuery.gte('date', String(from));
+        if (to) spendQuery = spendQuery.lte('date', String(to));
+        const { data: spendData, error: spendErr } = await spendQuery;
+        if (!spendErr && spendData) {
+          spend = spendData.reduce((s, r) => s + (Number(r.spend) || 0), 0);
+          impressions = spendData.reduce((s, r) => s + (Number(r.impressions) || 0), 0);
+          clicks = spendData.reduce((s, r) => s + (Number(r.clicks) || 0), 0);
+          const byCampaign = {};
+          for (const r of spendData) {
+            const key = r.campaign_id || 'unknown';
+            if (!byCampaign[key]) {
+              byCampaign[key] = { campaign_id: key, campaign_name: r.campaign_name || key, platform: r.platform || 'meta', spend: 0, revenue: 0, conversions: 0, status: 'active' };
+            }
+            byCampaign[key].spend += Number(r.spend) || 0;
+          }
+          spendByCampaign = Object.values(byCampaign);
+        }
+      } catch (spendErr) {
+        // ad_spend_daily table may not exist yet — ignore
+      }
+
+      for (const camp of spendByCampaign) {
+        const matchingOrders = attributedOrders.filter(o =>
+          o.utm_campaign && o.utm_campaign.toLowerCase() === camp.campaign_name.toLowerCase()
+        );
+        camp.revenue = matchingOrders
+          .filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status))
+          .reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        camp.conversions = matchingOrders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).length;
+        camp.roas = camp.spend > 0 ? camp.revenue / camp.spend : 0;
+        camp.cpa = camp.conversions > 0 ? camp.spend / camp.conversions : 0;
+      }
+
+      const roas = spend > 0 ? revenue / spend : 0;
+      const cpa = conversions > 0 ? spend / conversions : 0;
+      const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+      const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+
+      let lowStockAlerts = [];
+      try {
+        const { data: lowStockProducts } = await database().from('products').select('id,name,sku,stock').lte('stock', 5).order('stock', { ascending: true }).limit(10);
+        if (lowStockProducts) {
+          lowStockAlerts = lowStockProducts.map(p => ({
+            product_id: p.id,
+            product_name: p.name,
+            sku: p.sku,
+            stock: p.stock,
+          }));
+        }
+      } catch (stockErr) {
+        console.warn('[ads/stats] stock check warning:', stockErr?.message || stockErr);
+      }
+
+      if (format === 'csv') {
+        const csvLines = ['campaign_id,campaign_name,platform,spend,revenue,roas,cpa,conversions,status'];
+        for (const c of spendByCampaign) {
+          csvLines.push([c.campaign_id, c.campaign_name, c.platform, c.spend, c.revenue, c.roas, c.cpa, c.conversions, c.status].join(','));
+        }
+        res.set('Content-Type', 'text/csv; charset=utf-8');
+        res.set('Content-Disposition', 'attachment; filename="ads-report.csv"');
+        res.send(csvLines.join('\n'));
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: {
+          stats: {
+            spend,
+            revenue,
+            roas,
+            cpa,
+            ctr,
+            cpm,
+            conversions,
+            impressions,
+            clicks,
+          },
+          campaigns: spendByCampaign,
+          lowStockAlerts,
+        },
+      });
+    } catch (err) {
+      console.error('ads stats error', err);
+      error(res, 503, 'ADS_UNAVAILABLE');
+    }
+  });
+
   app.get('/api/v1/admin/orders/:id', ...need(R.orders), async (req, res) => {
     try {
       const detail = await adminOrderDetail(req.params.id);

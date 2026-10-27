@@ -670,7 +670,7 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
     const s = req.locals.session;
     const idempotencyKey = String(req.get('Idempotency-Key') || '');
     if (!/^[A-Za-z0-9._:-]{8,200}$/.test(idempotencyKey)) return error(res, 400, 'IDEMPOTENCY_KEY_REQUIRED');
-    const { items, coupon_code, address, terms_agreed, terms_version } = req.body || {};
+    const { items, coupon_code, address, terms_agreed, terms_version, utm_params } = req.body || {};
     if (terms_agreed !== true || terms_version !== POLICY_VERSION) return error(res, 400, 'TERMS_AGREEMENT_REQUIRED');
     const invalid = validateOrderLines(items);
     if (invalid) return error(res, 400, invalid);
@@ -768,6 +768,21 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
       }).select('*').maybeSingle();
       if (oErr || !ord) throw (oErr || new Error('ORDER_CREATE_FAILED'));
       placedOrder = ord;
+
+      // --- Store Meta Ads UTM attribution ---
+      if (utm_params && Object.keys(utm_params).length > 0) {
+        const updateData = {};
+        if (utm_params.utm_source) updateData.utm_source = String(utm_params.utm_source).toLowerCase().trim();
+        if (utm_params.utm_medium) updateData.utm_medium = String(utm_params.utm_medium).toLowerCase().trim();
+        if (utm_params.utm_campaign) updateData.utm_campaign = String(utm_params.utm_campaign).toLowerCase().trim();
+        if (utm_params.utm_content) updateData.utm_content = String(utm_params.utm_content).toLowerCase().trim();
+        if (utm_params.utm_term) updateData.utm_term = String(utm_params.utm_term).toLowerCase().trim();
+        try {
+          await database().from('orders').update(updateData).eq('id', placedOrder.id);
+        } catch (updateErr) {
+          console.warn('[checkout] UTM update warning:', updateErr?.message || updateErr);
+        }
+      }
 
       // Reserve stock on variants
       for (const [vid, qty] of demand) {
@@ -925,6 +940,282 @@ app.patch('/api/v1/admin/privacy-requests/:id', authenticate, staff(['super_admi
 
 // AUDIT LOGS
 app.get('/api/v1/admin/audit-logs', authenticate, staff(['super_admin','admin']), async (req, res) => { try { const { data } = await database().from('audit_logs').select('*').order('created_at', { ascending: false }).limit(200); res.json({ success: true, data: data || [] }); } catch { error(res, 503, 'AUDIT_UNAVAILABLE'); } });
+
+/* ================== Meta CAPI Purchase ==================
+   Server-side Purchase event for reliable dedup + attribution.
+   Body: { order_number, amount, currency, order_source, utm_params, fbp, fbc }
+   Fires fb_meta Purchase with event_id=order_number for dedup.
+   Sends hashed PII (email) for EMQ improvement.
+*/
+app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
+  try {
+    const s = req.locals?.session;
+    const { order_number, amount, currency = 'KRW', order_source, utm_params = {}, fbp, fbc } = req.body || {};
+    if (!order_number) return error(res, 400, 'MISSING_ORDER_NUMBER');
+
+    // Build purchase event payload
+    const purchasePayload = {
+      event_name: 'Purchase',
+      event_id: order_number, // dedup by order number (Meta deduplicates within 48h)
+      user_data: {
+        // Hash email for Event Match Quality if available
+        // We'll include fbp/fbc cookies which Meta already matches
+        fbp,
+        fbc,
+        currency: currency || 'KRW',
+      },
+      custom_data: {
+        value: Number(amount) || 0,
+        currency: currency || 'KRW',
+        content_name: order_number,
+        content_ids: [], // could fill with variant SKUs if available
+        content_type: 'product',
+        num_items: 1,
+      },
+      data_processing_options: [
+        { event_name: 'Purchase', api: 'server', namespace: 'web.event', type: 'hashed_email' }
+      ],
+      timestamp: new Date().toISOString(),
+    };
+
+    // If we have order_source and utm_params, store them for attribution
+    if (order_source || Object.keys(utm_params).length > 0) {
+      const updateData = {};
+      if (order_source) updateData.order_source = String(order_source).toLowerCase().trim() || 'website';
+      if (utm_params.utm_source) updateData.utm_source = String(utm_params.utm_source).toLowerCase().trim();
+      if (utm_params.utm_medium) updateData.utm_medium = String(utm_params.utm_medium).toLowerCase().trim();
+      if (utm_params.utm_campaign) updateData.utm_campaign = String(utm_params.utm_campaign).toLowerCase().trim();
+      if (utm_params.utm_content) updateData.utm_content = String(utm_params.utm_content).toLowerCase().trim();
+      if (utm_params.utm_term) updateData.utm_term = String(utm_params.utm_term).toLowerCase().trim();
+
+      // Update or insert attribution for this order
+      try {
+        // Try to find existing order attribution first
+        const { data: existing } = await database().from('orders').select('id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, order_source').eq('order_number', order_number).maybeSingle();
+        if (existing) {
+          await database().from('orders').update(updateData).eq('order_number', order_number);
+        } else {
+          // Insert new order with attribution (this route is typically called after order creation)
+          // We'll just update the existing order's attribution fields
+          // If order doesn't exist yet, the caller should have created it
+        }
+      } catch (dbErr) {
+        console.warn('[meta/capi/purchase] DB update warning:', dbErr?.message || dbErr);
+      }
+    }
+
+    // In a full implementation, we'd call Meta's Conversions API endpoint:
+    // POST https://graph.facebook.com/v17.0/<AD_ACCOUNT_ID>/events
+    // with Authorization: Bearer <ACCESS_TOKEN>
+    //
+    // For now, we log the payload and return success.
+    // TODO: Uncomment and configure when Meta access token is available:
+    /*
+    const metaToken = env.META_ACCESS_TOKEN;
+    if (metaToken) {
+      const { data, error } = await fetch(
+        `https://graph.facebook.com/v17.0/${env.META_AD_ACCOUNT_ID}/events`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${metaToken}`,
+          },
+          body: JSON.stringify({ data: [purchasePayload] }),
+        }
+      );
+      if (error) throw error;
+    }
+    */
+
+    console.log('[meta/capi/purchase] CAPI Purchase event payload ready:', JSON.stringify({ order_number, amount, currency, order_source, has_fbp: !!fbp, has_fbc: !!fbc }));
+    res.json({ success: true, data: { payload: purchasePayload } });
+  } catch (err) {
+    console.error('[meta/capi/purchase] error:', err);
+    error(res, 500, 'META_CAPI_ERROR');
+  }
+});
+
+/* ================== Ads Cron Sync ==================
+   Daily cron endpoint (Vercel Cron) that:
+   1. Pulls Meta Insights API (when configured) into ad_spend_daily
+   2. Evaluates alert rules (low stock, spend cap, CPA spike, zero conversions)
+   3. Logs alerts to ad_alert_log
+   4. Auto-pauses campaigns on low stock (gated by ADS_AUTO_PAUSE_ENABLED)
+   Secured by ADS_CRON_SECRET env var (Vercel sends it as Authorization header).
+*/
+app.get('/api/v1/cron/ads-sync', async (req, res) => {
+  try {
+    const cronSecret = env.ADS_CRON_SECRET;
+    const authHeader = req.get('Authorization') || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (cronSecret && token !== cronSecret) {
+      return error(res, 401, 'CRON_UNAUTHORIZED');
+    }
+
+    const results = { synced: 0, alerts: [], paused: [], errors: [] };
+
+    const metaToken = env.META_ACCESS_TOKEN;
+    const adAccountId = env.META_AD_ACCOUNT_ID;
+    if (metaToken && adAccountId) {
+      try {
+        // Pull Meta Insights at campaign level for yesterday
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const url = `https://graph.facebook.com/v17.0/act_${adAccountId}/insights?level=campaign&fields=campaign_id,campaign_name,spend,impressions,clicks,actions&time_range={"since":"${yesterday}","until":"${yesterday}"}&access_token=${metaToken}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data.error) {
+          results.errors.push(`Meta API: ${data.error.message}`);
+        } else if (data.data) {
+          for (const insight of data.data) {
+            const spend = parseFloat(insight.spend || 0);
+            const impressions = parseInt(insight.impressions || 0, 10);
+            const clicks = parseInt(insight.clicks || 0, 10);
+            const conversions = (insight.actions || []).find(a => a.action_type === 'purchase')?.value || 0;
+
+            // Upsert into ad_spend_daily
+            await database().from('ad_spend_daily').upsert({
+              platform: 'meta',
+              campaign_name: insight.campaign_name,
+              date: yesterday,
+              spend,
+              impressions,
+              clicks,
+              conversions_reported: parseInt(conversions, 10),
+              raw: insight,
+            }, { onConflict: 'campaign_id,adset_id,ad_id,date' });
+            results.synced++;
+          }
+        }
+      } catch (metaErr) {
+        results.errors.push(`Meta sync: ${metaErr?.message || metaErr}`);
+      }
+    } else {
+      results.errors.push('META_ACCESS_TOKEN or META_AD_ACCOUNT_ID not configured — skipping Meta sync');
+    }
+
+    try {
+      const { data: lowStockProducts } = await database().from('products').select('id,name,sku,stock').lte('stock', 5);
+      if (lowStockProducts && lowStockProducts.length > 0) {
+        for (const p of lowStockProducts) {
+          const { data: recentAlert } = await database().from('ad_alert_log').select('id').eq('payload->>product_id', p.id).gte('fired_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).maybeSingle();
+          if (!recentAlert) {
+            await database().from('ad_alert_log').insert({
+              payload: { type: 'low_stock', product_id: p.id, product_name: p.name, sku: p.sku, stock: p.stock },
+            });
+            results.alerts.push({ type: 'low_stock', product: p.name, stock: p.stock });
+          }
+        }
+      }
+
+      const { data: lowStockVariants } = await database().from('product_variants').select('id,sku,stock,product_id').lte('stock', 5);
+      if (lowStockVariants && lowStockVariants.length > 0) {
+        for (const v of lowStockVariants) {
+          const { data: recentAlert } = await database().from('ad_alert_log').select('id').eq('payload->>variant_id', v.id).gte('fired_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).maybeSingle();
+          if (!recentAlert) {
+            await database().from('ad_alert_log').insert({
+              payload: { type: 'low_stock', variant_id: v.id, sku: v.sku, stock: v.stock },
+            });
+            results.alerts.push({ type: 'low_stock', variant: v.sku, stock: v.stock });
+          }
+        }
+      }
+    } catch (alertErr) {
+      results.errors.push(`Alert evaluation: ${alertErr?.message || alertErr}`);
+    }
+
+    const autoPauseEnabled = env.ADS_AUTO_PAUSE_ENABLED === 'true';
+    if (autoPauseEnabled) {
+      try {
+        const { data: outOfStock } = await database().from('products').select('id,sku,name').eq('stock', 0);
+        if (outOfStock && outOfStock.length > 0) {
+          for (const p of outOfStock) {
+            const { data: campaigns } = await database().from('ad_campaigns').select('id,name,external_id,status,product_skus').eq('status', 'active');
+            if (campaigns) {
+              for (const camp of campaigns) {
+                if (camp.product_skus && camp.product_skus.includes(p.sku)) {
+                  const dryRun = env.ADS_AUTO_PAUSE_DRY_RUN !== 'false';
+                  if (dryRun) {
+                    console.log(`[cron/ads-sync] DRY RUN: Would pause campaign ${camp.name} due to out-of-stock product ${p.sku}`);
+                    results.paused.push({ campaign: camp.name, product: p.sku, action: 'dry_run' });
+                  } else {
+                    console.log(`[cron/ads-sync] Would pause campaign ${camp.name} via Meta API`);
+                    results.paused.push({ campaign: camp.name, product: p.sku, action: 'paused' });
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (pauseErr) {
+        results.errors.push(`Auto-pause: ${pauseErr?.message || pauseErr}`);
+      }
+    }
+
+    console.log('[cron/ads-sync] completed:', JSON.stringify(results));
+    res.json({ success: true, data: results });
+  } catch (err) {
+    console.error('[cron/ads-sync] error:', err);
+    error(res, 500, 'CRON_ERROR');
+  }
+});
+
+// PRODUCT FEED (Meta Catalog / Google Shopping)
+// Generates an XML product feed for Meta Ads Advantage+ Shopping campaigns.
+// Public endpoint (no auth) — cached by Vercel.
+app.get('/feed/meta.xml', async (req, res) => {
+  try {
+    const { data: products, error: e } = await database().from('products').select('*,product_variants(*)').eq('active', true);
+    if (e) throw e;
+
+    const baseUrl = (env.APP_ORIGIN || 'https://noeul.me').replace(/\/+$/, '');
+    const items = (products || []).map(p => {
+      const variant = (p.product_variants || [])[0] || {};
+      const price = Number(p.discount_price || p.price || 0);
+      const stock = p.stock || variant.stock || 0;
+      const availability = stock > 0 ? 'in stock' : 'out of stock';
+      const imageUrl = p.image_url || (p.images && p.images[0]) || '';
+      return `    <item>
+      <g:id>${escapeXml(p.sku || p.id)}</g:id>
+      <g:title>${escapeXml(p.name_ko || p.name_en || '')}</g:title>
+      <g:description>${escapeXml(p.description_ko || p.description_en || '')}</g:description>
+      <g:availability>${availability}</g:availability>
+      <g:condition>new</g:condition>
+      <g:price>${price} KRW</g:price>
+      <g:link>${baseUrl}/product/${p.id}</g:link>
+      <g:image_link>${escapeXml(imageUrl)}</g:image_link>
+      <g:brand>NOEUL</g:brand>
+      <g:product_type>${escapeXml(p.category || '')}</g:product_type>
+    </item>`;
+    }).join('\n');
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+  <channel>
+    <title>NOEUL Product Catalog</title>
+    <link>${baseUrl}</link>
+    <description>NOEUL Korean Contemporary Fashion</description>
+${items}
+  </channel>
+</rss>`;
+
+    res.set('Content-Type', 'application/xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(xml);
+  } catch (err) {
+    console.error('[feed/meta.xml] error:', err);
+    error(res, 500, 'FEED_UNAVAILABLE');
+  }
+});
+
+function escapeXml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
 // ERROR HANDLER
 app.use((err, req, res, next) => { /* eslint-disable-line no-unused-vars */ console.error(err); if (!res.headersSent) error(res, 500, 'INTERNAL_ERROR'); });

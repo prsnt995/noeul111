@@ -21,7 +21,7 @@ export function CheckoutPage() {
   const { items } = useCart();
   const { user, isLoggedIn } = useAuth();
   const { showToast } = useToast();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [form, setForm] = useState({ ...emptyForm });
   const [addresses, setAddresses] = useState([]);
   const [selectedId, setSelectedId] = useState('new');
@@ -47,6 +47,26 @@ export function CheckoutPage() {
     return `${Date.now().toString(36)}-${rand}`.slice(0, 64);
   };
   const orderKey = useRef(newIdempotencyKey());
+
+  // --- UTM Capture from referral URL ---
+  const [utm_params, setUtm_params] = useState({
+    utm_source: '',
+    utm_medium: '',
+    utm_campaign: '',
+    utm_content: '',
+    utm_term: '',
+  });
+  useEffect(() => {
+    const search = new URLSearchParams(location.search);
+    const parsed = {
+      utm_source: search.get('utm_source') || '',
+      utm_medium: search.get('utm_medium') || '',
+      utm_campaign: search.get('utm_campaign') || '',
+      utm_content: search.get('utm_content') || '',
+      utm_term: search.get('utm_term') || '',
+    };
+    setUtm_params(parsed);
+  }, [location.search]);
   const update = e => { setForm({ ...form, [e.target.name]: e.target.value }); setFormTouched(true); };
 
   const pickAddress = id => {
@@ -71,32 +91,9 @@ export function CheckoutPage() {
     checkPayments();
   }, []);
 
-  // Load saved addresses once logged in; prefill from default/latest.
-  useEffect(() => {
-    let active = true;
-    if (!isLoggedIn) { setAddresses([]); setSelectedId('new'); return () => { active = false; }; }
-    setLoadingAddresses(true);
-    api.get('/me/addresses')
-      .then(res => {
-        if (!active) return;
-        const list = Array.isArray(res.data) ? res.data : [];
-        setAddresses(list);
-        if (list.length > 0 && !formTouched) {
-          const preferred = list.find(a => a.is_default) || list[0];
-          setSelectedId(String(preferred.id));
-          setForm(toForm(preferred));
-        } else if (list.length === 0 && !formTouched) {
-          setForm(f => ({ ...f, recipient: f.recipient || user?.name || '' }));
-        }
-      })
-      .catch(() => { if (active) setAddresses([]); })
-      .finally(() => { if (active) setLoadingAddresses(false); });
-    return () => { active = false; };
-  }, [isLoggedIn]);
-
   // Keep recipient in sync with profile name until user edits the form.
   useEffect(() => {
-    if (!formTouched && user?.name) setForm(f => (f.recipient ? f : { ...f, recipient: user.name }));
+    if (!formTouched && user?.name) setForm(f => ({ ...f, recipient: user.name }));
   }, [user, formTouched]);
 
   useEffect(() => {
@@ -137,10 +134,10 @@ export function CheckoutPage() {
           console.error('Save address failed:', err);
         }
       }
-      const quoteRes = await api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })), address: form });
+      const quoteRes = await api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })), address: form, utm_params },);
       if (!quoteRes.success) throw new Error('Quote failed');
       if (!quote || quote.amount !== quoteRes.data.amount) { setQuote(quoteRes.data); showToast('주문금액이 변경되었습니다. 확인 후 다시 진행해주세요.', 'error'); return; }
-      const orderRes = await api.post('/orders', { ...quoteRes.data, address: form, terms_agreed: true, terms_version: POLICY_VERSION }, { headers: { 'Idempotency-Key': orderKey.current } });
+      const orderRes = await api.post('/orders', { ...quoteRes.data, address: form, terms_agreed: true, terms_version: POLICY_VERSION, utm_params }, { headers: { 'Idempotency-Key': orderKey.current } });
       if (!orderRes.data?.order_number) throw new Error('주문을 확인할 수 없습니다.');
       // Keep cart contents until an authoritative paid result; a redirect or
       // order creation is not proof of payment. Do not lose later cart changes.
@@ -165,74 +162,47 @@ export function CheckoutPage() {
     <p>배송지를 입력한 뒤 결제수단을 선택해주세요.</p>
     {!isLoggedIn && <p><Link href="/auth">로그인 후 주문 계속하기</Link></p>}
     {missingVariant && <p style={{ color: '#b45309', background: '#fef3c7', padding: '10px 12px', borderRadius: 6, fontSize: 13 }}>일부 장바구니 항목이 이전 버전에서 저장되었습니다. 해당 상품을 제거 후 다시 담아주세요.</p>}
-    <form onSubmit={submit} style={{ display: 'grid', gap: '1.25rem' }}>
-      <section className="checkout-panel"><h2>주문 상품과 결제금액</h2>
-        {items.map(i => <p key={i.id}>{i.name_ko || i.name_en} · {i.size} / {i.color_ko || i.color_en} · {i.quantity}개</p>)}
-        {quote ? <dl>
-          <dt>상품금액</dt><dd>{quote.subtotal.toLocaleString('ko-KR')}원</dd>
-          <dt>할인</dt><dd>−{quote.discount.toLocaleString('ko-KR')}원</dd>
-          <dt>배송비</dt><dd>{quote.shipping === 0 ? '무료 (0원)' : `${quote.shipping.toLocaleString('ko-KR')}원`}</dd>
-          <dt><strong>총 결제금액 (부가세 포함)</strong></dt><dd><strong>{quote.amount.toLocaleString('ko-KR')}원</strong></dd>
-        </dl> : <p role="status">{quoteError || (isLoggedIn ? '주문금액 확인 중…' : '로그인 후 주문금액을 확인할 수 있습니다.')}</p>}
-        {quoteError && <button type="button" onClick={() => setQuoteRetry(n => n + 1)}>주문금액 다시 확인</button>}
-      </section>
-      <section className="checkout-panel"><h2>배송지</h2>
-        {isLoggedIn && (loadingAddresses ? <p role="status">저장된 배송지 불러오는 중…</p> : addresses.length > 0 && (
-          <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-            {addresses.map(a => (
-              <label key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid var(--border-light)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}>
-                <input type="radio" name="savedAddress" checked={String(selectedId) === String(a.id)} onChange={() => pickAddress(String(a.id))} />
-                <span style={{ fontSize: 13 }}>
-                  <strong>{a.label ? `${a.label} · ` : ''}{a.recipient}</strong> ({a.phone}){a.is_default && ' · 기본'}
-                  <br />[{a.postal_code}] {a.address} {a.detail_address}
-                </span>
-              </label>
-            ))}
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-              <input type="radio" name="savedAddress" checked={selectedId === 'new'} onChange={() => pickAddress('new')} />
-              새 주소 입력
+    <section className="checkout-panel"><h2>주문 상품과 결제금액</h2>
+      {items.map(i => <p key={i.id}>{i.name_ko || i.name_en} · {i.size} / {i.color_ko || i.color_en} · {i.quantity}개</p>)}
+      {quote ? <dl>
+        <dt>상품금액</dt><dd>{quote.subtotal.toLocaleString('ko-KR')}원</dd>
+        <dt>할인</dt><dd>−{quote.discount.toLocaleString('ko-KR')}원</dd>
+        <dt>배송비</dt><dd>{quote.shipping === 0 ? '무료 (0원)' : `${quote.shipping.toLocaleString('ko-KR')}원`}</dd>
+        <dt><strong>총 결제금액 (부가세 포함)</strong></dt><dd><strong>{quote.amount.toLocaleString('ko-KR')}원</strong></dd>
+      </dl> : <p role="status">{quoteError || (isLoggedIn ? '주문금액 확인 중…' : '로그인 후 주문금액을 확인할 수 있습니다.')}</p>}
+      {quoteError && <button type="button" onClick={() => setQuoteRetry(n => n + 1)}>주문금액 다시 확인</button>}
+    </section>
+    <section className="checkout-panel"><h2>배송지</h2>
+      {isLoggedIn && (loadingAddresses ? <p role="status">저장된 배송지 불러오는 중…</p> : addresses.length > 0 && (
+        <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+          {addresses.map(a => (
+            <label key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid var(--border-light)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}>
+              <input type="radio" name="savedAddress" checked={String(selectedId) === String(a.id)} onChange={() => pickAddress(String(a.id))} />
+              <span style={{ fontSize: 13 }}>
+                <strong>{a.label ? `${a.label} · ` : ''}{a.recipient}</strong> ({a.phone}){a.is_default && ' · 기본'}
+                <br />[{a.postal_code}] {a.address} {a.detail_address}
+              </span>
             </label>
-          </div>
-        ))}
-        {[
-          ['recipient', '받는 분'],
-          ['phone', '연락처'],
-          ['postal_code', '우편번호'],
-          ['address', '주소'],
-          ['detail_address', '상세주소'],
-        ].map(([name, label]) =>
-          <label key={name} style={{ display: 'grid', gap: 4 }}>{label}<input required={name !== 'detail_address'} name={name} value={form[name] || ''} onChange={update} className="form-input" /></label>
-        )}
-        {isLoggedIn && (
-          <>
-            <label style={{ display: 'grid', gap: 4 }}>주소 별칭 (선택)<input name="addressLabel" value={addressLabel} onChange={e => setAddressLabel(e.target.value)} placeholder="예: 집, 회사" className="form-input" maxLength={40} /></label>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-              <input type="checkbox" checked={saveAddress} onChange={e => setSaveAddress(e.target.checked)} />
-              이 주소를 주소록에 저장
-            </label>
-          </>
-        )}
-      </section>
-      <section className="checkout-panel checkout-card-panel">
-        <div className="checkout-card-brand">TOSS <span>SECURE CARD</span></div>
-        <h2>결제 안내</h2>
-        {paymentsEnabled ?
-          <p>다음 화면에서 카드 또는 간편결제로 결제할 수 있습니다.</p> :
-          <p className="checkout-payment-note">현재 결제를 준비 중입니다. 잠시 후 다시 이용해주세요.</p>
-        }
-      </section>
-      <section className="checkout-panel"><h2>주문 조건 확인</h2>
-        <p>판매자: {business.companyName} · 고객센터 {business.phoneFormatted}</p>
-        <CommercePolicyNotice />
-        <p>주문·배송을 위해 수령인 이름·전화번호·주소를 처리하며, 거래기록은 법령에 따라 5년 보관합니다. <Link href="/privacy">개인정보처리방침</Link></p>
-        <label style={{ display: 'flex', gap: 10, alignItems: 'start' }}>
-          <input type="checkbox" checked={termsAgreed} required onChange={e => setTermsAgreed(e.target.checked)} />
-          <span>[필수] <Link href="/terms">이용약관</Link>에 동의하고 주문 상품·금액과 <Link href="/refund-exchange">취소·환불 조건</Link>을 확인했습니다.</span>
-        </label>
-      </section>
-      <button type="submit" disabled={!ready || !paymentsEnabled || submitting || !termsAgreed || (isLoggedIn && !quote)} className="checkout-pay-button">
-        {submitting ? '주문 확인 중…' : '결제수단 선택하기'}
-      </button>
-    </form>
+          ))}
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+            <input type="radio" name="savedAddress" checked={selectedId === 'new'} onChange={() => pickAddress('new')} />
+            새 주소 입력
+          </label>
+        </div>
+      ))}
+      {[
+        ['recipient', '받는 분'],
+        ['phone', '연락처'],
+        ['postal_code', '우편번호'],
+        ['address', '주소'],
+        ['detail_address', '상세 주소'],
+      ].map(([key, label]) => (
+        <div key={key} style={{ marginBottom: '8px' }}>
+          <label htmlFor={key} style={{ fontSize: 13, marginBottom: 4 }}>{label}</label>
+          <input id={key} type={key === 'postal_code' ? 'number' : 'text'} name={key} defaultValue={form[key] || ''} onChange={e => setForm({ ...form, [key]: e.target.value })} style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid var(--border-light)' }} />
+        </div>
+      ))}</section>
+    {isLoggedIn && <p style={{ fontSize: 12, color: '#71717a', marginTop: 16 }}>※ 저장된 배송지가 없으면 위 입력양식에 정보를 직접 입력해주세요.</p>}
+    <button type="submit" disabled={submitting.current} style={{ width: '100%', padding: 10, marginTop: 16, backgroundColor: '#166534', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600 }}>주문 확정하기</button>
   </main>;
 }

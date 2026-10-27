@@ -52,6 +52,7 @@ const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage.jsx
 const AdminCategoriesPage = lazy(() => import('./pages/admin/AdminCategoriesPage.jsx').then(m => ({ default: m.AdminCategoriesPage })));
 const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage.jsx').then(m => ({ default: m.AdminOrdersPage })));
 const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage.jsx').then(m => ({ default: m.AdminReportsPage })));
+const AdminAdsPage = lazy(() => import('./pages/admin/AdminAdsPage.jsx').then(m => ({ default: m.AdminAdsPage })));
 const AdminCouponsPage = lazy(() => import('./pages/admin/AdminCouponsPage.jsx').then(m => ({ default: m.AdminCouponsPage })));
 const AdminReviewsPage = lazy(() => import('./pages/admin/AdminReviewsPage.jsx').then(m => ({ default: m.AdminReviewsPage })));
 const AdminCustomersPage = lazy(() => import('./pages/admin/AdminCustomersPage.jsx').then(m => ({ default: m.AdminCustomersPage })));
@@ -124,6 +125,7 @@ function AppContent() {
           <Route path="/admin/categories" component={AdminCategoriesPage} />
           <Route path="/admin/orders" component={AdminOrdersPage} />
           <Route path="/admin/reports" component={AdminReportsPage} />
+<Route path="/admin/ads" component={AdminAdsPage} />
           <Route path="/admin/coupons" component={AdminCouponsPage} />
           <Route path="/admin/reviews" component={AdminReviewsPage} />
           <Route path="/admin/customers" component={AdminCustomersPage} />
