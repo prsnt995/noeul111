@@ -1162,3 +1162,300 @@ img {
 @media (prefers-reduced-motion: reduce) {
   .pill-indicator, .fancy-select-pop, .filter-chips, .home-pill, .pill-group button { transition: none; animation: none; }
 }
+
+/* ==========================================================================
+   NOEUL Fast Delivery Banner
+   Ivory & Champagne Gold Korean Luxury Fashion Delivery Banner
+   ========================================================================== */
+
+.fast-delivery-banner {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #FBF8F3 0%, #F7F3ED 45%, #EAE0D4 100%);
+  border-bottom: 1px solid #E6DCD0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 165px;
+  height: 170px;
+  animation: noeulBannerFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.fast-delivery-banner__texture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.fast-delivery-banner__silk-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.fast-delivery-banner__inner {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: var(--container-max, 1380px);
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* Side spacer ensures optical center on desktop while package is on the right */
+.fast-delivery-banner__side-spacer {
+  width: 160px;
+  flex-shrink: 0;
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .fast-delivery-banner__side-spacer {
+    display: block;
+  }
+}
+
+.fast-delivery-banner__content {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.fast-delivery-banner__header-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.fast-delivery-banner__truck-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: noeulTruckGlide 2.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.fast-delivery-banner__truck-icon {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+
+.fast-delivery-banner__small-heading {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #B49462;
+  text-transform: uppercase;
+}
+
+.fast-delivery-banner__main-heading {
+  margin: 0 0 6px;
+  font-family: var(--font-sans);
+  font-size: 1.58rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  color: #171717;
+}
+
+.fast-delivery-banner__details {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.fast-delivery-banner__supporting-text {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: #77716B;
+  letter-spacing: -0.01em;
+}
+
+.fast-delivery-banner__divider {
+  color: #C2B8AA;
+  font-size: 0.85rem;
+}
+
+.fast-delivery-banner__additional-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: rgba(180, 148, 98, 0.08);
+  border: 1px solid rgba(180, 148, 98, 0.28);
+  border-radius: 9999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #8C6F42;
+  letter-spacing: -0.01em;
+}
+
+.fast-delivery-banner__badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #B49462;
+  display: inline-block;
+}
+
+.fast-delivery-banner__disclaimer {
+  margin: 2px 0 0;
+  font-size: 0.68rem;
+  color: #9C958E;
+  letter-spacing: -0.01em;
+  opacity: 0.88;
+}
+
+.fast-delivery-banner__package-wrapper {
+  width: 160px;
+  height: 110px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 6px 14px rgba(180, 148, 98, 0.14));
+}
+
+.fast-delivery-banner__package-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 155px;
+  object-fit: contain;
+}
+
+/* Animations */
+@keyframes noeulBannerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes noeulTruckGlide {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+/* Tablet & Mobile Responsiveness */
+@media (max-width: 768px) {
+  .fast-delivery-banner {
+    min-height: 118px;
+    height: 125px;
+  }
+
+  .fast-delivery-banner__inner {
+    padding: 0 14px;
+    gap: 8px;
+  }
+
+  .fast-delivery-banner__content {
+    padding: 4px 0;
+  }
+
+  .fast-delivery-banner__header-line {
+    gap: 5px;
+    margin-bottom: 3px;
+  }
+
+  .fast-delivery-banner__truck-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .fast-delivery-banner__small-heading {
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+  }
+
+  .fast-delivery-banner__main-heading {
+    font-size: 1.15rem;
+    margin-bottom: 3px;
+  }
+
+  .fast-delivery-banner__details {
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+
+  .fast-delivery-banner__supporting-text {
+    font-size: 0.72rem;
+  }
+
+  .fast-delivery-banner__divider {
+    display: none;
+  }
+
+  .fast-delivery-banner__additional-badge {
+    padding: 2px 7px;
+    font-size: 0.65rem;
+  }
+
+  .fast-delivery-banner__disclaimer {
+    display: none;
+  }
+
+  .fast-delivery-banner__package-wrapper {
+    width: 78px;
+    height: 68px;
+  }
+
+  .fast-delivery-banner__package-svg {
+    max-width: 78px;
+  }
+}
+
+@media (max-width: 380px) {
+  .fast-delivery-banner {
+    min-height: 110px;
+    height: 116px;
+  }
+
+  .fast-delivery-banner__package-wrapper {
+    width: 62px;
+    height: 56px;
+  }
+
+  .fast-delivery-banner__main-heading {
+    font-size: 1.05rem;
+  }
+}
+
+/* Accessibility: Prefers Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .fast-delivery-banner,
+  .fast-delivery-banner__truck-wrapper {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+

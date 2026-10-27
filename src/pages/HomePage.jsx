@@ -3,6 +3,7 @@ import { useLocation, useSearch } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
 import { BestSellersCarousel } from '../components/home/BestSellersCarousel.jsx';
+import { FastDeliveryBanner } from '../components/home/FastDeliveryBanner.jsx';
 import { GenderSegmented } from '../components/common/GenderSegmented.jsx';
 import { FilterChips } from '../components/common/FilterChips.jsx';
 import { CATEGORIES_BY_GENDER } from '../data/products.js';
@@ -248,6 +249,11 @@ export function HomePage() {
         overflowX: 'clip',
       }}
     >
+      {/* =========================================================
+          PREMIUM FAST DELIVERY BANNER (below nav, above best items)
+          ========================================================= */}
+      <FastDeliveryBanner />
+
       {/* =========================================================
           BEST ITEMS CAROUSEL (top, 6 items, pixel-step paging)
           ========================================================= */}
