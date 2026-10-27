@@ -440,7 +440,7 @@ export function HomePage() {
       >
         {loading && products.length === 0 ? (
           <div className="product-grid noeul-product-grid" aria-label={t('home.loading')}>
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => (
               <div key={k} className="best-skeleton-card" aria-hidden="true">
                 <div className="best-skeleton-media" />
               </div>
@@ -477,7 +477,7 @@ export function HomePage() {
                   key={prod.id}
                   product={prod}
                   variant="overlay"
-                  eager={i < 3}
+                  eager={i < 5}
                 />
               ))}
             </div>

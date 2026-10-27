@@ -70,8 +70,8 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
   return (
     <article ref={cardRef} aria-label={accessibleName} title={accessibleName} className={`noeul-product-card product-card${isOverlay ? ' overlay' : ''}${revealed ? ' revealed' : ''}`} onMouseEnter={()=>{ setPaused(true); const next = images[(index + 1) % images.length]; if (next) { const img = new Image(); img.src = getOptimizedImageUrl(next, 480); } }} onMouseLeave={()=>{setPaused(false); if (isOverlay) setRevealed(false);}} onFocus={()=>setPaused(true)} onBlur={()=>setPaused(false)} onClick={open} onKeyDown={e=>{if (e.target !== e.currentTarget) return; if(e.key==='Enter'||e.key===' '){e.preventDefault();open(e);}}} tabIndex={0}>
       <div className="product-card-media" onTouchStart={e=>{if (cardRef.current) cardRef.current._touchX=e.touches[0].clientX;setPaused(true);}} onTouchEnd={handleTouchEnd}>
-        {images[index] && <img key={images[index]} src={getOptimizedImageUrl(images[index], 480, product?.updated_at)} srcSet={getSrcSet(images[index], [320, 480, 800], product?.updated_at)} sizes="(max-width: 640px) 50vw, 300px" alt={name} loading={eager ? 'eager' : 'lazy'} fetchPriority={eager ? 'high' : 'low'} decoding="async" className="product-card-image" />}
-        <div className="product-card-badges">{soldOut&&<span>{t('product.sold_out')}</span>}{product.is_sale&&!soldOut&&<span className="sale">{t('product.sale')}</span>}{product.is_new&&!product.is_sale&&!soldOut&&<span>{t('product.new')}</span>}</div>
+        {images[index] && <img key={images[index]} src={getOptimizedImageUrl(images[index], 480, product?.updated_at)} srcSet={getSrcSet(images[index], [320, 480, 800], product?.updated_at)} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw" alt={name} loading={eager ? 'eager' : 'lazy'} fetchPriority={eager ? 'high' : 'low'} decoding="async" className="product-card-image" />}
+        <div className="product-card-badges">{soldOut&&<span>{t('product.sold_out')}</span>}{product.is_sale&&!soldOut&&<span className="sale">{t('product.sale')}</span>}{product.is_new&&!product.is_sale&&!soldOut&&<span className="new">{t('product.new')}</span>}</div>
         {images.length>1&&<div className="product-card-dots" role="group" aria-label={t('product.images')}>{images.map((_,i)=><button key={i} type="button" aria-label={t('product.image_n', { n: i + 1 })} aria-current={i===index ? true : undefined} onClick={e=>{e.stopPropagation();setIndex(i);setPaused(true);}} />)}</div>}
         {isOverlay && (
           <div className="product-card-overlay">
@@ -80,7 +80,7 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
             {swatches.length>0&&<div role="group" className="product-card-swatches product-card-overlay-swatches" aria-label={t('product.colors')}>{swatches.slice(0,5).map((color,i)=>{
               const cName = color.name_en || color.name || color.name_ko;
               const isActive = swatchColor === cName;
-              return <button key={i} type="button" title={color.name_ko||color.name_en||color} aria-label={color.name_ko||color.name_en||color} style={{background:color.hex||color.swatch||'#d4d4d8', outline: isActive ? '2px solid #fff' : 'none', outlineOffset: isActive ? '2px' : '0', border: isActive ? '1px solid #fff' : '1px solid rgba(255,255,255,0.5)'}} onClick={e=>{e.stopPropagation();setPaused(true);setSwatchColor(cName);}} />;
+              return <button key={i} type="button" title={color.name_ko||color.name_en||color} aria-label={color.name_ko||color.name_en||color} style={{background:color.hex||color.swatch||'#d4d4d8', outline: isActive ? '2px solid #FAF8F5' : 'none', outlineOffset: isActive ? '2px' : '0', border: isActive ? '1px solid #FAF8F5' : '1px solid rgba(216, 203, 190, 0.65)'}} onClick={e=>{e.stopPropagation();setPaused(true);setSwatchColor(cName);}} />;
             })}</div>}
           </div>
         )}
@@ -89,7 +89,7 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
       <div className="product-card-meta"><strong>{name}{colorSuffix && <span className="product-card-color-count">{colorSuffix}</span>}</strong><span>{(product.discount_price||product.price)?.toLocaleString('ko-KR')}원</span>{swatches.length>0&&<div role="group" className="product-card-swatches" aria-label={t('product.colors')}>{swatches.slice(0,5).map((color,i)=>{
         const cName = color.name_en || color.name || color.name_ko;
         const isActive = swatchColor === cName;
-        return <button key={i} type="button" title={color.name_ko||color.name_en||color} aria-label={color.name_ko||color.name_en||color} style={{background:color.hex||color.swatch||'#d4d4d8', outline: isActive ? '2px solid #18181b' : 'none', outlineOffset: isActive ? '2px' : '0', border: isActive ? '1px solid #18181b' : '1px solid rgba(0,0,0,0.12)'}} onClick={e=>{e.stopPropagation();setPaused(true);setSwatchColor(cName);}} />;
+        return <button key={i} type="button" title={color.name_ko||color.name_en||color} aria-label={color.name_ko||color.name_en||color} style={{background:color.hex||color.swatch||'#d4d4d8', outline: isActive ? '2px solid #222222' : 'none', outlineOffset: isActive ? '2px' : '0', border: isActive ? '1px solid #222222' : '1px solid #D8CBBE'}} onClick={e=>{e.stopPropagation();setPaused(true);setSwatchColor(cName);}} />;
       })}</div>}</div>
       )}
     </article>

@@ -298,9 +298,12 @@ export function ShopPage() {
         }}
       >
         {loading && products.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: '#888888' }}>
-            <div className="infinite-scroll-spinner" style={{ margin: '0 auto 12px' }} />
-            <p style={{ fontSize: '0.875rem' }}>{t('home.loading')}</p>
+          <div className="product-grid noeul-product-grid" aria-label={t('home.loading')}>
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => (
+              <div key={k} className="best-skeleton-card" aria-hidden="true">
+                <div className="best-skeleton-media" />
+              </div>
+            ))}
           </div>
         ) : products.length === 0 ? (
           <div
@@ -360,7 +363,7 @@ export function ShopPage() {
                   key={prod.id}
                   product={prod}
                   variant="overlay"
-                  eager={i < 3}
+                  eager={i < 5}
                 />
               ))}
             </div>
