@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { useCart } from '../context/CartContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { Link } from 'wouter';
-import { POLICY_VERSION, business } from '../config/business.js';
+import { POLICY_VERSION } from '../config/business.js';
 import { CommercePolicyNotice } from '../components/common/CommercePolicyNotice.jsx';
 import { api } from '../utils/api.js';
 
@@ -21,7 +21,8 @@ export function CheckoutPage() {
   const { items } = useCart();
   const { user, isLoggedIn } = useAuth();
   const { showToast } = useToast();
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
+  const search = useSearch();
   const [form, setForm] = useState({ ...emptyForm });
   const [addresses, setAddresses] = useState([]);
   const [selectedId, setSelectedId] = useState('new');
@@ -30,13 +31,15 @@ export function CheckoutPage() {
   const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [formTouched, setFormTouched] = useState(false);
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
-  const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [quote, setQuote] = useState(null);
   const [quoteError, setQuoteError] = useState('');
   const [quoteRetry, setQuoteRetry] = useState(0);
   const submission = useRef(false);
+  // Tracks explicit user edits so a late address-book response can't overwrite
+  // a form the customer has already started filling in.
+  const touchedRef = useRef(false);
   // Idempotency keys must match /^[A-Za-z0-9._:-]{8,200}$/ (backend).
   // crypto.randomUUID throws on non-secure contexts / old browsers — fall back.
   const newIdempotencyKey = () => {
@@ -57,19 +60,25 @@ export function CheckoutPage() {
     utm_term: '',
   });
   useEffect(() => {
-    const search = new URLSearchParams(location.search);
+    const params = new URLSearchParams(search || '');
     const parsed = {
-      utm_source: search.get('utm_source') || '',
-      utm_medium: search.get('utm_medium') || '',
-      utm_campaign: search.get('utm_campaign') || '',
-      utm_content: search.get('utm_content') || '',
-      utm_term: search.get('utm_term') || '',
+      utm_source: params.get('utm_source') || '',
+      utm_medium: params.get('utm_medium') || '',
+      utm_campaign: params.get('utm_campaign') || '',
+      utm_content: params.get('utm_content') || '',
+      utm_term: params.get('utm_term') || '',
     };
     setUtm_params(parsed);
-  }, [location.search]);
-  const update = e => { setForm({ ...form, [e.target.name]: e.target.value }); setFormTouched(true); };
+  }, [search]);
+  const update = e => {
+    const { name, value } = e.target;
+    touchedRef.current = true;
+    setForm(f => ({ ...f, [name]: value }));
+    setFormTouched(true);
+  };
 
   const pickAddress = id => {
+    touchedRef.current = true;
     setSelectedId(id);
     setFormTouched(false);
     if (id === 'new') {
@@ -86,15 +95,38 @@ export function CheckoutPage() {
         const res = await api.get('/payments/toss/config');
         setPaymentsEnabled(res.data?.enabled === true);
       } catch { setPaymentsEnabled(false); }
-      setReady(true);
     }
     checkPayments();
   }, []);
 
-  // Keep recipient in sync with profile name until user edits the form.
+  // Keep recipient in sync with profile name until the user edits the form or
+  // picks a saved address (which fills recipient itself).
   useEffect(() => {
-    if (!formTouched && user?.name) setForm(f => ({ ...f, recipient: user.name }));
+    if (formTouched || !user?.name) return;
+    setForm(f => (f.recipient ? f : { ...f, recipient: user.name }));
   }, [user, formTouched]);
+
+  // Load the saved address book so the customer can pick an existing address.
+  useEffect(() => {
+    if (!isLoggedIn) { setAddresses([]); setSelectedId('new'); return; }
+    let active = true;
+    setLoadingAddresses(true);
+    api.get('/me/addresses')
+      .then(res => {
+        if (!active) return;
+        const list = res?.success ? (res.data || []) : [];
+        setAddresses(list);
+        const preferred = list.find(a => a.is_default) || list[0];
+        if (preferred && !touchedRef.current) {
+          setSelectedId(String(preferred.id));
+          setForm(toForm(preferred));
+          setFormTouched(false);
+        }
+      })
+      .catch(err => { console.error('Fetch addresses failed:', err); })
+      .finally(() => { if (active) setLoadingAddresses(false); });
+    return () => { active = false; };
+  }, [isLoggedIn]);
 
   useEffect(() => {
     let active = true;
@@ -119,6 +151,8 @@ export function CheckoutPage() {
       return;
     }
     if (items.length === 0) { showToast('장바구니가 비어 있습니다.', 'error'); return; }
+    const missing = ['recipient', 'phone', 'postal_code', 'address'].filter(k => !String(form[k] || '').trim());
+    if (missing.length > 0) { showToast('배송지 정보를 모두 입력해주세요.', 'error'); return; }
     submission.current = true; setSubmitting(true);
     try {
       // Persist to address book when requested: new entry, or edited saved entry saved as new.
@@ -136,7 +170,10 @@ export function CheckoutPage() {
       }
       const quoteRes = await api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })), address: form, utm_params },);
       if (!quoteRes.success) throw new Error('Quote failed');
-      if (!quote || quote.amount !== quoteRes.data.amount) { setQuote(quoteRes.data); showToast('주문금액이 변경되었습니다. 확인 후 다시 진행해주세요.', 'error'); return; }
+      // If a quote was already shown, make sure the amount still matches. When
+      // no quote loaded yet (slow/failed initial request) just adopt this one.
+      if (quote && quote.amount !== quoteRes.data.amount) { setQuote(quoteRes.data); showToast('주문금액이 변경되었습니다. 확인 후 다시 진행해주세요.', 'error'); return; }
+      setQuote(quoteRes.data);
       const orderRes = await api.post('/orders', { ...quoteRes.data, address: form, terms_agreed: true, terms_version: POLICY_VERSION, utm_params }, { headers: { 'Idempotency-Key': orderKey.current } });
       if (!orderRes.data?.order_number) throw new Error('주문을 확인할 수 없습니다.');
       // Keep cart contents until an authoritative paid result; a redirect or
@@ -162,6 +199,7 @@ export function CheckoutPage() {
     <p>배송지를 입력한 뒤 결제수단을 선택해주세요.</p>
     {!isLoggedIn && <p><Link href="/auth">로그인 후 주문 계속하기</Link></p>}
     {missingVariant && <p style={{ color: '#b45309', background: '#fef3c7', padding: '10px 12px', borderRadius: 6, fontSize: 13 }}>일부 장바구니 항목이 이전 버전에서 저장되었습니다. 해당 상품을 제거 후 다시 담아주세요.</p>}
+    <form onSubmit={submit} noValidate>
     <section className="checkout-panel"><h2>주문 상품과 결제금액</h2>
       {items.map(i => <p key={i.id}>{i.name_ko || i.name_en} · {i.size} / {i.color_ko || i.color_en} · {i.quantity}개</p>)}
       {quote ? <dl>
@@ -191,18 +229,55 @@ export function CheckoutPage() {
         </div>
       ))}
       {[
-        ['recipient', '받는 분'],
-        ['phone', '연락처'],
-        ['postal_code', '우편번호'],
-        ['address', '주소'],
-        ['detail_address', '상세 주소'],
-      ].map(([key, label]) => (
+        ['recipient', '받는 분', 'name'],
+        ['phone', '연락처', 'tel'],
+        ['postal_code', '우편번호', 'postal-code'],
+        ['address', '주소', 'address-line1'],
+        ['detail_address', '상세 주소', 'address-line2'],
+      ].map(([key, label, autoComplete]) => (
         <div key={key} style={{ marginBottom: '8px' }}>
           <label htmlFor={key} style={{ fontSize: 13, marginBottom: 4 }}>{label}</label>
-          <input id={key} type={key === 'postal_code' ? 'number' : 'text'} name={key} defaultValue={form[key] || ''} onChange={e => setForm({ ...form, [key]: e.target.value })} style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid var(--border-light)' }} />
+          <input
+            id={key}
+            type="text"
+            inputMode={key === 'postal_code' || key === 'phone' ? 'numeric' : 'text'}
+            name={key}
+            value={form[key] || ''}
+            onChange={update}
+            required={key !== 'detail_address'}
+            autoComplete={autoComplete}
+            maxLength={key === 'postal_code' ? 20 : key === 'phone' ? 30 : 200}
+            style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid var(--border-light)' }}
+          />
         </div>
-      ))}</section>
+      ))}
+      {isLoggedIn && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+            <input type="checkbox" checked={saveAddress} onChange={e => setSaveAddress(e.target.checked)} />
+            이 배송지를 주소록에 저장
+          </label>
+          {saveAddress && (
+            <input
+              type="text"
+              value={addressLabel}
+              onChange={e => setAddressLabel(e.target.value)}
+              placeholder="배송지 이름 (예: 집, 회사) — 선택"
+              maxLength={40}
+              style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid var(--border-light)' }}
+            />
+          )}
+        </div>
+      )}</section>
     {isLoggedIn && <p style={{ fontSize: 12, color: '#71717a', marginTop: 16 }}>※ 저장된 배송지가 없으면 위 입력양식에 정보를 직접 입력해주세요.</p>}
-    <button type="submit" disabled={submitting.current} style={{ width: '100%', padding: 10, marginTop: 16, backgroundColor: '#166534', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600 }}>주문 확정하기</button>
+    <section className="checkout-panel"><h2>주문 조건 확인</h2>
+      <CommercePolicyNotice />
+      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, marginTop: 12 }}>
+        <input type="checkbox" checked={termsAgreed} onChange={e => setTermsAgreed(e.target.checked)} required />
+        <span>이용약관 및 주문 조건(배송·취소·반품 안내)을 확인했으며 이에 동의합니다.</span>
+      </label>
+    </section>
+    <button type="submit" disabled={submitting || missingVariant} style={{ width: '100%', padding: 10, marginTop: 16, backgroundColor: '#166534', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, opacity: submitting || missingVariant ? 0.6 : 1, cursor: submitting || missingVariant ? 'not-allowed' : 'pointer' }}>{submitting ? '처리 중…' : '주문 확정하기'}</button>
+    </form>
   </main>;
 }
