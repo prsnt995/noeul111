@@ -805,6 +805,195 @@ img {
 .checkout-panel dd { margin: 0; text-align: right; }
 
 /* ============================================================
+   Checkout: address book + field layout
+   ============================================================ */
+.checkout-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.checkout-panel-hint { font-size: 0.75rem; color: var(--text-muted); }
+
+.checkout-address-list { display: grid; gap: 10px; margin-bottom: 20px; }
+
+.checkout-panel .checkout-address-option {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-card);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+.checkout-panel .checkout-address-option:hover {
+  border-color: var(--accent-sand);
+  box-shadow: 0 4px 14px rgba(20, 20, 21, 0.06);
+}
+.checkout-panel .checkout-address-option.is-selected {
+  border-color: var(--accent-sunset);
+  background: var(--accent-sunset-light);
+  box-shadow: inset 0 0 0 1px var(--accent-sunset);
+}
+.checkout-panel .checkout-address-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent-sunset);
+  outline-offset: 2px;
+}
+.checkout-panel .checkout-address-option input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.checkout-address-radio {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border: 2px solid #cfc9bf;
+  border-radius: 50%;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.18s ease;
+}
+.checkout-address-option.is-selected .checkout-address-radio { border-color: var(--accent-sunset); }
+.checkout-address-radio::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent-sunset);
+  transform: scale(0);
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.checkout-address-option.is-selected .checkout-address-radio::after { transform: scale(1); }
+
+.checkout-address-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.checkout-address-head { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.checkout-address-name { font-size: 0.9375rem; font-weight: 600; line-height: 1.3; color: var(--text-primary); }
+.checkout-address-label {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.checkout-address-default {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-sunset);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+.checkout-address-phone { font-size: 0.8125rem; color: var(--text-secondary); }
+.checkout-address-lines { font-size: 0.8125rem; line-height: 1.55; color: var(--text-secondary); word-break: keep-all; }
+.checkout-address-postal {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.checkout-address-option.is-selected .checkout-address-postal,
+.checkout-address-option.is-selected .checkout-address-label { background: #fff; }
+
+.checkout-panel .checkout-address-option--new { border-style: dashed; background: transparent; }
+.checkout-panel .checkout-address-option--new.is-selected { border-style: solid; background: var(--accent-sunset-light); }
+.checkout-address-empty { margin: 0; font-size: 0.875rem; color: var(--text-muted); }
+
+.checkout-address-skeleton { display: grid; gap: 10px; margin-bottom: 20px; }
+.checkout-address-skeleton span {
+  display: block;
+  height: 78px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, #fff 50%, var(--bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: checkout-shimmer 1.3s infinite linear;
+}
+@keyframes checkout-shimmer { to { background-position: -200% 0; } }
+
+.checkout-field-grid { display: grid; gap: 14px; }
+.checkout-field-row { display: grid; gap: 14px; }
+.checkout-field-row--2 { grid-template-columns: 1fr 1fr; }
+.checkout-field-row--postal { grid-template-columns: 140px 1fr; }
+.checkout-panel .checkout-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.checkout-field-optional { font-weight: 400; color: var(--text-muted); }
+.checkout-panel .checkout-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  color: var(--text-primary);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.checkout-panel .checkout-field input::placeholder { color: var(--text-muted); }
+.checkout-panel .checkout-field input:focus {
+  outline: none;
+  border-color: var(--accent-sunset);
+  box-shadow: 0 0 0 3px var(--accent-sunset-light);
+}
+
+.checkout-panel .checkout-save-address {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+.checkout-panel .checkout-save-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.checkout-save-toggle strong { display: block; font-weight: 600; }
+.checkout-save-toggle small { display: block; margin-top: 2px; font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+.checkout-panel .checkout-save-label { background: #fff; border-radius: 10px; }
+
+.checkout-panel .checkout-terms {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 12px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .checkout-field-row--2,
+  .checkout-field-row--postal { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkout-address-skeleton span { animation: none; }
+  .checkout-panel .checkout-address-option { transition: none; }
+}
+
+/* ============================================================
    Homepage: BEST carousel + category pills + skeleton
    Frontend-only, no backend changes
    ============================================================ */

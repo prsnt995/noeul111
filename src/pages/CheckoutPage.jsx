@@ -7,6 +7,7 @@ import { Link } from 'wouter';
 import { POLICY_VERSION } from '../config/business.js';
 import { CommercePolicyNotice } from '../components/common/CommercePolicyNotice.jsx';
 import { api } from '../utils/api.js';
+import { formatKoreanPhone } from '../utils/formatters.js';
 
 const emptyForm = { recipient: '', phone: '', postal_code: '', address: '', detail_address: '' };
 const toForm = addr => addr ? ({
@@ -193,6 +194,8 @@ export function CheckoutPage() {
   };
 
   const missingVariant = items.some(i => !i.variant_id);
+  const selectedAddress = selectedId !== 'new' ? addresses.find(a => String(a.id) === String(selectedId)) : null;
+  const addressEdited = !selectedAddress || ['recipient', 'phone', 'postal_code', 'address', 'detail_address'].some(k => (selectedAddress[k] || '') !== (form[k] || ''));
 
   return <main className="page-container" style={{ maxWidth: 820, margin: '3rem auto', padding: '1.5rem' }}>
     <h1>주문 및 결제</h1>
@@ -210,69 +213,105 @@ export function CheckoutPage() {
       </dl> : <p role="status">{quoteError || (isLoggedIn ? '주문금액 확인 중…' : '로그인 후 주문금액을 확인할 수 있습니다.')}</p>}
       {quoteError && <button type="button" onClick={() => setQuoteRetry(n => n + 1)}>주문금액 다시 확인</button>}
     </section>
-    <section className="checkout-panel"><h2>배송지</h2>
-      {isLoggedIn && (loadingAddresses ? <p role="status">저장된 배송지 불러오는 중…</p> : addresses.length > 0 && (
-        <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-          {addresses.map(a => (
-            <label key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid var(--border-light)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}>
-              <input type="radio" name="savedAddress" checked={String(selectedId) === String(a.id)} onChange={() => pickAddress(String(a.id))} />
-              <span style={{ fontSize: 13 }}>
-                <strong>{a.label ? `${a.label} · ` : ''}{a.recipient}</strong> ({a.phone}){a.is_default && ' · 기본'}
-                <br />[{a.postal_code}] {a.address} {a.detail_address}
+    <section className="checkout-panel">
+      <div className="checkout-panel-head">
+        <h2>배송지</h2>
+        {isLoggedIn && !loadingAddresses && addresses.length > 0 && (
+          <span className="checkout-panel-hint">저장된 배송지 {addresses.length}개</span>
+        )}
+      </div>
+
+      {isLoggedIn && loadingAddresses && (
+        <div className="checkout-address-skeleton" role="status" aria-label="저장된 배송지 불러오는 중">
+          <span /><span />
+        </div>
+      )}
+
+      {isLoggedIn && !loadingAddresses && addresses.length > 0 && (
+        <div className="checkout-address-list" role="radiogroup" aria-label="배송지 선택">
+          {addresses.map(a => {
+            const active = String(selectedId) === String(a.id);
+            return (
+              <label key={a.id} className={`checkout-address-option${active ? ' is-selected' : ''}`}>
+                <input type="radio" name="savedAddress" value={a.id} checked={active} onChange={() => pickAddress(String(a.id))} />
+                <span className="checkout-address-radio" aria-hidden="true" />
+                <span className="checkout-address-body">
+                  <span className="checkout-address-head">
+                    <span className="checkout-address-name">{a.recipient}</span>
+                    {a.label && <span className="checkout-address-label">{a.label}</span>}
+                    {a.is_default && <span className="checkout-address-default">기본</span>}
+                  </span>
+                  <span className="checkout-address-phone">{formatKoreanPhone(a.phone)}</span>
+                  <span className="checkout-address-lines">
+                    <span className="checkout-address-postal">{a.postal_code}</span>
+                    {a.address} {a.detail_address}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+          <label className={`checkout-address-option checkout-address-option--new${selectedId === 'new' ? ' is-selected' : ''}`}>
+            <input type="radio" name="savedAddress" value="new" checked={selectedId === 'new'} onChange={() => pickAddress('new')} />
+            <span className="checkout-address-radio" aria-hidden="true" />
+            <span className="checkout-address-body">
+              <span className="checkout-address-head">
+                <span className="checkout-address-name">새 주소 입력</span>
               </span>
-            </label>
-          ))}
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
-            <input type="radio" name="savedAddress" checked={selectedId === 'new'} onChange={() => pickAddress('new')} />
-            새 주소 입력
+              <span className="checkout-address-lines">다른 곳으로 배송하려면 새 배송지를 입력하세요.</span>
+            </span>
           </label>
         </div>
-      ))}
-      {[
-        ['recipient', '받는 분', 'name'],
-        ['phone', '연락처', 'tel'],
-        ['postal_code', '우편번호', 'postal-code'],
-        ['address', '주소', 'address-line1'],
-        ['detail_address', '상세 주소', 'address-line2'],
-      ].map(([key, label, autoComplete]) => (
-        <div key={key} style={{ marginBottom: '8px' }}>
-          <label htmlFor={key} style={{ fontSize: 13, marginBottom: 4 }}>{label}</label>
-          <input
-            id={key}
-            type="text"
-            inputMode={key === 'postal_code' || key === 'phone' ? 'numeric' : 'text'}
-            name={key}
-            value={form[key] || ''}
-            onChange={update}
-            required={key !== 'detail_address'}
-            autoComplete={autoComplete}
-            maxLength={key === 'postal_code' ? 20 : key === 'phone' ? 30 : 200}
-            style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid var(--border-light)' }}
-          />
+      )}
+
+      {isLoggedIn && !loadingAddresses && addresses.length === 0 && (
+        <p className="checkout-address-empty">저장된 배송지가 없습니다. 아래에 배송지 정보를 입력해주세요.</p>
+      )}
+
+      <div className="checkout-field-grid">
+        <div className="checkout-field-row checkout-field-row--2">
+          <div className="checkout-field">
+            <label htmlFor="recipient">받는 분</label>
+            <input id="recipient" name="recipient" type="text" value={form.recipient || ''} onChange={update} required autoComplete="name" maxLength={60} placeholder="홍길동" />
+          </div>
+          <div className="checkout-field">
+            <label htmlFor="phone">연락처</label>
+            <input id="phone" name="phone" type="text" inputMode="numeric" value={form.phone || ''} onChange={update} required autoComplete="tel" maxLength={30} placeholder="010-0000-0000" />
+          </div>
         </div>
-      ))}
-      {isLoggedIn && (
-        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+        <div className="checkout-field-row checkout-field-row--postal">
+          <div className="checkout-field">
+            <label htmlFor="postal_code">우편번호</label>
+            <input id="postal_code" name="postal_code" type="text" inputMode="numeric" value={form.postal_code || ''} onChange={update} required autoComplete="postal-code" maxLength={20} placeholder="06001" />
+          </div>
+          <div className="checkout-field">
+            <label htmlFor="address">주소</label>
+            <input id="address" name="address" type="text" value={form.address || ''} onChange={update} required autoComplete="address-line1" maxLength={200} placeholder="서울특별시 강남구…" />
+          </div>
+        </div>
+        <div className="checkout-field">
+          <label htmlFor="detail_address">상세 주소 <span className="checkout-field-optional">(선택)</span></label>
+          <input id="detail_address" name="detail_address" type="text" value={form.detail_address || ''} onChange={update} autoComplete="address-line2" maxLength={200} placeholder="102동 1405호" />
+        </div>
+      </div>
+
+      {isLoggedIn && addressEdited && (
+        <div className="checkout-save-address">
+          <label className="checkout-save-toggle">
             <input type="checkbox" checked={saveAddress} onChange={e => setSaveAddress(e.target.checked)} />
-            이 배송지를 주소록에 저장
+            <span>
+              <strong>{selectedId === 'new' ? '이 배송지를 주소록에 저장' : '수정한 배송지를 새 주소로 저장'}</strong>
+              <small>다음 주문 때 다시 입력하지 않아도 됩니다.</small>
+            </span>
           </label>
           {saveAddress && (
-            <input
-              type="text"
-              value={addressLabel}
-              onChange={e => setAddressLabel(e.target.value)}
-              placeholder="배송지 이름 (예: 집, 회사) — 선택"
-              maxLength={40}
-              style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid var(--border-light)' }}
-            />
+            <input className="checkout-save-label" type="text" value={addressLabel} onChange={e => setAddressLabel(e.target.value)} placeholder="배송지 이름 (예: 집, 회사) — 선택" maxLength={40} />
           )}
         </div>
-      )}</section>
-    {isLoggedIn && <p style={{ fontSize: 12, color: '#71717a', marginTop: 16 }}>※ 저장된 배송지가 없으면 위 입력양식에 정보를 직접 입력해주세요.</p>}
+      )}
+    </section>
     <section className="checkout-panel"><h2>주문 조건 확인</h2>
       <CommercePolicyNotice />
-      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, marginTop: 12 }}>
+      <label className="checkout-terms">
         <input type="checkbox" checked={termsAgreed} onChange={e => setTermsAgreed(e.target.checked)} required />
         <span>이용약관 및 주문 조건(배송·취소·반품 안내)을 확인했으며 이에 동의합니다.</span>
       </label>
