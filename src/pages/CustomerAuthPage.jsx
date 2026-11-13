@@ -144,7 +144,7 @@ export function CustomerAuthPage() {
         phone: phone.trim(),
       });
       showToast(
-        '회원가입이 완료되었습니다! 10% 웰컴 쿠폰이 즉시 지급되었습니다.',
+        '회원가입이 완료되었습니다.',
         'success'
       );
       setLocation('/account');
@@ -232,7 +232,7 @@ export function CustomerAuthPage() {
           </h2>
           <p style={{ fontSize: '0.875rem', color: '#71717a' }}>
             {mode === 'register'
-              ? 'Join NOEUL for exclusive benefits & 10% welcome coupon'
+              ? 'Join NOEUL for exclusive member benefits'
               : 'Sign in to continue to your account'}
           </p>
         </div>

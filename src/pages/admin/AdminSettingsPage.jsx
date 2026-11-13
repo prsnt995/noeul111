@@ -18,12 +18,12 @@ export function AdminSettingsPage() {
       payment_instructions_en: 'Please transfer the exact order amount to the bank account above, then upload your transfer screenshot / receipt. Once verified by our team, your order will be prepared for delivery.'
     },
     business_info: {
-      company_name: '주식회사 페리어스엔지',
-      ceo: '박기성',
-      business_number: '610-88-00182',
-      ecommerce_number: '[수정 가능 / 확인 필요]',
-      address: '경기도 파주시 송학2길 62-3, 1층(야당동)',
-      cs_phone: '010-8361-5305',
+      company_name: '주식회사 로제나',
+      ceo: '김종성',
+      business_number: '548-87-03441',
+      ecommerce_number: '제2026-인천남동구-1275호',
+      address: '인천 남동구 논고개로 123번길, 45, 609호',
+      cs_phone: '032-422-7131',
       cs_email: 'noeulenterprises@gmail.com',
       bank_account: '우리은행 1002340390276 박기성'
     },
@@ -35,8 +35,8 @@ export function AdminSettingsPage() {
     },
     header_config: {
       announcement_enabled: true,
-      announcement_ko: '2026 S/S 신규 가입 시 10% 웰컴 쿠폰 & 전 상품 무료배송',
-      announcement_en: 'Spring 2026: Enjoy 10% off your first order & free shipping on all orders',
+      announcement_ko: '2026 S/S 신규 회원 전 상품 무료배송',
+      announcement_en: 'Spring 2026: Free shipping on all orders for new members',
       announcement_bg: '#121213',
       announcement_color: '#ffffff'
     }

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { loadTossPayments } from '@tosspayments/tosspayments-sdk';
 import { api } from '../utils/api.js';
+import { useCart } from '../context/CartContext.jsx';
 
 // https://docs.tosspayments.com/guides/v2/payment-widget/integration
 // 위젯 전용 키 쌍으로 즉시 결제 수단을 렌더링합니다.
@@ -109,7 +110,7 @@ export function TossPaymentPage() {
       if (!['USER_CANCEL', 'PAY_PROCESS_CANCELED'].includes(err?.code)) setReady(false);
       setMessage(err?.code === 'USER_CANCEL' || err?.code === 'PAY_PROCESS_CANCELED'
         ? '결제를 취소했습니다. 다시 시도할 수 있어요.'
-        : (err?.message || '결제 상태 확인이 필요합니다. 다시 결제하지 말고 주문 내역에서 확인해주세요.'));
+        : (err?.message || '결제 결과를 확인하지 못했습니다. 결제가 승인되었을 수 있으니 다시 결제하지 말고 주문 내역을 확인해주세요.'));
     } finally {
       lock.current = false;
       setBusy(false);
@@ -184,60 +185,136 @@ export function TossPaymentPage() {
 }
 
 export function TossPaymentSuccessPage() {
-  const [state, setState] = useState({ loading: true, paid: false });
+  const { clearCart } = useCart();
+  const { clearBuyNow } = useCart();
+  const clearCartRef = useRef(clearCart);
+  clearCartRef.current = clearCart;
+  const clearBuyNowRef = useRef(clearBuyNow);
+  clearBuyNowRef.current = clearBuyNow;
+  const [, setLocation] = useLocation();
+  // phase: 'verifying' | 'paid' | 'failed' | 'unknown'
+  const [state, setState] = useState({ phase: 'verifying', orderId: '', message: '' });
   // StrictMode 중복 실행 방지입니다. 새로고침/다중 탭 중복 방지는 서버 DB가 담당합니다.
   const attempt = useRef(null);
+
   useEffect(() => {
     let active = true;
+    const timers = [];
+    const finish = (phase, orderId, message = '') => {
+      if (!active) return;
+      setState({ phase, orderId, message });
+      if (phase === 'paid' || phase === 'verifying') {
+        // Always land on the order status page. Never leave the customer on a
+        // dead-end "확인이 필요합니다" screen after their card was charged.
+        timers.push(setTimeout(() => {
+          if (active) setLocation(`/order-success/${encodeURIComponent(orderId)}`);
+        }, phase === 'paid' ? 1200 : 2400));
+      }
+    };
+
     if (!attempt.current) attempt.current = (async () => {
       const query = new URLSearchParams(window.location.search);
       const orderId = query.get('orderId');
       const paymentKey = query.get('paymentKey');
-      const rawAmount = query.get('amount');
-      if (!orderId || !paymentKey || !/^\d+$/.test(rawAmount || '') || !Number.isSafeInteger(Number(rawAmount)) || Number(rawAmount) <= 0) throw new Error('INVALID_CALLBACK');
-      await api.get('/me');
-      const { data } = await api.post('/payments/toss/confirm', { orderId, paymentKey, amount: Number(rawAmount) });
-      if (data?.status !== 'paid' || data.orderId !== orderId) throw new Error('UNCONFIRMED');
-      try { localStorage.removeItem('noeul_cart'); } catch {}
-      return orderId;
-    })();
-    attempt.current.then(orderId => { if (active) setState({ loading: false, paid: true, orderId }); })
-      .catch(() => { if (active) setState({ loading: false, paid: false }); });
-    return () => { active = false; };
-  }, []);
-  return <main className="page-container" style={{ maxWidth: 720, margin: '3rem auto', padding: '1.5rem' }}>
-    <h1>{state.loading ? '결제를 확인하고 있어요' : state.paid ? '결제가 완료되었습니다' : '결제 상태 확인이 필요합니다'}</h1>
-    {!state.loading && !state.paid && <p role="alert">결제가 승인되었을 수 있으니 다시 결제하지 말고 주문 내역을 확인하거나 고객센터로 문의해주세요.</p>}
-    {state.paid && <p>주문번호: {state.orderId}</p>}
-    {state.paid && <p><Link href={`/order-success/${encodeURIComponent(state.orderId)}`}>주문 상세 보기</Link></p>}
-    {!state.loading && !state.paid && <PaymentRecoveryButton onPaid={orderId => { try { localStorage.removeItem('noeul_cart'); } catch {} setState({ loading: false, paid: true, orderId }); }} />}
-    <Link href="/account">주문 내역 보기</Link>
-  </main>;
-}
+      const amount = Number(query.get('amount'));
+      if (!orderId || !paymentKey || !Number.isSafeInteger(amount) || amount <= 0) {
+        finish('unknown', '');
+        return;
+      }
+      // Refresh the session/CSRF cookie after the cross-site redirect. A failure
+      // here must not hide a successful charge, so it is best-effort.
+      try { await api.get('/me'); } catch { /* continue with confirm */ }
 
-function PaymentRecoveryButton({ onPaid }) {
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  async function recover() {
-    setBusy(true);
-    try {
-      await api.get('/me');
-      const orderId = new URLSearchParams(window.location.search).get('orderId');
-      const { data } = await api.post('/payments/toss/recover', { orderId });
-      if (data.status === 'paid' && !data.recoveryRequired) onPaid(orderId);
-      else setMessage('현재 주문 상태: ' + data.status + '. 중복 결제하지 말고 주문 내역을 확인해주세요.');
-    } catch { setMessage('아직 확인할 수 없습니다. 잠시 후 다시 조회하거나 고객센터로 문의해주세요.'); }
-    finally { setBusy(false); }
-  }
-  return <div><button disabled={busy} onClick={recover}>결제 상태 다시 확인</button><p role="status">{message}</p></div>;
+      let last = null;
+      let paid = false;
+      try {
+        const { data } = await api.post('/payments/toss/confirm', { orderId, paymentKey, amount });
+        last = data;
+        paid = data?.status === 'paid' && data?.orderId === orderId;
+      } catch { /* 결제는 승인됐을 수 있습니다 — 재결제가 아니라 조회로 확인합니다. */ }
+
+      if (!paid) {
+        // One automatic reconciliation. The recovery worker keeps retrying in
+        // the background, and the order page polls, so no manual step is needed.
+        try {
+          const { data } = await api.post('/payments/toss/recover', { orderId });
+          last = data || last;
+          paid = data?.status === 'paid' && !data?.recoveryRequired;
+        } catch { /* keep the ambiguous state */ }
+      }
+
+      if (paid) {
+        let mode = 'cart';
+        try { mode = sessionStorage.getItem('noeul_checkout_mode') || 'cart'; } catch { /* storage unavailable */ }
+        if (mode === 'buynow') {
+          // Buy Now must not wipe the cart the customer never checked out.
+          clearBuyNowRef.current();
+        } else {
+          // Clear the React cart too, not just localStorage: otherwise the header
+          // badge and cart page keep showing items already bought.
+          clearCartRef.current();
+          try { localStorage.removeItem('noeul_cart'); } catch {}
+        }
+        try { sessionStorage.removeItem('noeul_checkout_mode'); } catch {}
+        finish('paid', orderId);
+      } else if (last?.status && ['canceled', 'cancelled', 'aborted', 'expired', 'failed'].includes(last.status)) {
+        finish('failed', orderId);
+      } else {
+        // Money may already be captured: show "확인 중" and hand over to the
+        // order page, which polls until the state resolves.
+        finish('verifying', orderId);
+      }
+    })();
+
+    attempt.current.catch(() => finish('unknown', ''));
+    return () => { active = false; timers.forEach(clearTimeout); };
+  }, [setLocation]);
+
+  const orderHref = state.orderId ? `/order-success/${encodeURIComponent(state.orderId)}` : '/account';
+
+  return <main className="page-container" style={{ maxWidth: 720, margin: '3rem auto', padding: '1.5rem' }}>
+    {state.phase === 'paid' && <>
+      <h1>결제가 완료되었습니다</h1>
+      <p>주문번호: <strong>{state.orderId}</strong></p>
+      <p style={{ color: '#047857' }}>주문 상태 페이지로 이동합니다…</p>
+      <p><Link href={orderHref}>주문 상태 바로 보기</Link></p>
+    </>}
+
+    {state.phase === 'verifying' && <>
+      <h1>결제를 확인하고 있어요</h1>
+      <p>결제는 정상적으로 접수되었습니다. 확인까지 보통 1~2분 걸립니다.</p>
+      <p role="status" style={{ color: '#3730a3' }}>중복 결제하지 마세요. 주문 상태 페이지에서 자동으로 확인됩니다.</p>
+      <p><Link href={orderHref}>주문 상태 바로 보기</Link></p>
+    </>}
+
+    {state.phase === 'failed' && <>
+      <h1>결제가 완료되지 않았습니다</h1>
+      <p>결제가 취소되었거나 승인이 이루어지지 않았습니다. 주문 금액은 청구되지 않았습니다.</p>
+      {state.orderId && <p><Link href={`/checkout/toss?order=${encodeURIComponent(state.orderId)}`}>결제 다시 시도하기</Link></p>}
+      <p><Link href="/account">주문 내역 보기</Link></p>
+    </>}
+
+    {state.phase === 'unknown' && <>
+      <h1>결제 결과를 확인하지 못했습니다</h1>
+      <p role="alert">결제가 승인되었을 수 있으니 다시 결제하지 말고 주문 내역을 확인해주세요.</p>
+      <p><Link href="/account">주문 내역 보기</Link></p>
+    </>}
+  </main>;
 }
 
 export function TossPaymentFailPage() {
   const query = new URLSearchParams(window.location.search);
   const orderId = query.get('order') || query.get('orderId');
+  // A customer-initiated cancel is not a failure: the order is still resumable
+  // and nothing was charged. Keep the two messages apart.
+  const canceled = query.get('code') === 'PAY_PROCESS_CANCELED';
   return <main className="page-container" style={{ maxWidth: 720, margin: '3rem auto', padding: '1.5rem' }}>
-    <h1>결제가 완료되지 않았습니다</h1>
-    <p>결제를 취소했거나 인증을 마치지 못했습니다. 주문 상태를 확인한 뒤 다시 시도해주세요.</p>
+    <h1>{canceled ? '결제를 취소하셨습니다' : '결제가 완료되지 않았습니다'}</h1>
+    <p>
+      {canceled
+        ? '주문은 그대로 남아 있습니다. 아래에서 결제를 다시 진행할 수 있습니다.'
+        : '카드 승인이 이루어지지 않았습니다. 주문 금액은 청구되지 않았으니 다시 시도해주세요.'}
+    </p>
     {orderId && <p><Link href={`/checkout/toss?order=${encodeURIComponent(orderId)}`}>결제 다시 시도하기</Link></p>}
     <Link href="/account">주문 내역 보기</Link>
   </main>;

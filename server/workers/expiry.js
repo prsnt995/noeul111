@@ -11,15 +11,26 @@ async function sweepExpired(supabase, now) {
     .eq('status', 'pending_payment')
     .lt('expires_at', now)
     .limit(50);
+  let expired = 0;
+  let failed = 0;
   for (const row of (candidates || [])) {
     // release_hold는 활성 PG 승인/환불 시도가 있는 주문의 만료를 차단합니다.
     try {
       const { data, error } = await supabase.rpc('release_hold', { p_order_id: row.id, p_from: ['pending_payment'], p_to: 'expired', p_effect_key: `order-expired:${row.id}`, p_kind: 'ORDER_EXPIRED' });
       if (error || !['released', 'already', 'invalid'].includes(data?.outcome)) throw new Error('RELEASE_FAILED');
+      if (data?.outcome === 'released') expired += 1;
     } catch {
+      failed += 1;
       await alertOps('expiry.release_failed', { order_id: row.id });
     }
   }
+  return { scanned: (candidates || []).length, expired, failed };
+}
+
+// One bounded sweep, exported for serverless cron usage.
+export async function runExpiryBatch({ supabase = getAdminClient(), now = new Date().toISOString() } = {}) {
+  if (!supabase) return { scanned: 0, expired: 0, failed: 0, skipped: true };
+  return sweepExpired(supabase, now);
 }
 
 // 결제 복구는 server/payments/recovery.js에서 처리합니다.
@@ -32,8 +43,7 @@ export async function startExpiryWorker() {
   console.log('[Expiry] Worker started.');
   while (workerRunning) {
     try {
-      const now = new Date().toISOString();
-      await sweepExpired(supabase, now);
+      await runExpiryBatch({ supabase });
     } catch (err) {
       console.error('[Expiry] Worker error:', err.message);
     }

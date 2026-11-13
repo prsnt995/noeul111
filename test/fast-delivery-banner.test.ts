@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { DEFAULT_DELIVERY_CONFIG } from '../src/config/delivery.js';
 
-function read(rel) {
+function read(rel: string) {
   return fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
 }
 

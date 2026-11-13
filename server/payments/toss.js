@@ -11,7 +11,7 @@ const key = value => typeof value === 'string' && value.length > 0 && value.leng
 const money = value => Number.isSafeInteger(value) && value > 0;
 const digest = value => createHash('sha256').update(value).digest('hex');
 
-export function createTossClient({ secretKey, fetchImpl = fetch, timeoutMs = 65000 }) {
+export function createTossClient({ secretKey, fetchImpl = fetch, timeoutMs = 55000 }) {
   const cleanSecret = typeof secretKey === 'string' ? secretKey.trim().replace(/^['"]|['"]$/g, '') : '';
   async function call(path, body, idempotencyKey) {
     if (!cleanSecret) fail('PAYMENTS_NOT_CONFIGURED');

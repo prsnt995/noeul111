@@ -12,8 +12,9 @@ export function ProductReviews({ productId }) {
   const { isLoggedIn } = useAuth();
   const { showToast } = useToast();
   const [reviews, setReviews] = useState([]);
-  const [summary, setSummary] = useState({ averageRating: '5.0', totalReviews: 0 });
+  const [summary, setSummary] = useState({ averageRating: '5.0', totalReviews: 0, satisfaction: 0, hasMore: false });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -24,18 +25,21 @@ export function ProductReviews({ productId }) {
     image_url: '',
   });
 
-  const fetchReviews = async () => {
+  const PAGE_SIZE = 20;
+  const fetchReviews = async ({ offset = 0, append = false } = {}) => {
     if (!productId) return;
+    if (append) setLoadingMore(true); else setLoading(true);
     try {
-      const res = await api.get(`/products/${productId}/reviews`);
+      const res = await api.get(`/products/${productId}/reviews?limit=${PAGE_SIZE}&offset=${offset}`);
       if (res.success) {
-        setReviews(res.data);
-        setSummary(res.summary);
+        setReviews(prev => append ? [...prev, ...(res.data || [])] : (res.data || []));
+        setSummary(res.summary || { averageRating: '5.0', totalReviews: 0, satisfaction: 0, hasMore: false });
       }
     } catch (err) {
       console.error('Fetch reviews error:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -100,7 +104,9 @@ export function ProductReviews({ productId }) {
 
           <p style={{ fontSize: '0.875rem', color: '#52525b', lineHeight: 1.5 }}>
             고객님들의 솔직한 실착 후기입니다.<br />
-            실제 구매 고객 평점 만족도 <strong>98%</strong>를 기록 중입니다.
+            {summary.totalReviews > 0
+              ? <>실제 구매 고객 평점 만족도 <strong>{summary.satisfaction}%</strong>를 기록 중입니다.</>
+              : <>첫 리뷰를 남겨주시면 다른 고객님께 큰 도움이 됩니다.</>}
           </p>
         </div>
 
@@ -167,6 +173,18 @@ export function ProductReviews({ productId }) {
               )}
             </div>
           ))}
+          {summary.hasMore && (
+            <div style={{ textAlign: 'center', paddingTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => fetchReviews({ offset: reviews.length, append: true })}
+                disabled={loadingMore}
+                style={{ padding: '10px 24px', border: '1px solid #d4d4d8', borderRadius: '6px', background: '#fff', cursor: loadingMore ? 'default' : 'pointer', fontSize: '0.875rem' }}
+              >
+                {loadingMore ? '불러오는 중...' : '리뷰 더 보기'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

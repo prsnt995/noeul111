@@ -6,7 +6,7 @@ import { signToken, verifyToken } from '../middleware/auth.js';
 const router = express.Router();
 
 // Customer Register
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   try {
     const { email, password, name, phone, postal_code, address, detail_address } = req.body;
 
@@ -20,8 +20,8 @@ router.post('/register', (req, res) => {
       return res.status(400).json({ success: false, message: '이미 등록된 이메일 계정입니다.' });
     }
 
-    const salt = bcrypt.genSaltSync(10);
-    const password_hash = bcrypt.hashSync(password, salt);
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
 
     const result = query.run(`
       INSERT INTO users (email, password_hash, name, phone, postal_code, address, detail_address, role)
@@ -48,7 +48,7 @@ router.post('/register', (req, res) => {
 });
 
 // Customer Login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -61,7 +61,7 @@ router.post('/login', (req, res) => {
       return res.status(400).json({ success: false, message: '이메일 또는 비밀번호가 일치하지 않습니다.' });
     }
 
-    const valid = bcrypt.compareSync(password, user.password_hash);
+    const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return res.status(400).json({ success: false, message: '이메일 또는 비밀번호가 일치하지 않습니다.' });
     }
@@ -86,7 +86,7 @@ router.post('/login', (req, res) => {
 });
 
 // Dedicated Admin Login Handler
-const handleAdminLogin = (req, res) => {
+const handleAdminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -99,7 +99,7 @@ const handleAdminLogin = (req, res) => {
       return res.status(403).json({ success: false, message: '관리자 권한이 없거나 계정 정보가 일치하지 않습니다.' });
     }
 
-    const valid = bcrypt.compareSync(password, user.password_hash);
+    const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return res.status(403).json({ success: false, message: '관리자 권한이 없거나 계정 정보가 일치하지 않습니다.' });
     }

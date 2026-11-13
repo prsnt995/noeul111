@@ -17,14 +17,16 @@ export function CartPage() {
     updateQuantity,
     removeFromCart,
     clearCart,
+    appliedCoupon,
+    setAppliedCoupon,
   } = useCart();
 
   const { lang, t, formatKRW } = useLanguage();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
 
-  const [couponCode, setCouponCode] = useState('');
-  const [appliedDiscount, setAppliedDiscount] = useState(0);
+  const [couponCode, setCouponCode] = useState(appliedCoupon?.code || '');
+  const [appliedDiscount, setAppliedDiscount] = useState(appliedCoupon?.discount || 0);
 
   const handleApplyCoupon = async (e) => {
     e.preventDefault();
@@ -35,19 +37,17 @@ export function CartPage() {
       const res = await api.post('/checkout/quote', { items: items.filter(i=>i.variant_id).map(i=>({ variant_id: i.variant_id, quantity: i.quantity })), coupon_code: code });
       if (res.success && res.data && typeof res.data.discount === 'number' && res.data.discount > 0) {
         setAppliedDiscount(res.data.discount);
+        setAppliedCoupon({ code, discount: res.data.discount });
         showToast(`${code} 쿠폰이 적용되었습니다!`, 'success');
         return;
       }
+      setAppliedDiscount(0);
+      setAppliedCoupon(null);
       showToast('사용할 수 없는 쿠폰입니다.', 'error');
     } catch {
-      // Offline/demo fallback: preview 10% only
-      if (code === 'WELCOME10' || code === 'NOEUL10') {
-        const disc = Math.round(subtotal * 0.1);
-        setAppliedDiscount(disc);
-        showToast('10% 할인 미리보기 (서버 검증 필요)', 'success');
-      } else {
-        showToast('유효하지 않은 쿠폰 코드입니다.', 'error');
-      }
+      // Never show a fabricated discount when the server cannot validate the
+      // coupon: the order total would differ at checkout.
+      showToast('쿠폰을 확인할 수 없습니다. 잠시 후 다시 시도해주세요.', 'error');
     }
   };
 
@@ -214,7 +214,7 @@ export function CartPage() {
                   type="text"
                   value={couponCode}
                   onChange={(e) => setCouponCode(e.target.value)}
-                  placeholder="쿠폰 코드 (WELCOME10)"
+                  placeholder="쿠폰 코드 입력"
                   className="form-input"
                   style={{ paddingLeft: '36px', textTransform: 'uppercase' }}
                 />

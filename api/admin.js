@@ -738,18 +738,21 @@ export function registerAdminRoutes(app, ctx) {
           color, size, length_type: length, swatch: swatchByColor.get(color) || '', stock: requested, active: true,
         });
         if (error) throw error;
-      } else if (hasStockMap && (prev.stock || 0) !== requested) {
-        // DB check: reserved <= stock, so a lowering can't dip under holds.
-        const target = Math.max(requested, prev.reserved || 0);
-        const { error } = await database().from('product_variants').update({ stock: target, length_type: length }).eq('id', prev.id);
+      } else if (prev.active === false || (hasStockMap && (prev.stock || 0) !== requested)) {
+        // Re-activate a previously hidden combo, or update stock. DB check:
+        // reserved <= stock, so a lowering can't dip under holds.
+        const target = hasStockMap ? Math.max(requested, prev.reserved || 0) : (prev.stock || 0);
+        const { error } = await database().from('product_variants').update({ stock: target, length_type: length, active: true }).eq('id', prev.id);
         if (error) throw error;
       }
     }
-    // Remove deselected combos only when nothing holds them (FK blocks ordered ones).
+    // Hide deselected combos instead of deleting them: order_items reference
+    // variant ids, so a hard delete fails (and previously aborted the whole
+    // save). Deactivated variants can no longer be bought but keep history.
     for (const [key, v] of have) {
-      if (!want.has(key) && (v.reserved || 0) === 0) {
-        const { error } = await database().from('product_variants').delete().eq('id', v.id);
-        if (error) throw Object.assign(new Error('VARIANT_REFERENCED'), { status: 409 });
+      if (!want.has(key) && v.active !== false) {
+        const { error } = await database().from('product_variants').update({ active: false }).eq('id', v.id);
+        if (error) throw error;
       }
     }
     return n;
@@ -2004,15 +2007,23 @@ export function registerAdminRoutes(app, ctx) {
 
       let lowStockAlerts = [];
       try {
-        const { data: lowStockProducts } = await database().from('products').select('id,name,sku,stock').lte('stock', 5).order('stock', { ascending: true }).limit(10);
-        if (lowStockProducts) {
-          lowStockAlerts = lowStockProducts.map(p => ({
-            product_id: p.id,
-            product_name: p.name,
-            sku: p.sku,
-            stock: p.stock,
+        // Inventory is tracked per variant; products has no stock/name columns.
+        const { data: lowStockVariants } = await database()
+          .from('product_variants')
+          .select('id,sku,stock,reserved,active,products(id,name_ko,name_en,is_active)')
+          .eq('active', true)
+          .lte('stock', 10)
+          .order('stock', { ascending: true })
+          .limit(50);
+        lowStockAlerts = (lowStockVariants || [])
+          .filter(v => v.products?.is_active !== false && Math.max(0, (v.stock || 0) - (v.reserved || 0)) <= 5)
+          .slice(0, 10)
+          .map(v => ({
+            product_id: v.products?.id,
+            product_name: v.products?.name_ko || v.products?.name_en || '',
+            sku: v.sku,
+            stock: Math.max(0, (v.stock || 0) - (v.reserved || 0)),
           }));
-        }
       } catch (stockErr) {
         console.warn('[ads/stats] stock check warning:', stockErr?.message || stockErr);
       }
@@ -2243,6 +2254,7 @@ export function registerAdminRoutes(app, ctx) {
         tags: String(tags || ''), created_at: new Date().toISOString(),
       };
       await saveDocItem(database, 'media', item);
+      await auditLog(req, 'MEDIA_CREATE', { table: 'media', id: item.id, after: { name: item.name, url: item.url, tags: item.tags } });
       res.status(201).json({ success: true, data: item });
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
@@ -2250,6 +2262,7 @@ export function registerAdminRoutes(app, ctx) {
   app.delete('/api/v1/admin/media/:id', ...need(R.catalog), async (req, res) => {
     try {
       await deleteDocItem(database, 'media', req.params.id);
+      await auditLog(req, 'MEDIA_DELETE', { table: 'media', id: req.params.id });
       res.json({ success: true });
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
@@ -2319,6 +2332,9 @@ export function registerAdminRoutes(app, ctx) {
           console.error('Media doc save error', e?.message);
           failed.push({ name: file.originalname, code: UPLOAD_FAILED_GENERIC });
         }
+      }
+      if (uploaded.length) {
+        await auditLog(req, 'MEDIA_UPLOAD', { table: 'media', after: { count: uploaded.length, urls: uploaded.map(u => u.url).slice(0, 20) } });
       }
       res.json({
         success: true,

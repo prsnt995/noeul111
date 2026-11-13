@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { api } from '../../utils/api.js';
-import { Shield, Lock, Mail, ArrowRight, KeyRound } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight } from 'lucide-react';
 
 export function AdminLoginPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, adminPasswordLogin } = useAuth();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -24,8 +23,8 @@ export function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await api.post('/auth/admin/login', { email: email.trim(), password });
-      if (result.success) {
+      const nextUser = await adminPasswordLogin(email.trim(), password);
+      if (nextUser) {
         showToast('관리자 인증에 성공했습니다.', 'success');
         setLocation('/admin');
       }
@@ -174,7 +173,7 @@ export function AdminLoginPage() {
             <span style={{ color: '#a1a1aa', fontWeight: 600 }}>Staff access</span>
           </div>
           <p style={{ color: '#71717a', marginTop: '6px', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-            Staff must use an allowlisted Google account with MFA.
+            Staff access is restricted to allowlisted accounts. Prefer Google sign-in with MFA.
           </p>
         </div>
 

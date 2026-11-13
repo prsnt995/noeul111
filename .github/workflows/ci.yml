@@ -24,5 +24,7 @@ jobs:
       - run: npm run build
       # Production dependencies must be audit-clean. Dev-only advisories
       # (vite/vitest/esbuild dev servers, never shipped to production) are
-      # reported separately from the production dependency audit.
-      - run: npm audit --omit=dev --audit-level=moderate
+      # reported separately from the production dependency audit. xlsx has no
+      # patched npm release and is documented in scripts/audit-gate.mjs.
+      - run: npm audit --omit=dev --json > audit.json || true
+      - run: node scripts/audit-gate.mjs audit.json

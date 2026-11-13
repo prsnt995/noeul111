@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { useCart } from '../context/CartContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -19,11 +19,23 @@ const toForm = addr => addr ? ({
 }) : { ...emptyForm };
 
 export function CheckoutPage() {
-  const { items } = useCart();
+  const { items: cartItems, buyNowItem, clearBuyNow, appliedCoupon, clearAppliedCoupon } = useCart();
   const { user, isLoggedIn } = useAuth();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
   const search = useSearch();
+  // Buy Now checks out exactly one line and leaves the cart untouched.
+  const isBuyNow = useMemo(() => new URLSearchParams(search || '').get('mode') === 'buynow', [search]);
+  const items = useMemo(
+    () => (isBuyNow ? (buyNowItem ? [buyNowItem] : []) : cartItems),
+    [isBuyNow, buyNowItem, cartItems]
+  );
+  // Same option already in the cart is the exact case that used to inflate the
+  // quantity (1→2→3). Explain that it is not part of this order.
+  const duplicateInCart = useMemo(() => {
+    if (!isBuyNow || !buyNowItem?.variant_id) return null;
+    return cartItems.find(i => i.variant_id === buyNowItem.variant_id) || null;
+  }, [isBuyNow, buyNowItem, cartItems]);
   const [form, setForm] = useState({ ...emptyForm });
   const [addresses, setAddresses] = useState([]);
   const [selectedId, setSelectedId] = useState('new');
@@ -133,12 +145,21 @@ export function CheckoutPage() {
     let active = true;
     setQuote(null); setQuoteError('');
     if (isLoggedIn && items.length && items.every(i => i.variant_id)) {
-      api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })) })
-        .then(r => { if (active && r.success) setQuote(r.data); })
+      api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })), coupon_code: appliedCoupon?.code || null })
+        .then(r => {
+          if (!active || !r.success) return;
+          // A previously applied coupon can become invalid after cart changes;
+          // surface that instead of silently charging the undiscounted total.
+          if (appliedCoupon?.code && !(r.data?.discount > 0)) {
+            clearAppliedCoupon();
+            showToast('적용한 쿠폰을 사용할 수 없어 해제했습니다.', 'error');
+          }
+          setQuote(r.data);
+        })
         .catch(() => { if (active) setQuoteError('주문금액을 확인할 수 없습니다. 상품 재고와 로그인 상태를 확인해주세요.'); });
     }
     return () => { active = false; };
-  }, [items, isLoggedIn, quoteRetry]);
+  }, [items, isLoggedIn, quoteRetry, appliedCoupon?.code]);
 
   const submit = async e => {
     e.preventDefault();
@@ -151,7 +172,10 @@ export function CheckoutPage() {
       showToast('장바구니에 카탈로그 동기화가 필요한 상품이 있습니다. 상품을 다시 담아주세요.', 'error');
       return;
     }
-    if (items.length === 0) { showToast('장바구니가 비어 있습니다.', 'error'); return; }
+    if (items.length === 0) {
+      showToast(isBuyNow ? '바로 구매 정보를 찾을 수 없습니다. 상품 페이지에서 다시 시도해주세요.' : '장바구니가 비어 있습니다.', 'error');
+      return;
+    }
     const missing = ['recipient', 'phone', 'postal_code', 'address'].filter(k => !String(form[k] || '').trim());
     if (missing.length > 0) { showToast('배송지 정보를 모두 입력해주세요.', 'error'); return; }
     submission.current = true; setSubmitting(true);
@@ -169,14 +193,18 @@ export function CheckoutPage() {
           console.error('Save address failed:', err);
         }
       }
-      const quoteRes = await api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })), address: form, utm_params },);
+      const quoteRes = await api.post('/checkout/quote', { items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })), coupon_code: appliedCoupon?.code || null, address: form, utm_params },);
       if (!quoteRes.success) throw new Error('Quote failed');
       // If a quote was already shown, make sure the amount still matches. When
       // no quote loaded yet (slow/failed initial request) just adopt this one.
       if (quote && quote.amount !== quoteRes.data.amount) { setQuote(quoteRes.data); showToast('주문금액이 변경되었습니다. 확인 후 다시 진행해주세요.', 'error'); return; }
       setQuote(quoteRes.data);
-      const orderRes = await api.post('/orders', { ...quoteRes.data, address: form, terms_agreed: true, terms_version: POLICY_VERSION, utm_params }, { headers: { 'Idempotency-Key': orderKey.current } });
+      const orderRes = await api.post('/orders', { ...quoteRes.data, coupon_code: appliedCoupon?.code || null, address: form, terms_agreed: true, terms_version: POLICY_VERSION, utm_params }, { headers: { 'Idempotency-Key': orderKey.current } });
       if (!orderRes.data?.order_number) throw new Error('주문을 확인할 수 없습니다.');
+      // The success page has to know which piece of state to clear once the
+      // payment is confirmed: buy-now must never wipe the customer's cart.
+      try { sessionStorage.setItem('noeul_checkout_mode', isBuyNow ? 'buynow' : 'cart'); } catch { /* storage unavailable */ }
+      if (isBuyNow) clearBuyNow();
       // Keep cart contents until an authoritative paid result; a redirect or
       // order creation is not proof of payment. Do not lose later cart changes.
       setLocation(`/checkout/toss?order=${encodeURIComponent(orderRes.data.order_number)}`);
@@ -200,6 +228,27 @@ export function CheckoutPage() {
   return <main className="page-container" style={{ maxWidth: 820, margin: '3rem auto', padding: '1.5rem' }}>
     <h1>주문 및 결제</h1>
     <p>배송지를 입력한 뒤 결제수단을 선택해주세요.</p>
+    {isBuyNow && (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px', marginBottom: 16, fontSize: 13 }}>
+        <span style={{ background: '#18181b', color: '#ffffff', borderRadius: 999, padding: '3px 10px', fontWeight: 700, fontSize: 12 }}>바로 구매</span>
+        <span style={{ color: '#334155' }}>선택한 상품 1건만 주문합니다. 장바구니에 담긴 상품은 포함되지 않습니다.</span>
+        {cartItems.length > 0 && (
+          <Link href="/cart" style={{ marginLeft: 'auto', fontWeight: 700, color: '#18181b' }}>
+            장바구니 상품 {cartItems.reduce((n, i) => n + (i.quantity || 0), 0)}개 보기 →
+          </Link>
+        )}
+      </div>
+    )}
+    {duplicateInCart && (
+      <p style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', padding: '10px 12px', borderRadius: 6, fontSize: 13, marginBottom: 16 }}>
+        장바구니에 같은 상품이 {duplicateInCart.quantity}개 담겨 있습니다. 이번 주문에는 포함되지 않으니, 함께 구매하시려면 장바구니에서 진행해주세요.
+      </p>
+    )}
+    {isBuyNow && items.length === 0 && (
+      <p style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c', padding: '10px 12px', borderRadius: 6, fontSize: 13 }}>
+        바로 구매할 상품 정보를 찾을 수 없습니다. 상품 페이지에서 다시 시도하거나 <Link href="/cart">장바구니로 이동</Link>해주세요.
+      </p>
+    )}
     {!isLoggedIn && <p><Link href="/auth">로그인 후 주문 계속하기</Link></p>}
     {missingVariant && <p style={{ color: '#b45309', background: '#fef3c7', padding: '10px 12px', borderRadius: 6, fontSize: 13 }}>일부 장바구니 항목이 이전 버전에서 저장되었습니다. 해당 상품을 제거 후 다시 담아주세요.</p>}
     <form onSubmit={submit} noValidate>
@@ -208,6 +257,7 @@ export function CheckoutPage() {
       {quote ? <dl>
         <dt>상품금액</dt><dd>{quote.subtotal.toLocaleString('ko-KR')}원</dd>
         <dt>할인</dt><dd>−{quote.discount.toLocaleString('ko-KR')}원</dd>
+        {appliedCoupon?.code && <><dt>쿠폰</dt><dd>{appliedCoupon.code}</dd></>}
         <dt>배송비</dt><dd>{quote.shipping === 0 ? '무료 (0원)' : `${quote.shipping.toLocaleString('ko-KR')}원`}</dd>
         <dt><strong>총 결제금액 (부가세 포함)</strong></dt><dd><strong>{quote.amount.toLocaleString('ko-KR')}원</strong></dd>
       </dl> : <p role="status">{quoteError || (isLoggedIn ? '주문금액 확인 중…' : '로그인 후 주문금액을 확인할 수 있습니다.')}</p>}
@@ -316,7 +366,7 @@ export function CheckoutPage() {
         <span>이용약관 및 주문 조건(배송·취소·반품 안내)을 확인했으며 이에 동의합니다.</span>
       </label>
     </section>
-    <button type="submit" disabled={submitting || missingVariant} style={{ width: '100%', padding: 10, marginTop: 16, backgroundColor: '#166534', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, opacity: submitting || missingVariant ? 0.6 : 1, cursor: submitting || missingVariant ? 'not-allowed' : 'pointer' }}>{submitting ? '처리 중…' : '주문 확정하기'}</button>
+    <button type="submit" disabled={submitting || missingVariant || items.length === 0} style={{ width: '100%', padding: 10, marginTop: 16, backgroundColor: '#166534', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, opacity: submitting || missingVariant || items.length === 0 ? 0.6 : 1, cursor: submitting || missingVariant || items.length === 0 ? 'not-allowed' : 'pointer' }}>{submitting ? '처리 중…' : isBuyNow ? '바로 구매 확정하기' : '주문 확정하기'}</button>
     </form>
   </main>;
 }

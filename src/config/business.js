@@ -6,7 +6,7 @@ export const business = Object.freeze({
   address: '인천 남동구 논고개로 123번길, 45, 609호',
   phone: '0324227131', phoneFormatted: '032-422-7131',
   email: 'noeulenterprises@gmail.com', businessHours: '평일 09:00–17:00 (토·일·공휴일 휴무)',
-  ecommerceNumber: '확인 중',
+  ecommerceNumber: '제2026-인천남동구-1275호',
   businessLookupUrl: 'https://www.ftc.go.kr/www/bizContents.do?key=253',
   returnAddress: '인천 남동구 논고개로 123번길 45, 609호 (NOEUL 반품 담당)', privacyOfficer: '김종성', courier: 'CJ대한통운',
 });

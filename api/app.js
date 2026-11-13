@@ -5,18 +5,18 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { createClient } from '@supabase/supabase-js';
-import { randomBytes, createHash, randomUUID } from 'node:crypto';
+import { randomBytes, createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import bcrypt from 'bcryptjs';
 import { emailService } from '../server/services/emailService.js';
 import { notificationService } from '../server/services/notificationService.js';
 import { encryptSessionTokens } from '../server/lib/sessionCrypto.js';
-import { startOutboxWorker } from '../server/workers/outbox.js';
-import { startExpiryWorker } from '../server/workers/expiry.js';
+import { startOutboxWorker, runOutboxBatch } from '../server/workers/outbox.js';
+import { startExpiryWorker, runExpiryBatch } from '../server/workers/expiry.js';
 import { registerAdminRoutes } from './admin.js';
 import { rankRelated, averageRatings } from './related.js';
 import { createPaymentService } from '../server/payments/toss.js';
-import { startPaymentRecoveryWorker } from '../server/payments/recovery.js';
+import { runPaymentRecoveryBatch, startPaymentRecoveryWorker } from '../server/payments/recovery.js';
 import { createPaymentStore } from '../server/payments/store.js';
 import { registerPaymentRoutes } from '../server/payments/routes.js';
 
@@ -25,6 +25,30 @@ const production = env.NODE_ENV === 'production';
 const required = ['APP_ORIGIN', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'SUPABASE_PUBLISHABLE_KEY', 'SESSION_KEY'];
 if (production && required.some(k => !env[k])) throw new Error(`Missing production configuration: ${required.filter(k => !env[k]).join(', ')}`);
 const MFA_ENFORCEMENT = env.MFA_ENFORCEMENT === 'true';
+// Single source of truth for staff roles. Must match the CHECK constraint on
+// staff_members.role and the frontend STAFF_ROLES in src/context/AuthContext.jsx.
+const STAFF_ROLES = ['super_admin', 'admin', 'order_manager', 'editor'];
+// Keep in sync with the orders.order_source CHECK constraint (latest
+// migration: website | instagram | tiktok | other).
+const ORDER_SOURCES = new Set(['website', 'instagram', 'tiktok', 'other']);
+function normalizeOrderSource(value) {
+  const s = String(value || '').toLowerCase().trim();
+  return ORDER_SOURCES.has(s) ? s : null;
+}
+// Constant-time secret comparison for cron endpoints. Returns false when the
+// configured secret is empty/absent so production fails closed.
+function secretMatches(req, expected) {
+  if (!expected) return false;
+  const header = req.get('Authorization') || '';
+  if (!header.startsWith('Bearer ')) return false;
+  const provided = header.slice(7).trim();
+  const a = Buffer.from(provided);
+  const b = Buffer.from(String(expected));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+function cronSecretMatches(req, secretName) {
+  return secretMatches(req, env[secretName]);
+}
 const stepUp = async (req, res, next) => { const s = req.locals?.session; if (!s) return next(); if (MFA_ENFORCEMENT && (!s.aal || s.aal !== 'aal2')) return error(res, 403, 'MFA_REQUIRED'); next(); };
 const privacyLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
 const normalizeOrigin = val => (val || '').trim().replace(/\/+$/, '');
@@ -59,7 +83,23 @@ const isOriginAllowed = (o, cb) => cb(null, isAllowedOrigin(o));
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' }, contentSecurityPolicy: false }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'same-site' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://js.tosspayments.com', 'https://*.tosspayments.com'],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', 'https://*.tosspayments.com', 'https://graph.facebook.com'],
+      frameSrc: ["'self'", 'https://*.tosspayments.com', 'https://*.supabase.co'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'self'"],
+    },
+  },
+}));
 app.use(cors({ origin: isOriginAllowed, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Idempotency-Key', 'X-API-Scope'] }));
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') }));
 const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 50, standardHeaders: true, legacyHeaders: false });
@@ -374,6 +414,24 @@ async function issuePasswordSession(res, userId) {
   setCookie(res, cookieName, id);
   return { csrf };
 }
+
+// Per-account brute-force lockout (in addition to the per-IP rate limiter).
+// Five failures lock the account for 15 minutes; a successful login clears it.
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+function loginLocked(row) {
+  return Boolean(row?.locked_until && new Date(row.locked_until).getTime() > Date.now());
+}
+async function recordFailedLogin(row) {
+  const attempts = (Number(row?.failed_attempts) || 0) + 1;
+  const patch = { failed_attempts: attempts, updated_at: new Date().toISOString() };
+  if (attempts >= LOGIN_MAX_ATTEMPTS) patch.locked_until = new Date(Date.now() + LOGIN_LOCK_MS).toISOString();
+  try { await database().from('credentials').update(patch).eq('user_id', row.user_id); } catch { /* best effort */ }
+}
+async function clearFailedLogins(row) {
+  if (!row?.failed_attempts && !row?.locked_until) return;
+  try { await database().from('credentials').update({ failed_attempts: 0, locked_until: null, updated_at: new Date().toISOString() }).eq('user_id', row.user_id); } catch { /* best effort */ }
+}
 async function passwordUserResponse(userId, role) {
   const [{ data: profile }, { data: staffRow }] = await Promise.all([
     database().from('profiles').select('id,email,name').eq('id', userId).maybeSingle(),
@@ -406,7 +464,7 @@ app.post('/api/v1/auth/register', authLimiter, async (req, res) => {
       return error(res, 409, conflictCode);
     }
     const userId = randomUUID();
-    const password_hash = bcrypt.hashSync(password, 12);
+    const password_hash = await bcrypt.hash(password, 12);
     const { error: pErr } = await database().from('profiles').insert({ id: userId, email, name, auth_provider: 'password' });
     if (pErr) {
       if (pErr.code === '23505' || String(pErr.message || '').includes('duplicate')) return error(res, 409, 'ACCOUNT_EXISTS_USE_GOOGLE');
@@ -439,7 +497,7 @@ app.post('/api/v1/auth/login', authLimiter, async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
     if (rawEmailTooLong(req.body?.email) || !isValidEmail(email) || !password) return error(res, 401, 'INVALID_CREDENTIALS');
-    const { data: cred } = await database().from('credentials').select('user_id,email,password_hash').ilike('email', escapeIlike(email)).limit(10);
+    const { data: cred } = await database().from('credentials').select('*').ilike('email', escapeIlike(email)).limit(10);
     const row = (cred || []).find(r => String(r.email || '').toLowerCase() === email);
     if (!row) {
       // Distinct UX per product decision: Google-only emails get directed back
@@ -450,14 +508,20 @@ app.post('/api/v1/auth/login', authLimiter, async (req, res) => {
       }
       return error(res, 401, 'INVALID_CREDENTIALS');
     }
-    const ok = bcrypt.compareSync(password, row.password_hash);
-    if (!ok) return error(res, 401, 'INVALID_CREDENTIALS');
+    if (loginLocked(row)) return error(res, 429, 'ACCOUNT_LOCKED');
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) {
+      await recordFailedLogin(row);
+      return error(res, 401, 'INVALID_CREDENTIALS');
+    }
+    await clearFailedLogins(row);
     const { data: profile } = await database().from('profiles').select('id,disabled').eq('id', row.user_id).maybeSingle();
     if (!profile || profile.disabled) return error(res, 401, 'SESSION_EXPIRED');
-    // Admin stays Google-only: a password login must never mint a staff
-    // session, even if a staff_members row were ever attached to this user.
+    // Staff must use the dedicated /auth/admin/login portal (audited and
+    // separate rate limit). A customer password login must never mint a staff
+    // session, even if a staff_members row were attached to this user.
     const { data: staffRow } = await database().from('staff_members').select('role,active').eq('user_id', row.user_id).maybeSingle();
-    if (staffRow?.active && (staffRow.role === 'super_admin' || staffRow.role === 'admin')) {
+    if (staffRow?.active && STAFF_ROLES.includes(staffRow.role)) {
       return error(res, 403, 'ADMIN_USE_GOOGLE');
     }
     const { csrf } = await issuePasswordSession(res, row.user_id);
@@ -479,15 +543,20 @@ app.post('/api/v1/auth/admin/login', authLimiter, async (req, res) => {
     if (rawEmailTooLong(req.body?.email) || !isValidEmail(email) || !password) {
       return error(res, 401, 'INVALID_CREDENTIALS');
     }
-    const { data: cred } = await database().from('credentials').select('user_id,email,password_hash').ilike('email', escapeIlike(email)).limit(10);
+    const { data: cred } = await database().from('credentials').select('*').ilike('email', escapeIlike(email)).limit(10);
     const row = (cred || []).find(r => String(r.email || '').toLowerCase() === email);
     if (!row) return error(res, 401, 'INVALID_CREDENTIALS');
-    const ok = bcrypt.compareSync(password, row.password_hash);
-    if (!ok) return error(res, 401, 'INVALID_CREDENTIALS');
+    if (loginLocked(row)) return error(res, 429, 'ACCOUNT_LOCKED');
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) {
+      await recordFailedLogin(row);
+      return error(res, 401, 'INVALID_CREDENTIALS');
+    }
+    await clearFailedLogins(row);
     const { data: profile } = await database().from('profiles').select('id,disabled,name,email').eq('id', row.user_id).maybeSingle();
     if (!profile || profile.disabled) return error(res, 401, 'SESSION_EXPIRED');
     const { data: staffRow } = await database().from('staff_members').select('role,active').eq('user_id', row.user_id).maybeSingle();
-    if (!staffRow?.active || !['super_admin', 'admin'].includes(staffRow.role)) {
+    if (!staffRow?.active || !STAFF_ROLES.includes(staffRow.role)) {
       return error(res, 403, 'ADMIN_ONLY');
     }
     const { csrf } = await issuePasswordSession(res, row.user_id);
@@ -548,10 +617,10 @@ app.post('/api/v1/auth/reset-password', passwordResetLimiter, async (req, res) =
     const { data: row, error: qErr } = await database().from('password_resets').delete().eq('id_hash', sha(token)).gt('expires_at', new Date().toISOString()).is('used_at', null).select('user_id').maybeSingle();
     if (qErr) throw qErr;
     if (!row) return error(res, 400, 'RESET_TOKEN_INVALID');
-    const password_hash = bcrypt.hashSync(next, 12);
+    const password_hash = await bcrypt.hash(next, 12);
     // Returning clause verifies the credential row still exists: without it
     // a missing row would report success while locking the user out.
-    const { data: updated, error: uErr } = await database().from('credentials').update({ password_hash, updated_at: new Date().toISOString() }).eq('user_id', row.user_id).select('user_id').maybeSingle();
+    const { data: updated, error: uErr } = await database().from('credentials').update({ password_hash, failed_attempts: 0, locked_until: null, updated_at: new Date().toISOString() }).eq('user_id', row.user_id).select('user_id').maybeSingle();
     if (uErr || !updated) return error(res, 400, 'RESET_TOKEN_INVALID');
     // Revoke all sessions so the new password takes effect everywhere.
     await database().from('sessions').delete().eq('user_id', row.user_id);
@@ -626,7 +695,7 @@ app.get('/api/v1/catalog/products', async (req, res) => { try { let q = database
       }
     } if (req.query.gender) q = q.in('gender', [req.query.gender, 'unisex']); if (req.query.is_new === 'true' || req.query.is_new === '1' || req.query.isNew === 'true') q = q.eq('is_new', true); if (req.query.is_best === 'true' || req.query.is_best === '1' || req.query.isBest === 'true') q = q.eq('is_best', true); if (req.query.is_sale === 'true' || req.query.is_sale === '1' || req.query.sale === 'true' || req.query.isSale === 'true') q = q.not('discount_price', 'is', null); if (req.query.sort === 'price_asc') q = q.order('price', { ascending: true }); else if (req.query.sort === 'price_desc') q = q.order('price', { ascending: false }); else if (req.query.sort === 'popular' || req.query.sort === 'best') { if (await hasBestRank()) q = q.order('best_rank', { ascending: true, nullsFirst: false }); q = q.order('is_best', { ascending: false }); } const bestFilter = req.query.is_best === 'true' || req.query.is_best === '1' || req.query.isBest === 'true'; if (bestFilter && req.query.sort !== 'popular' && req.query.sort !== 'best' && req.query.sort !== 'price_asc' && req.query.sort !== 'price_desc' && await hasBestRank()) q = q.order('best_rank', { ascending: true, nullsFirst: false }); q = q.order('created_at', { ascending: false }); const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 500); const offset = Math.max(Number(req.query.offset) || 0, 0); const { data, count, error: e } = await q.range(offset, offset + limit - 1); if (e) throw e; res.json({ success: true, data: (data || []).map(normalizeProduct), total: (count ?? (data || []).length) }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
 
-app.get('/api/v1/catalog/products/:id', async (req, res) => { try { const raw = String(req.params.id || '').trim(); const isNumeric = /^\\d+$/.test(raw); let q = database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true); if (isNumeric) q = q.eq('id', Number(raw)); else q = q.eq('slug', raw); const { data, error: e } = await q.maybeSingle(); if (e || !data) return error(res, 404, 'PRODUCT_NOT_FOUND'); const current = normalizeProduct(data); let related = []; try { const [sameCat, best] = await Promise.all([database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('category_id', data.category_id).neq('id', data.id).order('created_at', { ascending: false }).limit(12).then(r => r.data || [], () => []), database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('is_best', true).neq('id', data.id).order('created_at', { ascending: false }).limit(12).then(r => r.data || [], () => [])]); const seen = new Map(); for (const p of [...(sameCat || []), ...(best || [])]) if (p && !seen.has(p.id)) seen.set(p.id, p); const pool = [...seen.values()].map(normalizeProduct); let ratings = {}; try { const ids = pool.map(p => p.id); if (ids.length) { const { data: revs } = await database().from('reviews').select('product_id,rating').in('product_id', ids).eq('is_approved', true); ratings = averageRatings(revs || []); } } catch {} related = rankRelated(current, pool, { limit: 4, ratings }); } catch { related = []; } if (!related.length) { const fb = await database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('category_id', data.category_id).neq('id', data.id).order('created_at', { ascending: false }).limit(4).then(r => r.data || [], () => []); related = (fb || []).map(normalizeProduct); } res.json({ success: true, data: current, related: related }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
+app.get('/api/v1/catalog/products/:id', async (req, res) => { try { const raw = String(req.params.id || '').trim(); const isNumeric = /^\d+$/.test(raw); let q = database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true); if (isNumeric) q = q.eq('id', Number(raw)); else q = q.eq('slug', raw); const { data, error: e } = await q.maybeSingle(); if (e || !data) return error(res, 404, 'PRODUCT_NOT_FOUND'); const current = normalizeProduct(data); let related = []; try { const [sameCat, best] = await Promise.all([database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('category_id', data.category_id).neq('id', data.id).order('created_at', { ascending: false }).limit(12).then(r => r.data || [], () => []), database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('is_best', true).neq('id', data.id).order('created_at', { ascending: false }).limit(12).then(r => r.data || [], () => [])]); const seen = new Map(); for (const p of [...(sameCat || []), ...(best || [])]) if (p && !seen.has(p.id)) seen.set(p.id, p); const pool = [...seen.values()].map(normalizeProduct); let ratings = {}; try { const ids = pool.map(p => p.id); if (ids.length) { const { data: revs } = await database().from('reviews').select('product_id,rating').in('product_id', ids).eq('is_approved', true); ratings = averageRatings(revs || []); } } catch {} related = rankRelated(current, pool, { limit: 4, ratings }); } catch { related = []; } if (!related.length) { const fb = await database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('category_id', data.category_id).neq('id', data.id).order('created_at', { ascending: false }).limit(4).then(r => r.data || [], () => []); related = (fb || []).map(normalizeProduct); } res.json({ success: true, data: current, related: related }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
 app.get('/api/v1/catalog/categories', async (req, res) => { try { const { data, error: e } = await database().from('categories').select('*').eq('is_active', true).order('sort_order'); if (e) return error(res, 503, 'CATALOG_UNAVAILABLE'); res.json({ success: true, data }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
 app.get('/api/v1/content/:key', async (req, res) => { try { const key = req.params.key === 'public' ? 'shipping' : req.params.key; const { data, error: e } = await database().from('content').select('value').eq('key', key).eq('published', true).maybeSingle(); if (e || !data) return error(res, 404, 'CONTENT_NOT_FOUND'); res.json({ success: true, data: data.value }); } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); } });
 // Custom storefront pages (route /p/:slug) backed by the content table.
@@ -649,7 +718,28 @@ app.get('/api/v1/wishlist', authenticate, async (req, res) => { try { const { da
 app.post('/api/v1/wishlist/toggle', authenticate, async (req, res) => { try { const { product_id } = req.body; const s = req.locals.session; if (!product_id) return error(res, 400, 'PRODUCT_ID_REQUIRED'); const { data: existing } = await database().from('wishlists').select('product_id').eq('user_id', s.user_id).eq('product_id', product_id).maybeSingle(); if (existing) { await database().from('wishlists').delete().eq('user_id', s.user_id).eq('product_id', product_id); res.json({ success: true, is_wishlisted: false }); } else { await database().from('wishlists').insert({ user_id: s.user_id, product_id }); res.json({ success: true, is_wishlisted: true }); } } catch (e) { if (isBadInput(e)) return error(res, 400, 'INVALID_PRODUCT'); error(res, 503, 'WISHLIST_UNAVAILABLE'); } });
 
 // REVIEWS
-app.get('/api/v1/products/:id/reviews', async (req, res) => { try { const { data, error: e } = await database().from('reviews').select('*').eq('product_id', req.params.id).eq('is_approved', true).order('created_at', { ascending: false }); if (e) throw e; const list = data || []; const summary = { averageRating: list.length ? (list.reduce((s, r) => s + (r.rating || 0), 0) / list.length).toFixed(1) : '5.0', totalReviews: list.length }; res.json({ success: true, data: list, summary }); } catch (e) { if (isBadInput(e)) return error(res, 400, 'INVALID_PRODUCT'); error(res, 503, 'REVIEWS_UNAVAILABLE'); } });
+app.get('/api/v1/products/:id/reviews', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const base = () => database().from('reviews').select('*', { count: 'exact' }).eq('product_id', req.params.id).eq('is_approved', true);
+    const [{ data: ratings, error: ratingsErr }, { data: page, count, error: e }] = await Promise.all([
+      database().from('reviews').select('rating').eq('product_id', req.params.id).eq('is_approved', true),
+      base().order('created_at', { ascending: false }).range(offset, offset + limit - 1),
+    ]);
+    if (ratingsErr) throw ratingsErr;
+    if (e) throw e;
+    const all = ratings || [];
+    const total = count ?? all.length;
+    const averageRating = all.length ? (all.reduce((s, r) => s + (Number(r.rating) || 0), 0) / all.length).toFixed(1) : '5.0';
+    const satisfaction = all.length ? Math.round((all.filter(r => Number(r.rating) >= 4).length / all.length) * 100) : 0;
+    const summary = { averageRating, totalReviews: total, satisfaction, limit, offset, hasMore: offset + (page || []).length < total };
+    res.json({ success: true, data: page || [], summary });
+  } catch (e) {
+    if (isBadInput(e)) return error(res, 400, 'INVALID_PRODUCT');
+    error(res, 503, 'REVIEWS_UNAVAILABLE');
+  }
+});
 
 // ORDERS
 // Coupon pricing shared by quote and order creation. Percentage coupons apply
@@ -752,6 +842,10 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
         }
       }
     } catch (rpcErr) {
+      // Production must use the atomic RPC: the JS fallback reserves stock and
+      // coupons without row locks, so concurrent checkouts could oversell.
+      // Fail closed instead of silently degrading data integrity.
+      if (production) throw rpcErr;
       console.warn('[place_order] RPC failed, using resilient direct placement:', rpcErr?.message || rpcErr);
       const { data: ord, error: oErr } = await database().from('orders').insert({
         user_id: s.user_id,
@@ -768,21 +862,6 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
       }).select('*').maybeSingle();
       if (oErr || !ord) throw (oErr || new Error('ORDER_CREATE_FAILED'));
       placedOrder = ord;
-
-      // --- Store Meta Ads UTM attribution ---
-      if (utm_params && Object.keys(utm_params).length > 0) {
-        const updateData = {};
-        if (utm_params.utm_source) updateData.utm_source = String(utm_params.utm_source).toLowerCase().trim();
-        if (utm_params.utm_medium) updateData.utm_medium = String(utm_params.utm_medium).toLowerCase().trim();
-        if (utm_params.utm_campaign) updateData.utm_campaign = String(utm_params.utm_campaign).toLowerCase().trim();
-        if (utm_params.utm_content) updateData.utm_content = String(utm_params.utm_content).toLowerCase().trim();
-        if (utm_params.utm_term) updateData.utm_term = String(utm_params.utm_term).toLowerCase().trim();
-        try {
-          await database().from('orders').update(updateData).eq('id', placedOrder.id);
-        } catch (updateErr) {
-          console.warn('[checkout] UTM update warning:', updateErr?.message || updateErr);
-        }
-      }
 
       // Reserve stock on variants
       for (const [vid, qty] of demand) {
@@ -824,6 +903,26 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
     if (placedOutcome === 'insufficient_stock') return error(res, 409, 'INSUFFICIENT_STOCK');
     if (placedOutcome === 'coupon_invalid') return error(res, 409, 'COUPON_INVALID');
     if (!placedOrder) throw new Error('ORDER_CREATE_FAILED');
+    // Attribution must be persisted on every successful placement, not only on
+    // the legacy JS fallback. The RPC path (production) previously dropped UTM
+    // data, so paid orders could not be traced back to campaigns.
+    if (placedOutcome === 'created' && utm_params && typeof utm_params === 'object' && !Array.isArray(utm_params)) {
+      const attribution = {};
+      for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+        const v = utm_params[k];
+        if (typeof v === 'string' && v.trim()) attribution[k] = v.toLowerCase().trim().slice(0, 200);
+      }
+      const source = normalizeOrderSource(utm_params.order_source || utm_params.utm_source);
+      if (source) attribution.order_source = source;
+      if (Object.keys(attribution).length > 0) {
+        try {
+          await database().from('orders').update(attribution).eq('id', placedOrder.id);
+          Object.assign(placedOrder, attribution);
+        } catch (updateErr) {
+          console.warn('[checkout] UTM update warning:', updateErr?.message || updateErr);
+        }
+      }
+    }
     if (placedOutcome === 'duplicate') return res.json({ success: true, data: placedOrder, duplicated: true });
     res.status(201).json({ success: true, data: placedOrder });
   } catch (err) {
@@ -911,6 +1010,60 @@ registerPaymentRoutes(app, {
   authenticate, staff, stepUp, limiter: paymentLimiter,
 });
 
+// Vercel/serverless does not run the in-process recovery worker (it is only
+// started by `node api/app.js`). This cron performs the same reconciliation:
+// it only re-queries Toss and never re-charges or re-refunds.
+// Secured by PAYMENTS_CRON_SECRET (falls back to CRON_SECRET) via the
+// Authorization: Bearer <secret> header that Vercel Cron sends.
+app.get('/api/v1/cron/payments-recover', async (req, res) => {
+  try {
+    const cronSecret = env.PAYMENTS_CRON_SECRET || env.CRON_SECRET;
+    if (!cronSecret) {
+      // Fail closed in production: an open endpoint would let anyone trigger
+      // extra PG lookups. Local/dev can run it without a secret.
+      if (production) return error(res, 503, 'CRON_NOT_CONFIGURED');
+    } else if (!secretMatches(req, cronSecret)) {
+      return error(res, 401, 'CRON_UNAUTHORIZED');
+    }
+    const results = { recovered: 0, pending: 0, skipped: false };
+    // One request may resolve a few jobs; stop when the queue is empty.
+    for (let i = 0; i < 5; i += 1) {
+      const batch = await runPaymentRecoveryBatch({ service: paymentService, store: paymentStore });
+      if (batch.skipped) { results.skipped = true; break; }
+      results.recovered += batch.recovered || 0;
+      results.pending += batch.pending || 0;
+      if (!batch.recovered && !batch.pending) break;
+    }
+    res.set('Cache-Control', 'no-store').json({ success: true, data: results });
+  } catch (err) {
+    console.error('[cron/payments-recover] error:', err?.message || err);
+    error(res, 503, 'PAYMENT_RECOVERY_UNAVAILABLE');
+  }
+});
+
+// Background maintenance for serverless deployments. Vercel never executes the
+// long-lived outbox/expiry loops started by `node api/app.js`, so their batches
+// are drained here from a cron (also invoked by payments-recover for safety).
+async function runMaintenanceBatches() {
+  const [outbox, expiry] = await Promise.all([
+    runOutboxBatch({ limit: 25 }).catch(e => ({ error: String(e?.message || e) })),
+    runExpiryBatch().catch(e => ({ error: String(e?.message || e) })),
+  ]);
+  return { outbox, expiry };
+}
+
+app.get('/api/v1/cron/workers', async (req, res) => {
+  try {
+    if (!env.CRON_SECRET && production) return error(res, 503, 'CRON_NOT_CONFIGURED');
+    if (env.CRON_SECRET && !secretMatches(req, env.CRON_SECRET)) return error(res, 401, 'CRON_UNAUTHORIZED');
+    const data = await runMaintenanceBatches();
+    res.set('Cache-Control', 'no-store').json({ success: true, data });
+  } catch (err) {
+    console.error('[cron/workers] error:', err?.message || err);
+    error(res, 503, 'WORKERS_UNAVAILABLE');
+  }
+});
+
 // SHIPMENT / TRACKING
 app.post('/api/v1/orders/:publicId/shipments', authenticate, staff(['super_admin','admin','order_manager']), stepUp, async (req, res) => { try { const s = req.locals.session; const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); if (!['paid','processing'].includes(order.status)) return error(res, 409, 'ORDER_NOT_SHIPPABLE'); const { data: shipment } = await database().from('shipments').insert({ order_id: order.id, courier_name: req.body.courier || '', tracking_number: req.body.tracking_number || '', status: 'dispatched' }).select().maybeSingle(); await database().from('orders').update({ status: 'shipped' }).eq('id', order.id); await database().from('order_status_history').insert({ order_id: order.id, status: 'shipped', note: 'Shipment dispatched', actor_id: s.user_id }); await notificationService.sendShippingUpdate(order); res.json({ success: true, data: shipment }); } catch { error(res, 503, 'SHIPMENT_UNAVAILABLE'); } });
 app.get('/api/v1/orders/:publicId/tracking', authenticate, async (req, res) => { try { const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).eq('user_id', req.locals.session.user_id).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); const { data: events } = await database().from('order_status_history').select('*').eq('order_id', order.id).order('created_at', { ascending: false }); res.json({ success: true, data: { order, events } }); } catch { error(res, 503, 'TRACKING_UNAVAILABLE'); } });
@@ -950,13 +1103,27 @@ app.get('/api/v1/admin/audit-logs', authenticate, staff(['super_admin','admin'])
 app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
   try {
     const s = req.locals?.session;
-    const { order_number, amount, currency = 'KRW', order_source, utm_params = {}, fbp, fbc } = req.body || {};
-    if (!order_number) return error(res, 400, 'MISSING_ORDER_NUMBER');
+    const { order_number, currency = 'KRW', order_source, utm_params = {}, fbp, fbc } = req.body || {};
+    if (typeof order_number !== 'string' || !order_number.trim()) return error(res, 400, 'MISSING_ORDER_NUMBER');
+    if (!s?.user_id) return error(res, 401, 'SIGN_IN_REQUIRED');
+
+    // Ownership check: an attacker must not be able to overwrite attribution
+    // on someone else's order (IDOR) or fire events against arbitrary orders.
+    const { data: order } = await database()
+      .from('orders')
+      .select('id,user_id,amount,order_number')
+      .eq('order_number', order_number.trim())
+      .eq('user_id', s.user_id)
+      .maybeSingle();
+    if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
+
+    // The trusted amount comes from the order row, never the request body.
+    const amount = Number(order.amount) || 0;
 
     // Build purchase event payload
     const purchasePayload = {
       event_name: 'Purchase',
-      event_id: order_number, // dedup by order number (Meta deduplicates within 48h)
+      event_id: order.order_number, // dedup by order number (Meta deduplicates within 48h)
       user_data: {
         // Hash email for Event Match Quality if available
         // We'll include fbp/fbc cookies which Meta already matches
@@ -965,9 +1132,9 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
         currency: currency || 'KRW',
       },
       custom_data: {
-        value: Number(amount) || 0,
+        value: amount,
         currency: currency || 'KRW',
-        content_name: order_number,
+        content_name: order.order_number,
         content_ids: [], // could fill with variant SKUs if available
         content_type: 'product',
         num_items: 1,
@@ -981,26 +1148,19 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
     // If we have order_source and utm_params, store them for attribution
     if (order_source || Object.keys(utm_params).length > 0) {
       const updateData = {};
-      if (order_source) updateData.order_source = String(order_source).toLowerCase().trim() || 'website';
-      if (utm_params.utm_source) updateData.utm_source = String(utm_params.utm_source).toLowerCase().trim();
-      if (utm_params.utm_medium) updateData.utm_medium = String(utm_params.utm_medium).toLowerCase().trim();
-      if (utm_params.utm_campaign) updateData.utm_campaign = String(utm_params.utm_campaign).toLowerCase().trim();
-      if (utm_params.utm_content) updateData.utm_content = String(utm_params.utm_content).toLowerCase().trim();
-      if (utm_params.utm_term) updateData.utm_term = String(utm_params.utm_term).toLowerCase().trim();
+      const source = normalizeOrderSource(order_source);
+      if (source) updateData.order_source = source;
+      for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+        const v = utm_params?.[k];
+        if (typeof v === 'string' && v.trim()) updateData[k] = v.toLowerCase().trim().slice(0, 200);
+      }
 
-      // Update or insert attribution for this order
-      try {
-        // Try to find existing order attribution first
-        const { data: existing } = await database().from('orders').select('id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, order_source').eq('order_number', order_number).maybeSingle();
-        if (existing) {
-          await database().from('orders').update(updateData).eq('order_number', order_number);
-        } else {
-          // Insert new order with attribution (this route is typically called after order creation)
-          // We'll just update the existing order's attribution fields
-          // If order doesn't exist yet, the caller should have created it
+      if (Object.keys(updateData).length > 0) {
+        try {
+          await database().from('orders').update(updateData).eq('id', order.id);
+        } catch (dbErr) {
+          console.warn('[meta/capi/purchase] DB update warning:', dbErr?.message || dbErr);
         }
-      } catch (dbErr) {
-        console.warn('[meta/capi/purchase] DB update warning:', dbErr?.message || dbErr);
       }
     }
 
@@ -1028,7 +1188,7 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
     }
     */
 
-    console.log('[meta/capi/purchase] CAPI Purchase event payload ready:', JSON.stringify({ order_number, amount, currency, order_source, has_fbp: !!fbp, has_fbc: !!fbc }));
+    console.log('[meta/capi/purchase] CAPI Purchase event payload ready:', JSON.stringify({ order_number: order.order_number, amount, currency, has_fbp: !!fbp, has_fbc: !!fbc }));
     res.json({ success: true, data: { payload: purchasePayload } });
   } catch (err) {
     console.error('[meta/capi/purchase] error:', err);
@@ -1046,11 +1206,10 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
 */
 app.get('/api/v1/cron/ads-sync', async (req, res) => {
   try {
-    const cronSecret = env.ADS_CRON_SECRET;
-    const authHeader = req.get('Authorization') || '';
-    const token = authHeader.replace(/^Bearer\s+/i, '');
-    if (cronSecret && token !== cronSecret) {
-      return error(res, 401, 'CRON_UNAUTHORIZED');
+    // Fail closed: without a configured secret the endpoint is disabled in
+    // production (previously any caller could trigger syncs and auto-pauses).
+    if (production || env.ADS_CRON_SECRET) {
+      if (!cronSecretMatches(req, 'ADS_CRON_SECRET')) return error(res, 401, 'CRON_UNAUTHORIZED');
     }
 
     const results = { synced: 0, alerts: [], paused: [], errors: [] };
@@ -1073,8 +1232,13 @@ app.get('/api/v1/cron/ads-sync', async (req, res) => {
             const clicks = parseInt(insight.clicks || 0, 10);
             const conversions = (insight.actions || []).find(a => a.action_type === 'purchase')?.value || 0;
 
-            // Upsert into ad_spend_daily
+            // Upsert into ad_spend_daily. campaign_id is a UUID FK and Meta
+            // returns its own string id, so the deterministic sync_key carries
+            // the external identity; without it NULL id columns made every run
+            // insert a duplicate row.
+            const syncKey = `meta:${insight.campaign_id || insight.campaign_name || 'unknown'}:${yesterday}`;
             await database().from('ad_spend_daily').upsert({
+              sync_key: syncKey,
               platform: 'meta',
               campaign_name: insight.campaign_name,
               date: yesterday,
@@ -1083,7 +1247,7 @@ app.get('/api/v1/cron/ads-sync', async (req, res) => {
               clicks,
               conversions_reported: parseInt(conversions, 10),
               raw: insight,
-            }, { onConflict: 'campaign_id,adset_id,ad_id,date' });
+            }, { onConflict: 'sync_key' });
             results.synced++;
           }
         }
@@ -1095,29 +1259,25 @@ app.get('/api/v1/cron/ads-sync', async (req, res) => {
     }
 
     try {
-      const { data: lowStockProducts } = await database().from('products').select('id,name,sku,stock').lte('stock', 5);
-      if (lowStockProducts && lowStockProducts.length > 0) {
-        for (const p of lowStockProducts) {
-          const { data: recentAlert } = await database().from('ad_alert_log').select('id').eq('payload->>product_id', p.id).gte('fired_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).maybeSingle();
-          if (!recentAlert) {
-            await database().from('ad_alert_log').insert({
-              payload: { type: 'low_stock', product_id: p.id, product_name: p.name, sku: p.sku, stock: p.stock },
-            });
-            results.alerts.push({ type: 'low_stock', product: p.name, stock: p.stock });
-          }
-        }
-      }
-
-      const { data: lowStockVariants } = await database().from('product_variants').select('id,sku,stock,product_id').lte('stock', 5);
-      if (lowStockVariants && lowStockVariants.length > 0) {
-        for (const v of lowStockVariants) {
-          const { data: recentAlert } = await database().from('ad_alert_log').select('id').eq('payload->>variant_id', v.id).gte('fired_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).maybeSingle();
-          if (!recentAlert) {
-            await database().from('ad_alert_log').insert({
-              payload: { type: 'low_stock', variant_id: v.id, sku: v.sku, stock: v.stock },
-            });
-            results.alerts.push({ type: 'low_stock', variant: v.sku, stock: v.stock });
-          }
+      // Stock lives on product_variants, not products. Query active variants and
+      // include the parent product for a human-readable alert.
+      const { data: lowStockVariants } = await database()
+        .from('product_variants')
+        .select('id,sku,stock,reserved,active,products(id,name_ko,name_en,is_active)')
+        .eq('active', true)
+        .lte('stock', 10)
+        .limit(50);
+      const lowStock = (lowStockVariants || [])
+        .filter(v => v.products?.is_active !== false && Math.max(0, (v.stock || 0) - (v.reserved || 0)) <= 5)
+        .slice(0, 10);
+      for (const v of lowStock) {
+        const available = Math.max(0, (v.stock || 0) - (v.reserved || 0));
+        const { data: recentAlert } = await database().from('ad_alert_log').select('id').eq('payload->>variant_id', v.id).gte('fired_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).maybeSingle();
+        if (!recentAlert) {
+          await database().from('ad_alert_log').insert({
+            payload: { type: 'low_stock', variant_id: v.id, product_id: v.products?.id, product_name: v.products?.name_ko || v.products?.name_en, sku: v.sku, stock: available },
+          });
+          results.alerts.push({ type: 'low_stock', variant: v.sku, stock: available });
         }
       }
     } catch (alertErr) {
@@ -1127,16 +1287,23 @@ app.get('/api/v1/cron/ads-sync', async (req, res) => {
     const autoPauseEnabled = env.ADS_AUTO_PAUSE_ENABLED === 'true';
     if (autoPauseEnabled) {
       try {
-        const { data: outOfStock } = await database().from('products').select('id,sku,name').eq('stock', 0);
-        if (outOfStock && outOfStock.length > 0) {
+        const { data: outOfStockVariants } = await database()
+          .from('product_variants')
+          .select('id,sku,stock,reserved,active,products(id,sku,name_ko,is_active)')
+          .eq('active', true)
+          .limit(500);
+        const outOfStock = (outOfStockVariants || [])
+          .filter(v => v.products?.is_active !== false && Math.max(0, (v.stock || 0) - (v.reserved || 0)) === 0)
+          .slice(0, 50);
+        if (outOfStock.length > 0) {
           for (const p of outOfStock) {
             const { data: campaigns } = await database().from('ad_campaigns').select('id,name,external_id,status,product_skus').eq('status', 'active');
             if (campaigns) {
               for (const camp of campaigns) {
-                if (camp.product_skus && camp.product_skus.includes(p.sku)) {
+                if (camp.product_skus && camp.product_skus.includes(p.products?.sku || p.sku)) {
                   const dryRun = env.ADS_AUTO_PAUSE_DRY_RUN !== 'false';
                   if (dryRun) {
-                    console.log(`[cron/ads-sync] DRY RUN: Would pause campaign ${camp.name} due to out-of-stock product ${p.sku}`);
+                    console.log(`[cron/ads-sync] DRY RUN: Would pause campaign ${camp.name} due to out-of-stock variant ${p.sku}`);
                     results.paused.push({ campaign: camp.name, product: p.sku, action: 'dry_run' });
                   } else {
                     console.log(`[cron/ads-sync] Would pause campaign ${camp.name} via Meta API`);
@@ -1162,32 +1329,47 @@ app.get('/api/v1/cron/ads-sync', async (req, res) => {
 
 // PRODUCT FEED (Meta Catalog / Google Shopping)
 // Generates an XML product feed for Meta Ads Advantage+ Shopping campaigns.
-// Public endpoint (no auth) — cached by Vercel.
-app.get('/feed/meta.xml', async (req, res) => {
+// Public endpoint (no auth) — cached by Vercel. Registered under /api/v1 so it
+// is reachable on Vercel (only /api/* is rewritten to this Express app) and
+// kept at the legacy /feed path for local tooling.
+async function metaFeedHandler(req, res) {
   try {
-    const { data: products, error: e } = await database().from('products').select('*,product_variants(*)').eq('active', true);
+    const { data: products, error: e } = await database()
+      .from('products')
+      .select('*,categories(slug),product_variants(*),product_media(*)')
+      .eq('is_active', true);
     if (e) throw e;
 
     const baseUrl = (env.APP_ORIGIN || 'https://noeul.me').replace(/\/+$/, '');
-    const items = (products || []).map(p => {
-      const variant = (p.product_variants || [])[0] || {};
-      const price = Number(p.discount_price || p.price || 0);
-      const stock = p.stock || variant.stock || 0;
-      const availability = stock > 0 ? 'in stock' : 'out of stock';
-      const imageUrl = p.image_url || (p.images && p.images[0]) || '';
+    const items = (products || []).map(raw => {
+      const p = normalizeProduct(raw);
+      if (!p) return '';
+      const variants = p.variants || [];
+      const variant = variants.find(v => (v.stock || 0) - (v.reserved || 0) > 0) || variants[0] || {};
+      const basePrice = Number(p.discount_price || p.price || 0) + Number(variant.price_delta || 0);
+      const listPrice = Number(p.price || 0) + Number(variant.price_delta || 0);
+      const price = Math.max(0, basePrice);
+      const available = (p.stock || 0) > 0;
+      const imageUrl = (p.images && p.images[0]) || p.image_url || '';
+      const link = `${baseUrl}/product/${encodeURIComponent(p.slug || p.id)}`;
+      const regularPrice = Math.max(0, listPrice > 0 ? listPrice : price);
+      const salePriceValue = Math.max(0, price);
+      const salePrice = p.discount_price && regularPrice > salePriceValue
+        ? `\n      <g:sale_price>${salePriceValue} KRW</g:sale_price>`
+        : '';
       return `    <item>
-      <g:id>${escapeXml(p.sku || p.id)}</g:id>
+      <g:id>${escapeXml(variant.sku || p.sku || p.id)}</g:id>
       <g:title>${escapeXml(p.name_ko || p.name_en || '')}</g:title>
       <g:description>${escapeXml(p.description_ko || p.description_en || '')}</g:description>
-      <g:availability>${availability}</g:availability>
+      <g:availability>${available ? 'in stock' : 'out of stock'}</g:availability>
       <g:condition>new</g:condition>
-      <g:price>${price} KRW</g:price>
-      <g:link>${baseUrl}/product/${p.id}</g:link>
+      <g:price>${regularPrice} KRW</g:price>${salePrice}
+      <g:link>${escapeXml(link)}</g:link>
       <g:image_link>${escapeXml(imageUrl)}</g:image_link>
       <g:brand>NOEUL</g:brand>
-      <g:product_type>${escapeXml(p.category || '')}</g:product_type>
+      <g:product_type>${escapeXml(p.categories?.slug || '')}</g:product_type>
     </item>`;
-    }).join('\n');
+    }).filter(Boolean).join('\n');
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
@@ -1206,7 +1388,9 @@ ${items}
     console.error('[feed/meta.xml] error:', err);
     error(res, 500, 'FEED_UNAVAILABLE');
   }
-});
+}
+app.get('/api/v1/feed/meta.xml', metaFeedHandler);
+app.get('/feed/meta.xml', metaFeedHandler);
 
 function escapeXml(str) {
   return String(str || '')

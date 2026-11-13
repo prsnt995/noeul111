@@ -62,10 +62,10 @@ describe('Wave 0 — Critical path restores', () => {
   describe('H1 — only staff roles grant admin UI', () => {
     it('isStaffRole admits staff, rejects customers and junk', async () => {
       const { isStaffRole } = await import(fileURLToPath(new URL('../src/context/AuthContext.jsx', import.meta.url)));
-      for (const role of ['super_admin', 'admin']) {
+      for (const role of ['super_admin', 'admin', 'order_manager', 'editor']) {
         expect(isStaffRole(role)).toBe(true);
       }
-      for (const role of ['editor', 'order_manager', 'customer', '', null, undefined, 'ADMIN', 'root']) {
+      for (const role of ['customer', '', null, undefined, 'ADMIN', 'root']) {
         expect(isStaffRole(role as any)).toBe(false);
       }
     });

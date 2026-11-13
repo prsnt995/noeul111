@@ -39,9 +39,18 @@ describe('Password auth — backend wiring', () => {
     expect(app.includes("'/api/v1/auth/reset-password'")).toBe(true);
   });
 
-  it('hashes with bcrypt cost 12 and verifies on login', () => {
-    expect(app.includes('hashSync(password, 12)') || app.includes('hashSync(next, 12)')).toBe(true);
-    expect(app.includes('compareSync(password')).toBe(true);
+  it('hashes with bcrypt cost 12 and verifies on login (async, non-blocking)', () => {
+    expect(app.includes('await bcrypt.hash(password, 12)') || app.includes('await bcrypt.hash(next, 12)')).toBe(true);
+    expect(app.includes('await bcrypt.compare(password, row.password_hash)')).toBe(true);
+    expect(app.includes('bcrypt.hashSync(')).toBe(false);
+    expect(app.includes('bcrypt.compareSync(')).toBe(false);
+  });
+
+  it('locks an account after repeated failed password attempts', () => {
+    expect(app.includes('LOGIN_MAX_ATTEMPTS')).toBe(true);
+    expect(app.includes('recordFailedLogin(row)')).toBe(true);
+    expect(app.includes('ACCOUNT_LOCKED')).toBe(true);
+    expect(app.includes('clearFailedLogins(row)')).toBe(true);
   });
 
   it('blocks Google-origin emails with distinct codes', () => {
@@ -95,7 +104,7 @@ describe('Password auth — backend wiring', () => {
 
   it('keeps a single outstanding reset token and verifies the update hit', () => {
     expect(app.includes("from('password_resets').delete().eq('user_id', row.user_id)")).toBe(true);
-    expect(app.includes(".update({ password_hash, updated_at:")).toBe(true);
+    expect(app.includes(".update({ password_hash, failed_attempts: 0")).toBe(true);
     expect(app.includes(".select('user_id').maybeSingle()")).toBe(true);
   });
 });

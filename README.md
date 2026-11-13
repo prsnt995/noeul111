@@ -137,7 +137,7 @@ Backend API: `http://localhost:5001`
 | `npm run typecheck` | TypeScript type check |
 | `npm run format` | Prettier format |
 | `npm run ci` | Full CI pipeline (typecheck + lint + test + build) |
-| `npm run verify:production` | Production readiness audit (37 checks) |
+| `npm run verify:production` | Production readiness audit (34 checks) |
 | `npm run seed` | Seed the database (catalog/content only, no users) |
 | `npm run migrate` | Run Supabase migrations |
 | `npm run backup` | Backup database + storage manifest |
@@ -153,7 +153,7 @@ Backend API: `http://localhost:5001`
 
 ### Admin Auth
 - **Google OAuth:** Staff accounts sign in with allowlisted Google accounts
-- **Email/Password:** `POST /api/v1/auth/admin/login` — staff-only, requires `staff_members` row with `super_admin` or `admin` role
+- **Email/Password:** `POST /api/v1/auth/admin/login` — staff-only, requires an active `staff_members` row with one of `super_admin`, `admin`, `order_manager`, or `editor`
 - Admin routes are under `/api/v1/admin/*` and require staff authentication + step-up (MFA) for sensitive operations
 
 ## Payments
@@ -169,7 +169,7 @@ Toss Payments integration with:
 ## Testing
 
 ```bash
-npm test              # All 302 tests
+npm test              # All tests
 npm run test:watch    # Watch mode
 npm run test:coverage # Coverage report
 ```
@@ -185,10 +185,11 @@ Test files cover: auth gating, password auth, payments, SKU system, product save
 3. Set build command: `npm run build`
 4. Set output directory: `dist`
 5. The `vercel.json` handles API route rewrites and SPA fallback
+6. Configure `CRON_SECRET` (and optionally `PAYMENTS_CRON_SECRET`, `ADS_CRON_SECRET`). Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; `/api/v1/cron/workers` drains outbox notifications and expires unpaid orders, so it must run every few minutes (Pro plan) or at least daily on Hobby.
 
 ### Production Checklist
 
-- [ ] `SESSION_KEY` and `JWT_SECRET` are 64/48 hex chars respectively
+- [ ] `SESSION_KEY` is 64 hex chars (`openssl rand -hex 32`); `JWT_SECRET` is set if legacy routes use it
 - [ ] `SMTP_PASS` is configured for production email delivery
 - [ ] `TOSS_SECRET_KEY` is live mode (`live_gsk_...`)
 - [ ] Supabase migrations applied

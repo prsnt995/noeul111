@@ -26,7 +26,7 @@ export function ProductDetailPage() {
   const [, params] = useRoute('/product/:id');
   const [, setLocation] = useLocation();
   const { t, formatKRW } = useLanguage();
-  const { addToCart, openCart } = useCart();
+  const { addToCart, openCart, startBuyNow } = useCart();
   const { isWishlisted, toggleWishlist } = useWishlist();
 
   const [product, setProduct] = useState(null);
@@ -219,13 +219,16 @@ export function ProductDetailPage() {
 
 
   const handleAddToCart = () => {
-    addToCart(product, selectedSize, selectedColor, quantity, selectedLength);
-    openCart();
+    if (addToCart(product, selectedSize, selectedColor, quantity, selectedLength) !== false) {
+      openCart();
+    }
   };
 
+  // Buy Now must never mutate the cart: it starts a one-off checkout for the
+  // selected option only (same model as Shopify/Amazon/Coupang "바로구매").
   const handleBuyNow = () => {
-    addToCart(product, selectedSize, selectedColor, quantity, selectedLength);
-    setLocation('/checkout');
+    if (!startBuyNow(product, selectedSize, selectedColor, quantity, selectedLength)) return;
+    setLocation('/checkout?mode=buynow');
   };
 
   return (

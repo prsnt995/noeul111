@@ -37,6 +37,57 @@ async function dispatch(supabase, event) {
    }
  }
 
+// Process at most `limit` due events once. Exported so serverless deployments
+// can drain the queue from a cron endpoint instead of a long-lived loop.
+export async function runOutboxBatch({ supabase = getAdminClient(), limit = 10 } = {}) {
+  if (!supabase) return { processed: 0, failed: 0, empty: true, skipped: true };
+  const now = new Date().toISOString();
+  const { data: events } = await supabase
+    .from('outbox')
+    .select('*')
+    .is('done_at', null)
+    .is('dead_at', null)
+    .lte('available_at', now)
+    .or(`lease_until.is.null,lease_until.lt.${now}`)
+    .order('available_at', { ascending: true })
+    .limit(limit);
+
+  if (!events || events.length === 0) return { processed: 0, failed: 0, empty: true };
+
+  let processed = 0;
+  let failed = 0;
+  for (const event of events) {
+    const token = newLeaseToken();
+    const leaseUntil = new Date(Date.now() + LEASE_MS).toISOString();
+    const { data: claimed } = await supabase
+      .from('outbox')
+      .update({ lease_until: leaseUntil, lease_token: token })
+      .eq('id', event.id)
+      .is('done_at', null)
+      .or(`lease_until.is.null,lease_until.lt.${now}`)
+      .select('id')
+      .maybeSingle();
+
+    if (!claimed) continue;
+
+     try {
+       await dispatch(supabase, event);
+       await supabase.from('outbox').update({ done_at: new Date().toISOString(), last_error: null, lease_until: null, lease_token: null }).eq('id', event.id);
+       processed += 1;
+     } catch (err) {
+      failed += 1;
+      const attempts = (event.attempts || 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        await supabase.from('outbox').update({ dead_at: new Date().toISOString(), last_error: String(err?.message || err) }).eq('id', event.id);
+        await alertOps('outbox.dead_letter', { kind: event.kind, effect_key: event.effect_key, error: String(err?.message || err) });
+      } else {
+        await supabase.from('outbox').update({ attempts, last_error: String(err?.message || err), available_at: new Date(Date.now() + backoffMs(attempts)).toISOString(), lease_until: null, lease_token: null }).eq('id', event.id);
+      }
+    }
+  }
+  return { processed, failed, empty: false };
+}
+
 export async function startOutboxWorker() {
   const supabase = getAdminClient();
   if (!supabase) { console.log('[Outbox] Supabase not configured. Worker skipped.'); return; }
@@ -46,46 +97,8 @@ export async function startOutboxWorker() {
 
   while (workerRunning) {
     try {
-      const now = new Date().toISOString();
-      const { data: events } = await supabase
-        .from('outbox')
-        .select('*')
-        .is('done_at', null)
-        .is('dead_at', null)
-        .lte('available_at', now)
-        .or(`lease_until.is.null,lease_until.lt.${now}`)
-        .order('available_at', { ascending: true })
-        .limit(10);
-
-      if (!events || events.length === 0) { await sleep(5000); continue; }
-
-      for (const event of events) {
-        const token = newLeaseToken();
-        const leaseUntil = new Date(Date.now() + LEASE_MS).toISOString();
-        const { data: claimed } = await supabase
-          .from('outbox')
-          .update({ lease_until: leaseUntil, lease_token: token })
-          .eq('id', event.id)
-          .is('done_at', null)
-          .or(`lease_until.is.null,lease_until.lt.${now}`)
-          .select('id')
-          .maybeSingle();
-
-        if (!claimed) continue;
-
-         try {
-           await dispatch(supabase, event);
-           await supabase.from('outbox').update({ done_at: new Date().toISOString(), last_error: null, lease_until: null, lease_token: null }).eq('id', event.id);
-         } catch (err) {
-          const attempts = (event.attempts || 0) + 1;
-          if (attempts >= MAX_ATTEMPTS) {
-            await supabase.from('outbox').update({ dead_at: new Date().toISOString(), last_error: String(err?.message || err) }).eq('id', event.id);
-            await alertOps('outbox.dead_letter', { kind: event.kind, effect_key: event.effect_key, error: String(err?.message || err) });
-          } else {
-            await supabase.from('outbox').update({ attempts, last_error: String(err?.message || err), available_at: new Date(Date.now() + backoffMs(attempts)).toISOString(), lease_until: null, lease_token: null }).eq('id', event.id);
-          }
-        }
-      }
+      const result = await runOutboxBatch({ supabase });
+      if (result.empty) { await sleep(5000); continue; }
     } catch (err) {
       console.error('[Outbox] Worker error:', err.message);
     }

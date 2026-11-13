@@ -7,7 +7,7 @@ import { useWishlist } from '../context/WishlistContext.jsx';
 import { useCart } from '../context/CartContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { api } from '../utils/api.js';
-import { formatKoreanPhone, ORDER_STATUS_MAP } from '../utils/formatters.js';
+import { formatKoreanPhone, getCustomerStatus, CUSTOMER_ORDER_STEPS, customerStepIndex, isTerminalOrderStatus } from '../utils/formatters.js';
 import {
   Package,
   Heart,
@@ -113,6 +113,16 @@ export function CustomerAccountPage() {
     api.get('/orders').then((res) => setOrders(res.data || [])).catch((err) => console.error('Fetch my orders error:', err)).finally(() => setLoadingOrders(false));
   }, [isLoggedIn, user, setLocation, location]);
 
+  // A payment can still be resolving when the customer opens My Page. Poll
+  // while any order is `confirming`, then stop once it settles.
+  useEffect(() => {
+    if (!orders.some(o => o.status === 'confirming')) return;
+    const timer = setInterval(() => {
+      api.get('/orders').then(res => setOrders(res.data || [])).catch(() => {});
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [orders]);
+
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     setSavingProfile(true);
@@ -191,14 +201,10 @@ export function CustomerAccountPage() {
     setLocation('/');
   };
 
-  const orderSteps = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
-
-  // Backend statuses → stepper position. Terminal states return -1 (stepper hidden).
-  const getStepIndex = (status) => {
-    const map = { pending_payment: 0, confirming: 0, pending: 0, paid: 1, confirmed: 1, processing: 2, shipped: 3, delivered: 4 };
-    return map[status] ?? -1;
-  };
-  const isTerminalOrder = (status) => ['canceled', 'cancelled', 'expired', 'refunded', 'refund_pending'].includes(status);
+  // Customer-facing helpers live in formatters.js so the order page and this
+  // page can never drift apart. The stepper only starts after payment.
+  const getStepIndex = customerStepIndex;
+  const isTerminalOrder = isTerminalOrderStatus;
 
   return (
     <div style={{ padding: '40px 0 80px', backgroundColor: 'var(--bg-secondary)', minHeight: 'calc(100vh - 200px)' }}>
@@ -362,7 +368,7 @@ export function CustomerAccountPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {orders.map((order) => {
-                  const statusInfo = ORDER_STATUS_MAP[order.status] || ORDER_STATUS_MAP['pending'];
+                  const statusInfo = getCustomerStatus(order.status);
                   const stepIndex = getStepIndex(order.status);
 
                   return (
@@ -414,14 +420,13 @@ export function CustomerAccountPage() {
                             marginBottom: '20px',
                           }}
                         >
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', textAlign: 'center', position: 'relative' }}>
-                            {orderSteps.map((step, idx) => {
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${CUSTOMER_ORDER_STEPS.length}, 1fr)`, textAlign: 'center', position: 'relative' }}>
+                            {CUSTOMER_ORDER_STEPS.map((step, idx) => {
                               const isCurrentOrPassed = stepIndex >= idx;
                               const isCurrent = stepIndex === idx;
-                              const stepLabel = ORDER_STATUS_MAP[step];
 
                               return (
-                                <div key={step} style={{ position: 'relative', zIndex: 2 }}>
+                                <div key={step.key} style={{ position: 'relative', zIndex: 2 }}>
                                   <div
                                     style={{
                                       width: '28px',
@@ -437,7 +442,7 @@ export function CustomerAccountPage() {
                                       marginBottom: '6px',
                                     }}
                                   >
-                                    {isCurrentOrPassed ? '✓' : idx + 1}
+                                    {stepIndex > idx ? '✓' : idx + 1}
                                   </div>
                                   <p
                                     style={{
@@ -446,7 +451,7 @@ export function CustomerAccountPage() {
                                       color: isCurrent ? 'var(--accent-sunset)' : isCurrentOrPassed ? 'var(--text-primary)' : 'var(--text-muted)',
                                     }}
                                   >
-                                    {stepLabel.ko || stepLabel.en}
+                                    {step.ko}
                                   </p>
                                 </div>
                               );
@@ -507,28 +512,33 @@ export function CustomerAccountPage() {
                         </div>
                       )}
 
-                      {/* Payment state CTA for card checkout (no receipt workflow) */}
+                      {/* Payment state CTA for card checkout (no receipt workflow).
+                          pending_payment (money not taken) and confirming (money may be
+                          taken) used to look identical — keep them visually distinct. */}
                       {(order.status) === 'pending_payment' && (
                         <div
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            backgroundColor: '#fff1f2',
-                            border: '1px solid #fecdd3',
+                            gap: '12px',
+                            backgroundColor: '#fff7ed',
+                            border: '1px solid #fed7aa',
                             borderRadius: '6px',
                             padding: '12px 16px',
                             marginBottom: '16px',
                             fontSize: '0.8125rem',
                           }}
                         >
-                          <span style={{ color: '#9f1239', fontWeight: 600 }}>
-                            ⚠️ 카드 결제가 필요합니다.
+                          <span style={{ color: '#c2410c', lineHeight: 1.5 }}>
+                            <strong>결제 진행 중</strong>
+                            <span style={{ display: 'block', fontWeight: 400 }}>결제가 아직 완료되지 않았습니다. 이어서 진행해주세요.</span>
                           </span>
                           <Link
                             href={`/checkout/toss?order=${encodeURIComponent(order.order_number)}`}
                             style={{
-                              backgroundColor: 'var(--accent-sunset)',
+                              flexShrink: 0,
+                              backgroundColor: '#ea580c',
                               color: '#ffffff',
                               padding: '6px 12px',
                               borderRadius: '4px',
@@ -543,17 +553,20 @@ export function CustomerAccountPage() {
                       {(order.status) === 'confirming' && (
                         <div
                           style={{
-                            backgroundColor: '#fefce8',
-                            border: '1px solid #fef08a',
+                            backgroundColor: '#eef2ff',
+                            border: '1px solid #c7d2fe',
                             borderRadius: '6px',
                             padding: '12px 16px',
-                            marginBottom: '16px',
+                            marginBottom: '20px',
                             fontSize: '0.8125rem',
-                            color: '#854d0e',
-                            fontWeight: 600,
+                            color: '#3730a3',
+                            lineHeight: 1.5,
                           }}
                         >
-                          ⭐ 결제 확인 중입니다. 잠시만 기다려주세요.
+                          <strong>결제 확인 중입니다</strong>
+                          <span style={{ display: 'block', fontWeight: 400 }}>
+                            결제는 정상적으로 접수되었습니다. 보통 1~2분 안에 완료되며, 중복 결제하지 마세요.
+                          </span>
                         </div>
                       )}
 

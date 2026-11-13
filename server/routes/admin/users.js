@@ -22,7 +22,7 @@ router.get('/users/staff', verifyAdmin, (req, res) => {
 
 // Add staff member (finding #9): super_admin only. Editors and
 // order managers must never create/promote staff accounts.
-router.post('/users/staff', requireSuperAdmin, (req, res) => {
+router.post('/users/staff', requireSuperAdmin, async (req, res) => {
   try {
     const { email, password, name, phone, role } = req.body;
 
@@ -39,8 +39,8 @@ router.post('/users/staff', requireSuperAdmin, (req, res) => {
       return res.status(400).json({ success: false, message: '이미 등록된 이메일 계정입니다.' });
     }
 
-    const salt = bcrypt.genSaltSync(10);
-    const password_hash = bcrypt.hashSync(password, salt);
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
     const validRole = ['super_admin', 'admin', 'editor', 'order_manager'].includes(role) ? role : 'editor';
 
     const result = query.run(`
@@ -58,7 +58,7 @@ router.post('/users/staff', requireSuperAdmin, (req, res) => {
 
 // Update staff role (finding #9): super_admin only. Protects the last
 // super-admin and blocks self-demotion.
-router.put('/users/staff/:id', requireSuperAdmin, (req, res) => {
+router.put('/users/staff/:id', requireSuperAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, phone, role, new_password } = req.body;
@@ -88,8 +88,8 @@ router.put('/users/staff/:id', requireSuperAdmin, (req, res) => {
       if (String(new_password).length < 12) {
         return res.status(400).json({ success: false, message: '비밀번호는 최소 12자 이상이어야 합니다.' });
       }
-      const salt = bcrypt.genSaltSync(10);
-      const password_hash = bcrypt.hashSync(new_password, salt);
+      const salt = await bcrypt.genSalt(10);
+      const password_hash = await bcrypt.hash(new_password, salt);
       query.run(`
         UPDATE users SET name = ?, phone = ?, role = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
