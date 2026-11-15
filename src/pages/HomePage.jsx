@@ -32,6 +32,8 @@ export function HomePage() {
   const [selectedGender, setSelectedGender] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [activeFilter, setActiveFilter] = useState('');
+  const [sort, setSort] = useState('newest');
+  const [lastCategory, setLastCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // 1. Sync state with URL query parameters (any filter change restarts paging)
@@ -343,6 +345,20 @@ export function HomePage() {
             }}
           >
             {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
+  {/* Sort control */}
+  <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto', fontSize: '0.6875rem', color: '#888888'}}>
+    <span>Sort: </span>
+    <select
+      value={sort}
+      onChange={(e) => { setSort(e.target.value); const params = new URLSearchParams(window.location.search); if (e.target.value === 'newest') params.delete('sort'); else params.set('sort', e.target.value); setLocation(window.pathname + '?' + params.toString());}}
+      style={{border: '1px solid #e4e4e7', borderRadius: '4px', padding: '4px 8px', minWidth: 100}}
+    >
+      <option value="newest">Newest</option>
+      <option value="best">Best Sellers</option>
+      <option value="price_asc">Price Low→High</option>
+      <option value="price_desc">Price High→Low</option>
+    </select>
+  </div>
               <button
                 type="button"
                 onClick={handleReset}
@@ -479,6 +495,15 @@ export function HomePage() {
           <>
             <div key={`${selectedGender}-${selectedCategory}-${activeFilter}`} className="product-grid noeul-product-grid home-grid-animated">
               {products.map((prod, i) => (
+                // Category divider when category changes
+                {lastCategory !== prod.category && lastCategory !== '' && <div className="category-divider" style={{borderTop: '1px solid #f0f0f0', margin: '12px 0', padding: '4px 0'}}><span style={{marginRight: '8px', color: '#888888', fontSize: '0.7rem'}}{prod.category_translation || prod.category}</span></div>}
+                {setLastCategory(prod.category)}
+                <ProductCard
+                  key={prod.id}
+                  product={prod}
+                  variant="overlay"
+                  eager={i < 5}
+                })
                 <ProductCard
                   key={prod.id}
                   product={prod}

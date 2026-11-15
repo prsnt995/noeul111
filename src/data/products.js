@@ -463,23 +463,26 @@ export function getFilteredProducts({
     result = result.filter((p) => (p.discount_price || p.price) <= maxPrice);
   }
 
-  // 6. Sorting
-  switch (sort) {
-    case 'price_asc':
-      result.sort((a, b) => (a.discount_price || a.price) - (b.discount_price || b.price));
-      break;
-    case 'price_desc':
-      result.sort((a, b) => (b.discount_price || b.price) - (a.discount_price || a.price));
-      break;
-    case 'popular':
-    case 'best':
-      result.sort((a, b) => (b.is_best ? 1 : 0) - (a.is_best ? 1 : 0));
-      break;
-    case 'newest':
-    default:
-      result.sort((a, b) => (b.is_new ? 1 : 0) - (a.is_new ? 1 : 0) || b.id - a.id);
-      break;
-  }
+  // 6. Sorting — stable multi-criteria sort
+  // Sort order: category (grouped) → is_best DESC → is_new DESC → price_asc
+  result.sort((a, b) => {
+    // 1. Group by category first (consistent ordering)
+    const catA = (a.category || "").toLowerCase();
+    const catB = (b.category || "").toLowerCase();
+    if (catA < catB) return -1;
+    if (catA > catB) return 1;
+
+    // 2. Same category: Best Sellers first, then Newest, then price low
+    if (b.is_best && !a.is_best) return -1;
+    if (!b.is_best && a.is_best) return 1;
+    if (b.is_new && !a.is_new) return -1;
+    if (!b.is_new && a.is_new) return 1;
+
+    // 3. Within same badge tier: price low → high
+    const priceA = a.discount_price || a.price;
+    const priceB = b.discount_price || b.price;
+    return priceA - priceB;
+  });
 
   return result;
 }

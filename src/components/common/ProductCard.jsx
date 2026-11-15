@@ -26,6 +26,9 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
   const swatches = Array.isArray(product.colors) ? product.colors : [];
   const colorCount = swatches.length;
   const colorSuffix = colorCount >= 2 ? t('product.color_count', { count: colorCount }) : '';
+  const categoryColor = product.category ? ("#" + (CATEGORIES_BY_GENDER.men.find(c=>c.key===product.category)?.color_hex || product.color_hex || "CCCCCC") : (product.color_hex || "CCCCCC"));
+  const primaryColorName = product.colors?.[0]?.name_en || product.color || "";
+  const badgeText = primaryColorName ? primaryColorName[0] : "";
   const price = (product.discount_price || product.price)?.toLocaleString('ko-KR');
   const hasSale = Boolean(product.discount_price && product.discount_price < product.price);
   const soldOut = (product.stock ?? 1) <= 0;
@@ -70,7 +73,7 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
   return (
     <article ref={cardRef} aria-label={accessibleName} title={accessibleName} className={`noeul-product-card product-card${isOverlay ? ' overlay' : ''}${revealed ? ' revealed' : ''}`} onMouseEnter={()=>{ setPaused(true); const next = images[(index + 1) % images.length]; if (next) { const img = new Image(); img.src = getOptimizedImageUrl(next, 480); } }} onMouseLeave={()=>{setPaused(false); if (isOverlay) setRevealed(false);}} onFocus={()=>setPaused(true)} onBlur={()=>setPaused(false)} onClick={open} onKeyDown={e=>{if (e.target !== e.currentTarget) return; if(e.key==='Enter'||e.key===' '){e.preventDefault();open(e);}}} tabIndex={0}>
       <div className="product-card-media" onTouchStart={e=>{if (cardRef.current) cardRef.current._touchX=e.touches[0].clientX;setPaused(true);}} onTouchEnd={handleTouchEnd}>
-        {images[index] && <img key={images[index]} src={getOptimizedImageUrl(images[index], 480, product?.updated_at)} srcSet={getSrcSet(images[index], [320, 480, 800], product?.updated_at)} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw" alt={name} loading={eager ? 'eager' : 'lazy'} fetchPriority={eager ? 'high' : 'low'} decoding="async" className="product-card-image" />}
+        {images[index] && <img key={images[index]} src={getOptimizedImageUrl(images[index], 480, product?.updated_at)} srcSet={getSrcSet(images[index], [320, 480, 800], product?.updated_at)} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw" alt={name} loading={eager ? 'eager' : 'lazy'} fetchPriority={eager ? 'high' : 'low'} decoding="async" className="product-card-image" />}        {product.category && <div className="product-category-badge" style={{position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: "50%", background: categoryColor, color: "#FFFFFF", fontSize: "0.65rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, border: "2px solid #FFFFFF", boxSizing: "border-box"}}>{badgeText}</div>}
         <div className="product-card-badges">{soldOut&&<span>{t('product.sold_out')}</span>}{product.is_sale&&!soldOut&&<span className="sale">{t('product.sale')}</span>}{product.is_new&&!product.is_sale&&!soldOut&&<span className="new">{t('product.new')}</span>}</div>
         {images.length>1&&<div className="product-card-dots" role="group" aria-label={t('product.images')}>{images.map((_,i)=><button key={i} type="button" aria-label={t('product.image_n', { n: i + 1 })} aria-current={i===index ? true : undefined} onClick={e=>{e.stopPropagation();setIndex(i);setPaused(true);}} />)}</div>}
         {isOverlay && (

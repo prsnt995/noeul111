@@ -22,6 +22,7 @@ export function ShopPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [lastCategory, setLastCategory] = useState('');
   // Storefront paging: first 24, infinite scroll loads next PAGE_BATCH as user scrolls down.
   const [limit, setLimit] = useState(24);
   const [total, setTotal] = useState(0);
@@ -359,6 +360,15 @@ export function ShopPage() {
           <>
             <div className="noeul-product-grid product-grid">
               {products.map((prod, i) => (
+                // Category divider when category changes
+                {lastCategory !== prod.category && lastCategory !== '' && <div className="category-divider" style={{borderTop: '1px solid #f0f0f0', margin: '12px 0', padding: '4px 0'}}><span style={{marginRight: '8px', color: '#888888', fontSize: '0.7rem'}}{prod.category_translation || prod.category}</span></div>}
+                {setLastCategory(prod.category)}
+                <ProductCard
+                  key={prod.id}
+                  product={prod}
+                  variant="overlay"
+                  eager={i < 5}
+                })
                 <ProductCard
                   key={prod.id}
                   product={prod}
