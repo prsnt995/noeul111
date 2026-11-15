@@ -14,6 +14,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
 
   const [orderSource, setOrderSource] = useState('instagram');
   const [sourceDetail, setSourceDetail] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('bank_transfer');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -292,6 +293,7 @@ export function ManualOrderModal({ onClose, onCreated }) {
         detail_address: detailAddress.trim() || undefined,
         shipping_memo: shippingMemo.trim() || undefined,
         coupon_code: appliedCoupon?.code || undefined,
+        payment_method: paymentMethod,
         payment_sender_name: customerName.trim(),
         items: payloadItems,
       });
@@ -340,6 +342,24 @@ export function ManualOrderModal({ onClose, onCreated }) {
               <label className="adm-label" htmlFor="manual-source-detail">채널 메모 (예: IG 아이디)</label>
               <input id="manual-source-detail" value={sourceDetail} onChange={(e) => setSourceDetail(e.target.value)} className="adm-input" placeholder="예: @noeul.seoul" maxLength={200} />
             </div>
+          </div>
+
+          <div>
+            <label className="adm-label" htmlFor="manual-payment-method">결제 수단 Payment method</label>
+            <select
+              id="manual-payment-method"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="adm-select"
+              style={{ width: '100%' }}
+            >
+              <option value="bank_transfer">무통장 입금 (입금 확인 필요)</option>
+              <option value="card">카드 (외부에서 결제 완료)</option>
+              <option value="manual">수기 결제</option>
+            </select>
+            <p style={{ fontSize: '0.6875rem', color: '#71717a', marginTop: 4, marginBottom: 0 }}>
+              무통장 입금은 주문 목록에서 <strong>입금 확인</strong>을 눌러야 매출에 반영됩니다.
+            </p>
           </div>
 
           <div className="adm-card" style={{ padding: '14px' }}>

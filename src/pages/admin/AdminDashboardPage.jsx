@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'wouter';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { PageHeader } from '../../components/admin/ui/PageHeader.jsx';
 import { ErrorBanner, Empty } from '../../components/admin/ui/Empty.jsx';
 import { StatusPill } from '../../components/admin/ui/StatusPill.jsx';
 import { adminApi } from '../../utils/api.js';
-import { formatKRW, ORDER_STATUS_MAP } from '../../utils/formatters.js';
+import { formatKRW, ORDER_STATUS_MAP, getAdminPaymentStatus } from '../../utils/formatters.js';
 import { sourceLabel } from '../../utils/orderSources.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useAdminPolling } from '../../hooks/useAdminPolling.js';
 import { DashboardSkeleton } from '../../components/admin/AdminSkeleton.jsx';
 import {
   DollarSign,
@@ -19,24 +20,33 @@ import {
   CheckCircle,
   Clock,
   FileSpreadsheet,
+  RefreshCw,
+  ShieldAlert,
 } from 'lucide-react';
 
 export function AdminDashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const { showToast } = useToast();
+  const requestSeq = useRef(0);
+  const errorRef = useRef('');
 
-  const fetchStats = async () => {
+  const fetchStats = async ({ silent = false } = {}) => {
+    const seq = ++requestSeq.current;
+    if (silent) setRefreshing(true);
     try {
-      setErrorMsg('');
       const res = await adminApi.get('/admin/dashboard/stats');
+      if (seq !== requestSeq.current) return;
       if (res.success) {
         setData(res);
+        if (errorRef.current) { errorRef.current = ''; setErrorMsg(''); }
       } else {
         throw new Error(res.message || '통계 데이터를 불러오지 못했습니다.');
       }
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       const msg = err?.message || '';
       console.error('Failed to load dashboard stats:', err);
       // 401/403 → likely not logged in as admin; AdminLayout will redirect, avoid duplicate toast
@@ -46,16 +56,23 @@ export function AdminDashboardPage() {
         setErrorMsg('관리자 권한이 없습니다. staff_members에 super_admin/admin으로 등록된 Google 계정으로 로그인하세요.');
       } else {
         setErrorMsg(msg || '통계 데이터를 불러오지 못했습니다.');
-        showToast(msg || '통계 데이터를 불러오지 못했습니다.', 'error');
+        // Polling must not repeat the same error toast every 15 seconds.
+        if (errorRef.current !== msg) {
+          errorRef.current = msg;
+          showToast(msg || '통계 데이터를 불러오지 못했습니다.', 'error');
+        }
       }
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) { setLoading(false); setRefreshing(false); }
     }
   };
 
   useEffect(() => {
     fetchStats();
   }, []);
+
+  // 15s refresh: a customer paying should show up without a manual reload.
+  const { refresh, lastUpdated } = useAdminPolling({ load: () => fetchStats({ silent: true }) });
 
   const handleQuickStock = async (productId, delta) => {
     const prev = data;
@@ -90,6 +107,8 @@ export function AdminDashboardPage() {
   const hasError = !!errorMsg && !data;
   const salesTrend = data?.salesTrend || [];
   const salesBySource = data?.salesBySource || [];
+  const alerts = stats.alerts || {};
+  const alertCount = (alerts.confirmingStale || 0) + (alerts.recoveryRequired || 0) + (alerts.paymentMismatch || 0);
 
   return (
     <AdminLayout activePage="dashboard">
@@ -99,6 +118,13 @@ export function AdminDashboardPage() {
         desc="노을(NOEUL) 브랜드 실시간 매출 및 주문 배송 현황"
         actions={(
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
+              {lastUpdated ? `마지막 업데이트 ${lastUpdated.toLocaleTimeString('ko-KR', { hour12: false })}` : '자동 갱신 대기 중'}
+            </span>
+            <button type="button" className="adm-btn" onClick={refresh} disabled={refreshing}>
+              <RefreshCw size={15} aria-hidden />
+              <span>{refreshing ? '갱신 중…' : '새로고침'}</span>
+            </button>
             <Link
               href="/admin/business"
               className="adm-btn adm-btn-secondary"
@@ -125,6 +151,28 @@ export function AdminDashboardPage() {
 
       <ErrorBanner message={hasError ? `대시보드 로드 실패: ${errorMsg}` : ''} onRetry={fetchStats} />
 
+      {alertCount > 0 && (
+        <div
+          className="adm-card"
+          style={{
+            padding: '14px 18px', marginBottom: '16px',
+            borderLeft: '4px solid #b45309',
+            display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center',
+            fontSize: '0.8125rem',
+          }}
+        >
+          <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#b45309' }}>
+            <ShieldAlert size={16} aria-hidden />
+            확인이 필요한 결제 {alertCount}건
+          </strong>
+          {alerts.confirmingStale > 0 && (
+            <Link href="/admin/orders?payment_status=confirming">결제 확인 지연 {alerts.confirmingStale}건</Link>
+          )}
+          {alerts.recoveryRequired > 0 && <span>PG 복구 필요 {alerts.recoveryRequired}건</span>}
+          {alerts.paymentMismatch > 0 && <span>결제-주문 불일치 {alerts.paymentMismatch}건</span>}
+        </div>
+      )}
+
         {/* 1. All 8 Specified KPI Metric Cards */}
         <div
           style={{
@@ -148,6 +196,10 @@ export function AdminDashboardPage() {
             <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600, marginTop: '4px', display: 'block' }}>
               실 결제 완료 누적
             </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f0f0f2', fontSize: '0.75rem', color: '#52525b' }}>
+              <span>오늘 <strong>{hasError ? '—' : formatKRW(stats.todaySales)}</strong></span>
+              <span>이번 달 <strong>{hasError ? '—' : formatKRW(stats.monthSales)}</strong></span>
+            </div>
           </div>
 
           {/* Total Products */}
@@ -226,7 +278,7 @@ export function AdminDashboardPage() {
               {hasError ? '—' : `${stats.pendingOrdersCount ?? 0}건`}
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, marginTop: '4px', display: 'block' }}>
-              입금 & 검수 대기중
+              결제·입금 대기 + 결제 확인 중
             </span>
           </div>
 
@@ -280,8 +332,9 @@ export function AdminDashboardPage() {
             }}
           >
             {[
-              { key: 'pending', label: '결제대기', count: orderStatuses.pending, color: '#b45309', bg: '#fef3c7' },
-              { key: 'confirmed', label: '주문접수', count: orderStatuses.confirmed, color: '#0369a1', bg: '#e0f2fe' },
+              { key: 'pending', label: '결제/입금 대기', count: orderStatuses.pending, color: '#b45309', bg: '#fef3c7' },
+              { key: 'confirming', label: '결제 확인 중', count: orderStatuses.confirming, color: '#3730a3', bg: '#eef2ff' },
+              { key: 'confirmed', label: '결제 완료', count: orderStatuses.confirmed, color: '#0369a1', bg: '#e0f2fe' },
               { key: 'processing', label: '상품준비중', count: orderStatuses.processing, color: '#6d28d9', bg: '#ede9fe' },
               { key: 'shipped', label: '배송중', count: orderStatuses.shipped, color: '#047857', bg: '#d1fae5' },
               { key: 'delivered', label: '배송완료', count: orderStatuses.delivered, color: '#15803d', bg: '#dcfce7' },
@@ -307,7 +360,40 @@ export function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* 2b. Sales by Channel (채널별 매출) */}
+        {/* 2b. 14-day paid revenue trend (KST days, exact sums) */}
+        <div className="adm-card" style={{ padding: '24px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>최근 14일 매출 추이</h3>
+            <span style={{ fontSize: '0.75rem', color: '#71717a' }}>결제 완료 기준 · KST</span>
+          </div>
+          {salesTrend.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', color: '#71717a', margin: 0 }}>아직 매출 데이터가 없습니다.</p>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '6px', height: '120px' }}>
+              {salesTrend.map((day, i) => {
+                const max = Math.max(...salesTrend.map(d => d.revenue || 0), 1);
+                const pct = Math.max(2, Math.round(((day.revenue || 0) / max) * 100));
+                return (
+                  <div key={day.date || i} style={{ flex: 1, textAlign: 'center' }} title={`${day.date} · ${formatKRW(day.revenue)}`}>
+                    <div
+                      style={{
+                        height: `${pct}%`,
+                        minHeight: '3px',
+                        backgroundColor: day.revenue > 0 ? 'var(--adm-accent)' : '#e4e4e7',
+                        borderRadius: '3px 3px 0 0',
+                      }}
+                    />
+                    <span style={{ fontSize: '0.625rem', color: '#71717a', display: 'block', marginTop: '4px' }}>
+                      {day.date.slice(5)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 2c. Sales by Channel (채널별 매출) */}
         <div className="adm-card" style={{ padding: '24px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>
@@ -382,8 +468,16 @@ export function AdminDashboardPage() {
                       </p>
                     </div>
 
-                    <Link href="/admin/orders" title="주문 관리에서 상태 변경">
+                    <Link
+                      href="/admin/orders"
+                      title="주문 관리에서 상태 변경"
+                      style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}
+                    >
                       <StatusPill status={ord.order_status} label={info.ko} />
+                      <StatusPill
+                        status={getAdminPaymentStatus(ord.payment_status).status}
+                        label={getAdminPaymentStatus(ord.payment_status).ko}
+                      />
                     </Link>
                   </div>
                 );

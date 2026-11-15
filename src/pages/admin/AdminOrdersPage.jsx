@@ -1,5 +1,5 @@
 import AdminPaymentActions from '../../components/admin/AdminPaymentActions.jsx';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { ManualOrderModal } from '../../components/admin/ManualOrderModal.jsx';
 import {
@@ -16,7 +16,8 @@ import {
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useListParams } from '../../hooks/useListParams.js';
-import { formatKRW } from '../../utils/formatters.js';
+import { useAdminPolling } from '../../hooks/useAdminPolling.js';
+import { formatKRW, getAdminPaymentStatus, paymentMethodLabel } from '../../utils/formatters.js';
 import { toCsv, downloadCsv, csvFilename } from '../../utils/csv.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { ORDER_SOURCES, sourceLabel } from '../../utils/orderSources.js';
@@ -26,6 +27,8 @@ import {
   ImageIcon,
   Plus,
   Download,
+  RefreshCw,
+  BadgeCheck,
 } from 'lucide-react';
 
 const ORDER_STATUS_KO = {
@@ -43,14 +46,8 @@ const ORDER_STATUS_KO = {
   refunded: '반품/환불',
 };
 
-const PAYMENT_STATUS_PILL = {
-  pending_payment: { ko: '입금 대기', status: 'pending_payment' },
-  under_review: { ko: '입금 확인 요청', status: 'pending_payment' },
-  paid: { ko: '입금 확인 완료', status: 'paid' },
-  failed: { ko: '결제 실패', status: 'canceled' },
-};
-
-// Allowed manual transitions (mirrors backend state machine).
+// Allowed manual transitions (mirrors backend state machine). Deposit
+// confirmation is a separate action (confirm-deposit), not a status move.
 const NEXT_STATUSES = {
   pending_payment: ['canceled'],
   paid: ['processing'],
@@ -61,6 +58,25 @@ const NEXT_STATUSES = {
 const PAGE_SIZE = 20;
 
 const updateFirestoreOrderStatus = async () => {};
+
+/**
+ * Which unpaid orders can staff finalize by hand?
+ *
+ *  - bank transfer / manual payments: always (money arrives outside the PG)
+ *  - card payments recorded outside the storefront (manual orders): yes
+ *  - an abandoned website card checkout: NO. No money was taken, so marking it
+ *    paid would invent revenue.
+ */
+function canConfirmPayment(order) {
+  if (!order || order.order_status !== 'pending_payment') return false;
+  const method = order.payment_method || 'card';
+  const source = order.order_source || 'website';
+  return !(method === 'card' && source === 'website');
+}
+
+function confirmLabel(order) {
+  return order?.payment_method === 'bank_transfer' ? '입금 확인' : '결제 확인';
+}
 
 export function AdminOrdersPage() {
   // List state lives in the URL (?page=&search=&sort=&order=&status=&…):
@@ -76,6 +92,7 @@ export function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -83,6 +100,15 @@ export function AdminOrdersPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const { showToast } = useToast();
+
+  // Deposit confirmation (manual / bank-transfer orders).
+  const [depositOrder, setDepositOrder] = useState(null);
+  const [depositorName, setDepositorName] = useState('');
+  const [depositBusy, setDepositBusy] = useState(false);
+
+  // Stale-response guard: a slow poll must never overwrite a newer page state.
+  const requestSeq = useRef(0);
+  const errorRef = useRef('');
 
   // Order Details Drawer
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -92,10 +118,10 @@ export function AdminOrdersPage() {
   const [courierName, setCourierName] = useState('CJ대한통운');
   const [trackingNumber, setTrackingNumber] = useState('');
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async ({ silent = false } = {}) => {
+    const seq = ++requestSeq.current;
+    if (silent) setRefreshing(true); else setLoading(true);
     try {
-      setErrorMsg('');
       const qs = buildListParams({
         page,
         pageSize: PAGE_SIZE,
@@ -107,22 +133,37 @@ export function AdminOrdersPage() {
         source: selectedSource,
       });
       const res = await adminApi.get(`/admin/orders${qs}`);
+      if (seq !== requestSeq.current) return; // a newer request already landed
       const { data, total: t } = normalizeListResponse(res, page, PAGE_SIZE);
       setOrders(data);
       setTotal(t);
+      // Keep the open drawer in sync with the refreshed row.
+      setSelectedOrder(prev => (prev ? data.find(o => o.id === prev.id) || prev : prev));
+      if (errorRef.current) { errorRef.current = ''; setErrorMsg(''); }
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       console.error('Fetch orders error:', err);
       const msg = err?.message || '주문 목록을 불러오지 못했습니다.';
       setErrorMsg(msg);
-      showToast(msg, 'error');
+      // Polling must not spam a toast every 15s; only complain on a new error.
+      if (errorRef.current !== msg) {
+        errorRef.current = msg;
+        showToast(msg, 'error');
+      }
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) { setLoading(false); setRefreshing(false); }
     }
   };
 
   useEffect(() => {
     fetchOrders();
   }, [pv]);
+
+  // 15s poll, paused while a modal/drawer is open so typing is never clobbered.
+  const { refresh, lastUpdated } = useAdminPolling({
+    load: () => fetchOrders({ silent: true }),
+    enabled: !selectedOrder && !showManual && !depositOrder && !bulkAction,
+  });
 
   const handleSort = (key) => {
     const dir = sort.key === key ? (sort.dir === 'asc' ? 'desc' : 'asc') : 'desc';
@@ -145,6 +186,32 @@ export function AdminOrdersPage() {
       }
     } catch (err) {
       showToast(err?.message || '상태 변경 실패', 'error');
+    }
+  };
+
+  // Deposit confirmation: the only path that moves a bank-transfer order into
+  // `paid` (and therefore into revenue).
+  const handleConfirmDeposit = async (e) => {
+    e.preventDefault();
+    if (!depositOrder || depositBusy) return;
+    setDepositBusy(true);
+    try {
+      const res = await adminApi.patch(`/admin/orders/${depositOrder.id}/confirm-deposit`, {
+        depositor_name: depositorName.trim() || undefined,
+      });
+      if (res.success) {
+        showToast(res.message || '입금이 확인되었습니다.', 'success');
+        setSelectedOrder(prev => (prev && prev.id === depositOrder.id ? res.data : prev));
+        setDepositOrder(null);
+        setDepositorName('');
+        fetchOrders({ silent: true });
+      } else {
+        showToast(res.message || '입금 확인에 실패했습니다.', 'error');
+      }
+    } catch (err) {
+      showToast(err?.message || '입금 확인에 실패했습니다.', 'error');
+    } finally {
+      setDepositBusy(false);
     }
   };
 
@@ -230,7 +297,9 @@ export function AdminOrdersPage() {
         { label: '할인 Discount', get: (o) => o.discount_amount },
         { label: '배송비 Shipping', get: (o) => o.shipping_fee },
         { label: '총액 Total', get: (o) => o.total_amount },
-        { label: '결제상태 Payment', get: (o) => o.payment_status },
+        { label: '결제상태 Payment', get: (o) => getAdminPaymentStatus(o.payment_status).ko },
+        { label: '결제수단 Method', get: (o) => paymentMethodLabel(o.payment_method) },
+        { label: '승인일시 Paid at', get: (o) => (o.paid_at ? String(o.paid_at).replace('T', ' ').slice(0, 19) : '') },
         { label: '주문상태 Status', get: (o) => o.order_status },
         { label: '택배사 Courier', get: (o) => o.courier_name },
         { label: '운송장 Tracking', get: (o) => o.tracking_number },
@@ -326,10 +395,34 @@ export function AdminOrdersPage() {
       key: 'payment',
       label: '결제 상태 Payment',
       render: (ord) => {
-        const pill = PAYMENT_STATUS_PILL[ord.payment_status] || PAYMENT_STATUS_PILL.pending_payment;
+        const pill = getAdminPaymentStatus(ord.payment_status);
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
             <StatusPill status={pill.status} label={pill.ko} />
+            <span style={{ fontSize: '0.6875rem', color: '#71717a' }}>
+              {paymentMethodLabel(ord.payment_method)}
+              {ord.paid_at ? ` · ${String(ord.paid_at).replace('T', ' ').slice(0, 16)}` : ''}
+            </span>
+            {canConfirmPayment(ord) && (
+              <button
+                type="button"
+                className="adm-btn adm-btn-primary"
+                style={{ padding: '3px 8px', fontSize: '0.6875rem' }}
+                onClick={() => {
+                  setDepositOrder(ord);
+                  setDepositorName(ord.depositor_name || ord.customer_name || '');
+                }}
+              >
+                <BadgeCheck size={11} aria-hidden />
+                <span>{confirmLabel(ord)}</span>
+              </button>
+            )}
+            {ord.payment_recovery_required && (
+              <span style={{ fontSize: '0.6875rem', color: '#b45309', fontWeight: 700 }}>⚠ 복구 필요</span>
+            )}
+            {ord.payment_mismatch && (
+              <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 700 }}>⚠ 결제-주문 불일치</span>
+            )}
             {ord.payment_receipt_url && (
               <button
                 type="button"
@@ -399,6 +492,13 @@ export function AdminOrdersPage() {
         desc="고객 무통장 입금 영수증 검수, 주문 확정, 배송 처리 및 운송장 등록"
         actions={(
           <>
+            <span style={{ fontSize: '0.75rem', color: '#71717a', alignSelf: 'center' }}>
+              {lastUpdated ? `마지막 업데이트 ${lastUpdated.toLocaleTimeString('ko-KR', { hour12: false })}` : '자동 갱신 대기 중'}
+            </span>
+            <button type="button" className="adm-btn" onClick={refresh} disabled={refreshing}>
+              <RefreshCw size={15} aria-hidden />
+              <span>{refreshing ? '갱신 중…' : '새로고침'}</span>
+            </button>
             <button type="button" className="adm-btn" onClick={handleExportCsv} disabled={exporting}>
               <Download size={15} aria-hidden />
               <span>{exporting ? '내보내는 중…' : 'CSV 다운로드'}</span>
@@ -428,21 +528,25 @@ export function AdminOrdersPage() {
             name: 'payment_status', value: selectedPaymentStatus, onChange: (v) => listParams.set({ payment_status: v }), ariaLabel: '결제 상태', label: '결제 상태',
             options: [
               { value: 'all', label: '전체 결제 상태' },
-              { value: 'under_review', label: '⭐ 입금 확인 요청 (검수 대기중)' },
-              { value: 'pending_payment', label: '입금 대기' },
-              { value: 'paid', label: '입금 확인 완료' },
+              { value: 'paid', label: '결제 완료 (배송중 포함)' },
+              { value: 'confirming', label: '결제 확인 중' },
+              { value: 'pending_payment', label: '결제/입금 대기' },
+              { value: 'deposit_pending', label: '무통장 입금 대기' },
+              { value: 'failed', label: '결제 실패/만료' },
+              { value: 'refunded', label: '환불' },
             ],
           },
           {
             name: 'status', value: selectedStatus, onChange: (v) => listParams.set({ status: v }), ariaLabel: '주문 상태', label: '주문 상태',
             options: [
               { value: 'all', label: '전체 주문 상태' },
-              { value: 'pending_verification', label: '검수 대기' },
-              { value: 'confirmed', label: '결제 완료' },
+              { value: 'pending_payment', label: '결제 대기' },
+              { value: 'confirming', label: '결제 확인 중' },
+              { value: 'paid', label: '결제 완료' },
               { value: 'processing', label: '상품준비중' },
               { value: 'shipped', label: '배송중' },
               { value: 'delivered', label: '배송완료' },
-              { value: 'canceled', label: '미결제 주문 취소' },
+              { value: 'canceled', label: '주문 취소' },
             ],
           },
         ]}
@@ -501,6 +605,38 @@ export function AdminOrdersPage() {
         {selectedOrder && (
           <div style={{ display: 'grid', gap: 16 }}>
             <AdminPaymentActions key={selectedOrder.id} orderId={selectedOrder.id} />
+
+            <div className="adm-card" style={{ padding: 16, fontSize: '0.875rem', lineHeight: 1.7 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <strong>결제 정보 Payment</strong>
+                <StatusPill
+                  status={getAdminPaymentStatus(selectedOrder.payment_status).status}
+                  label={getAdminPaymentStatus(selectedOrder.payment_status).ko}
+                />
+              </div>
+              <p style={{ margin: 0 }}><strong>수단:</strong> {paymentMethodLabel(selectedOrder.payment_method)}</p>
+              <p style={{ margin: 0 }}><strong>승인 시각:</strong> {selectedOrder.paid_at ? String(selectedOrder.paid_at).replace('T', ' ').slice(0, 19) : '미결제'}</p>
+              {selectedOrder.depositor_name && <p style={{ margin: 0 }}><strong>입금자:</strong> {selectedOrder.depositor_name}</p>}
+              {selectedOrder.payment_provider_status && <p style={{ margin: 0 }}><strong>PG 상태:</strong> {selectedOrder.payment_provider_status}</p>}
+              {selectedOrder.payment_key_masked && <p style={{ margin: 0 }}><strong>Payment Key:</strong> {selectedOrder.payment_key_masked}</p>}
+              {selectedOrder.payment_balance_amount != null && <p style={{ margin: 0 }}><strong>취소 가능 잔액:</strong> {formatKRW(selectedOrder.payment_balance_amount)}</p>}
+              {selectedOrder.payment_recovery_required && <p style={{ margin: 0, color: '#b45309', fontWeight: 700 }}>⚠ PG 상태 복구가 필요합니다.</p>}
+              {selectedOrder.payment_mismatch && <p style={{ margin: 0, color: '#b91c1c', fontWeight: 700 }}>⚠ 결제 원장과 주문 상태가 일치하지 않습니다.</p>}
+              {canConfirmPayment(selectedOrder) && (
+                <button
+                  type="button"
+                  className="adm-btn adm-btn-primary"
+                  style={{ marginTop: 10 }}
+                  onClick={() => {
+                    setDepositOrder(selectedOrder);
+                    setDepositorName(selectedOrder.depositor_name || selectedOrder.customer_name || '');
+                  }}
+                >
+                  <BadgeCheck size={14} aria-hidden />
+                  <span>{confirmLabel(selectedOrder)} 처리</span>
+                </button>
+              )}
+            </div>
 
             <div className="adm-card" style={{ padding: 16, fontSize: '0.875rem', lineHeight: 1.7 }}>
               <p style={{ margin: 0 }}><strong>수령인:</strong> {selectedOrder.customer_name} ({selectedOrder.customer_phone})</p>
@@ -582,6 +718,45 @@ export function AdminOrdersPage() {
               <div className="adm-modal-actions">
                 <button type="button" className="adm-btn" onClick={() => setTrackingModalOrder(null)}>취소 Cancel</button>
                 <button type="submit" className="adm-btn adm-btn-primary">등록 및 배송 시작</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
+
+      {depositOrder && (
+        <>
+          <div className="adm-backdrop" onClick={() => (depositBusy ? null : setDepositOrder(null))} />
+          <div className="adm-modal" role="dialog" aria-modal="true" aria-label={`${confirmLabel(depositOrder)} Payment confirmation`}>
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <BadgeCheck size={20} aria-hidden color="var(--adm-accent)" />
+              {confirmLabel(depositOrder)} 처리
+            </h2>
+            <p className="adm-modal-sub">
+              {depositOrder.order_number} · {formatKRW(depositOrder.total_amount)} · {paymentMethodLabel(depositOrder.payment_method)}
+            </p>
+            <form onSubmit={handleConfirmDeposit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {depositOrder.payment_method === 'bank_transfer' && (
+                <div>
+                  <label className="adm-label" htmlFor="adm-depositor">입금자명 Depositor</label>
+                  <input
+                    id="adm-depositor"
+                    value={depositorName}
+                    onChange={(e) => setDepositorName(e.target.value)}
+                    className="adm-input"
+                    placeholder="통장에 찍힌 입금자명"
+                    maxLength={40}
+                  />
+                </div>
+              )}
+              <p style={{ fontSize: '0.75rem', color: '#71717a', margin: 0 }}>
+                확인 시 주문이 <strong>결제 완료</strong>로 이동하고 매출에 반영됩니다. 실제로 입금/결제가 확인된 경우에만 진행하세요.
+              </p>
+              <div className="adm-modal-actions">
+                <button type="button" className="adm-btn" onClick={() => setDepositOrder(null)} disabled={depositBusy}>취소</button>
+                <button type="submit" className="adm-btn adm-btn-primary" disabled={depositBusy}>
+                  {depositBusy ? '처리 중…' : confirmLabel(depositOrder)}
+                </button>
               </div>
             </form>
           </div>

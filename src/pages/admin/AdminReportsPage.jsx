@@ -15,7 +15,7 @@ export function AdminReportsPage() {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [bySource, setBySource] = useState([]);
-  const [totals, setTotals] = useState({ orders: 0, revenue: 0, unpaid: 0, receiptPending: 0 });
+  const [totals, setTotals] = useState({ orders: 0, revenue: 0, unpaid: 0, receiptPending: 0, depositPending: 0 });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [source, setSource] = useState('all');
@@ -32,7 +32,7 @@ export function AdminReportsPage() {
       const res = await adminApi.get(`/admin/reports/sales?${params.toString()}`);
       if (res.success) {
         setBySource(res.data?.bySource || []);
-        setTotals(res.data?.totals || { orders: 0, revenue: 0, unpaid: 0, receiptPending: 0 });
+        setTotals(res.data?.totals || { orders: 0, revenue: 0, unpaid: 0, receiptPending: 0, depositPending: 0 });
       }
     } catch (err) {
       setErrorMsg(err?.message || '');
@@ -139,7 +139,8 @@ export function AdminReportsPage() {
           { label: '총 주문', value: `${totals.orders || 0}건` },
           { label: '결제 매출', value: formatKRW(totals.revenue) },
           { label: '미결제', value: `${totals.unpaid || 0}건` },
-          { label: '입금확인 대기', value: `${totals.receiptPending || 0}건` },
+          { label: '무통장 입금 대기', value: `${totals.depositPending || 0}건` },
+          { label: '카드 결제 확인 중', value: `${totals.receiptPending || 0}건` },
         ].map(k => (
           <div key={k.label} className="adm-card" style={{ padding: '18px' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#71717a', textTransform: 'uppercase' }}>{k.label}</span>

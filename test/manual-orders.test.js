@@ -70,7 +70,8 @@ describe('Manual / external orders — backend wiring', () => {
     expect(admin.includes('order_source')).toBe(true);
     // Manual orders start unpaid (bank-transfer verify flow), never paid.
     const manualIdx = admin.indexOf("orders/manual");
-    const manualBlock = admin.slice(manualIdx, manualIdx + 9000);
+    const nextRoute = admin.indexOf('\n  app.', manualIdx);
+    const manualBlock = admin.slice(manualIdx, nextRoute > manualIdx ? nextRoute : manualIdx + 9000);
     expect(manualBlock.includes("status: 'pending_payment'")).toBe(true);
     expect(manualBlock.includes("status: 'paid'")).toBe(false);
     // Stock is reserved with compensation, like the storefront fallback.

@@ -84,15 +84,21 @@ describe('Wave 3 — Admin backend covers the admin UI', () => {
     expect(admin.includes('need(R.settings)')).toBe(true);
   });
 
-  it('no manual paid-marking anywhere in the admin surface', () => {
+  it('manual paid-marking exists only on the guarded deposit path', () => {
     const admin = read('api/admin.js');
-    expect(admin.includes("update({ status: 'paid' })")).toBe(false);
+    // Deposit confirmation is the one intentional manual paid-marking path:
+    // money role + step-up + a conditional pending_payment transition + audit.
+    expect(admin.includes("confirm-deposit', authenticate, staff(R.money), stepUp")).toBe(true);
+    expect(admin.includes('DEPOSIT_CONFIRM')).toBe(true);
+    expect(admin.includes("if (order.status !== 'pending_payment') return error(res, 409, 'DEPOSIT_NOT_APPLICABLE')")).toBe(true);
+    // The old verify-payment guard is unchanged.
     expect(admin.includes('VERIFY_NOT_APPLICABLE')).toBe(true);
   });
 
-  it('verify-payment and settings mutations require step-up', () => {
+  it('verify-payment, deposit confirmation and settings mutations require step-up', () => {
     const admin = read('api/admin.js');
     expect(admin.includes("verify-payment', authenticate, staff(R.money), stepUp")).toBe(true);
+    expect(admin.includes("confirm-deposit', authenticate, staff(R.money), stepUp")).toBe(true);
     expect(admin.includes("content/settings', authenticate, staff(R.settings), stepUp")).toBe(true);
   });
 

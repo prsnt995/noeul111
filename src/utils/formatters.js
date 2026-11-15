@@ -93,3 +93,36 @@ export function customerStepIndex(status) {
 export function isTerminalOrderStatus(status) {
   return ['canceled', 'cancelled', 'expired', 'refunded', 'refund_pending'].includes(status);
 }
+
+/**
+ * Admin-facing PAYMENT states.
+ *
+ * These are intentionally separate from ORDER_STATUS_MAP: an order's status is
+ * a fulfillment machine, and deriving the payment badge from it made shipped
+ * orders look unpaid again. The API now sends a real `payment_status` sourced
+ * from the Toss ledger (see paymentStatusFor in api/admin.js).
+ */
+export const ADMIN_PAYMENT_STATUS_MAP = {
+  paid: { ko: '결제 완료', en: 'Paid', status: 'paid' },
+  confirming: { ko: '결제 확인 중', en: 'Verifying', status: 'confirming' },
+  pending_payment: { ko: '결제/입금 대기', en: 'Awaiting payment', status: 'pending_payment' },
+  failed: { ko: '결제 실패', en: 'Failed', status: 'canceled' },
+  canceled: { ko: '결제 취소', en: 'Cancelled', status: 'canceled' },
+  refund_pending: { ko: '환불 진행 중', en: 'Refund pending', status: 'refund_pending' },
+  refunded: { ko: '환불 완료', en: 'Refunded', status: 'refunded' },
+};
+
+export function getAdminPaymentStatus(status) {
+  return ADMIN_PAYMENT_STATUS_MAP[status] || ADMIN_PAYMENT_STATUS_MAP.pending_payment;
+}
+
+export const PAYMENT_METHOD_LABELS = {
+  card: { ko: '카드', en: 'Card' },
+  bank_transfer: { ko: '무통장 입금', en: 'Bank transfer' },
+  manual: { ko: '수기 결제', en: 'Manual' },
+};
+
+export function paymentMethodLabel(method, lang = 'ko') {
+  const entry = PAYMENT_METHOD_LABELS[method] || PAYMENT_METHOD_LABELS.card;
+  return lang === 'en' ? entry.en : entry.ko;
+}

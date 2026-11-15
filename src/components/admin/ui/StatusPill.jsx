@@ -1,11 +1,13 @@
 import React from 'react';
 
 const STATUS_CLASS = {
-  pending: 'adm-badge-pending', pending_payment: 'adm-badge-pending', confirming: 'adm-badge-pending', under_review: 'adm-badge-pending',
+  pending: 'adm-badge-pending', pending_payment: 'adm-badge-pending', under_review: 'adm-badge-pending',
+  confirming: 'adm-badge-confirming',
   paid: 'adm-badge-paid', confirmed: 'adm-badge-confirmed',
   processing: 'adm-badge-processing',
   shipped: 'adm-badge-shipped', delivered: 'adm-badge-delivered',
   canceled: 'adm-badge-canceled', cancelled: 'adm-badge-cancelled', refunded: 'adm-badge-refunded', refund_pending: 'adm-badge-refunded',
+  failed: 'adm-badge-failed',
   active: 'adm-badge-delivered', hidden: 'adm-badge-neutral', draft: 'adm-badge-neutral',
 };
 

@@ -37,6 +37,87 @@ import {
   SKU_SEQ_MAX,
 } from '../src/utils/sku.js';
 
+// Fulfillment states that mean the money has been captured. Payment status must
+// never be inferred by *excluding* these — that is what made a shipped order
+// report "입금 대기" again.
+export const PAID_ORDER_STATUSES = ['paid', 'processing', 'shipped', 'delivered'];
+
+const FAILED_LEDGER_STATUSES = ['canceled', 'cancelled', 'aborted', 'expired', 'failed'];
+
+/**
+ * Resolve the admin-facing payment state for an order.
+ *
+ * Precedence:
+ *   1. canceled / expired / refund* order  → terminal payment state
+ *   2. Toss ledger row                     → authoritative (paid / confirming / failed)
+ *   3. paid-family order status            → paid (manual deposits, pre-ledger rows)
+ *   4. everything else                     → pending_payment
+ *
+ * `app.payments` is the source of truth; the order status is only a fallback so
+ * historical rows without a ledger entry still render correctly.
+ */
+export function paymentStatusFor(order, payment) {
+  const status = String(order?.status || '');
+  if (status === 'canceled' || status === 'cancelled' || status === 'expired') return 'canceled';
+  if (status === 'refunded' || status === 'refund_pending') return status;
+
+  const ledger = String(payment?.status || '');
+  if (ledger === 'paid') return 'paid';
+  if (ledger === 'confirming') return 'confirming';
+  if (FAILED_LEDGER_STATUSES.includes(ledger)) return 'failed';
+
+  if (PAID_ORDER_STATUSES.includes(status)) return 'paid';
+  return 'pending_payment';
+}
+
+/**
+ * True when the ledger and the order disagree in a way a human must resolve
+ * (money captured but order still pending, or charge failed but order shipped).
+ * Only terminal contradictions are flagged so a transient confirm does not
+ * spam the "needs attention" queue.
+ */
+export function paymentMismatchFor(order, payment) {
+  if (!payment) return false;
+  const status = String(order?.status || '');
+  const ledger = String(payment?.status || '');
+  const orderPaid = PAID_ORDER_STATUSES.includes(status);
+  if (orderPaid && FAILED_LEDGER_STATUSES.includes(ledger)) return true;
+  if (!orderPaid && ledger === 'paid' && !['canceled', 'expired', 'refunded', 'refund_pending'].includes(status)) return true;
+  return false;
+}
+
+/** Channel is never enough to know the method, but it is a safe fallback. */
+function derivePaymentMethod(order, payment) {
+  const explicit = String(order?.payment_method || '');
+  if (['card', 'bank_transfer', 'manual'].includes(explicit)) return explicit;
+  if (payment) return 'card';
+  return normalizeOrderSource(order?.order_source) === 'website' ? 'card' : 'bank_transfer';
+}
+
+function maskPaymentKey(key) {
+  const k = String(key || '');
+  if (!k) return null;
+  if (k.length <= 8) return '••••';
+  return `${'•'.repeat(Math.min(12, k.length - 6))}${k.slice(-6)}`;
+}
+
+/** Start of the current KST day/month as an absolute instant. */
+export function kstPeriodStart(unit = 'day') {
+  const KST_OFFSET = 9 * 60 * 60 * 1000;
+  const shifted = new Date(Date.now() + KST_OFFSET); // KST wall clock in UTC fields
+  const y = shifted.getUTCFullYear();
+  const m = shifted.getUTCMonth();
+  const d = unit === 'month' ? 1 : shifted.getUTCDate();
+  return new Date(Date.UTC(y, m, d) - KST_OFFSET);
+}
+
+/** YYYY-MM-DD in KST for a timestamp. */
+export function kstDateKey(value) {
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 // Wave 3: Supabase-backed /api/v1/admin/* surface. The storefront frontend
 // speaks legacy payload shapes; this module translates them onto the
 // migration-schema tables (variant-first catalog, fixed/percentage coupons,
@@ -247,30 +328,38 @@ export function registerAdminRoutes(app, ctx) {
   app.get('/api/v1/admin/dashboard/stats', ...need(R.dashboard), async (req, res) => {
     try {
       const recentLimit = Math.min(Math.max(Number(req.query.recent) || 8, 1), 50);
-      const [ordersRes, productsRes, variantsRes, profilesRes] = await Promise.all([
-        database().from('orders').select('id,order_number,status,amount,created_at,user_id,order_source').order('created_at', { ascending: false }).limit(500).then(r => r, e => { console.error('dashboard orders error', e); return { data: [] }; }),
+      const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const trendStart = new Date(kstPeriodStart('day').getTime() - 13 * 24 * 60 * 60 * 1000);
+      const [ordersRes, productsRes, variantsRes, profilesRes, totals, staleConfirming, recoveryPending, channelRows, trendRows] = await Promise.all([
+        database().from('orders').select('*').order('created_at', { ascending: false }).limit(Math.max(recentLimit, 100)).then(r => r, e => { console.error('dashboard orders error', e); return { data: [] }; }),
         database().from('products').select('id,gender,is_active,is_new').then(r => r, e => { console.error('dashboard products error', e); return { data: [] }; }),
         database().from('product_variants').select('id,product_id,stock').then(r => r, e => { console.error('dashboard variants error', e); return { data: [] }; }),
         database().from('profiles').select('id').then(r => r, e => { console.error('dashboard profiles error', e); return { data: [] }; }),
+        loadAdminTotals(),
+        database().from('orders').select('id', { count: 'exact', head: true })
+          .eq('status', 'confirming').lt('created_at', staleCutoff)
+          .then(r => r?.count || 0, () => 0),
+        database().from('payments').select('order_id', { count: 'exact', head: true })
+          .eq('recovery_required', true)
+          .then(r => r?.count || 0, () => 0),
+        database().from('orders').select('order_source,status,amount').limit(5000).then(r => r.data || [], () => []),
+        database().from('orders').select('created_at,amount').in('status', PAID_ORDER_STATUSES)
+          .gte('created_at', trendStart.toISOString()).then(r => r.data || [], () => []),
       ]);
-      const orders = ordersRes.data || [];
+      const recentRows = ordersRes.data || [];
       const products = productsRes.data || [];
       const variants = variantsRes.data || [];
       const profiles = profilesRes.data || [];
-      const list = orders || [];
-      const paid = new Set(['paid', 'processing', 'shipped', 'delivered']);
-      const totalRevenue = list.filter(o => paid.has(o.status)).reduce((s, o) => s + (o.amount || 0), 0);
-      const byStatus = {};
-      for (const o of list) byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+      const statusCounts = totals.status_counts || {};
       const orderStatuses = {
-        pending: byStatus.pending_payment || 0,
-        pending_verification: byStatus.confirming || 0,
-        confirmed: byStatus.paid || 0,
-        processing: byStatus.processing || 0,
-        shipped: byStatus.shipped || 0,
-        delivered: byStatus.delivered || 0,
-        cancelled: byStatus.canceled || 0,
-        refunded: (byStatus.refunded || 0) + (byStatus.refund_pending || 0),
+        pending: statusCounts.pending_payment || 0,
+        confirming: statusCounts.confirming || 0,
+        confirmed: statusCounts.paid || 0,
+        processing: statusCounts.processing || 0,
+        shipped: statusCounts.shipped || 0,
+        delivered: statusCounts.delivered || 0,
+        cancelled: statusCounts.canceled || 0,
+        refunded: (statusCounts.refunded || 0) + (statusCounts.refund_pending || 0),
       };
       const byProduct = new Map();
       for (const v of (variants || [])) {
@@ -292,39 +381,62 @@ export function registerAdminRoutes(app, ctx) {
         } catch {}
       }
       const lowStockItems = [...byProduct.values()].filter(p => p.stock <= 15).sort((a, b) => a.stock - b.stock).slice(0, 10);
-      const itemCounts = {};
-      let items = [];
-      if (list.length) {
-        const { data: itemRows } = await database().from('order_items').select('order_id').in('order_id', list.slice(0, recentLimit).map(o => o.id)).then(r => r, e => ({ data: [] }));
-        items = itemRows || [];
+
+      // Recent orders go through the same projection as the orders list, so the
+      // customer name / amount / order status / payment status are real fields.
+      const recentOrders = await adminOrderList(recentRows.slice(0, recentLimit));
+      const recentPayments = await loadPaymentsByOrder(recentRows.map(o => o.id));
+      const paymentMismatch = recentRows.reduce((n, o) => n + (paymentMismatchFor(o, recentPayments.get(o.id)) ? 1 : 0), 0);
+
+      // 14-day paid revenue trend, bucketed by KST date.
+      const trendMap = new Map();
+      for (const row of (trendRows || [])) {
+        const key = kstDateKey(row.created_at);
+        if (!key) continue;
+        trendMap.set(key, (trendMap.get(key) || 0) + (row.amount || 0));
       }
-      for (const it of (items || [])) itemCounts[it.order_id] = (itemCounts[it.order_id] || 0) + 1;
-      let staff = [];
-      try { staff = await staffIds(database); } catch { staff = []; }
+      const salesTrend = Array.from({ length: 14 }, (_, i) => {
+        const key = kstDateKey(new Date(kstPeriodStart('day').getTime() - (13 - i) * 24 * 60 * 60 * 1000));
+        return { date: key, revenue: trendMap.get(key) || 0 };
+      });
+
+      let staffList = [];
+      try { staffList = await staffIds(database); } catch { staffList = []; }
       let salesBySource = [];
       try {
-        salesBySource = buildSalesBySource(list);
+        salesBySource = buildSalesBySource(channelRows || []);
       } catch { salesBySource = []; }
       res.json({
         success: true,
         stats: {
-          totalRevenue,
-          todaySales: 0,
-          todayOrders: 0,
+          // Exact aggregates (app.admin_totals): no 500-row cap.
+          totalRevenue: totals.revenue_all || 0,
+          todaySales: totals.revenue_today || 0,
+          monthSales: totals.revenue_month || 0,
+          todayOrders: totals.orders_today || 0,
+          monthOrders: totals.orders_month || 0,
           totalProducts: (products || []).length,
           womensProducts: (products || []).filter(p => p.gender === 'women').length,
           newArrivalsCount: (products || []).filter(p => p.is_new).length,
-          totalCustomers: (profiles || []).filter(p => !staff.includes(p.id)).length,
-          totalOrders: list.length,
-          pendingOrdersCount: orderStatuses.pending + orderStatuses.pending_verification,
+          totalCustomers: (profiles || []).filter(p => !staffList.includes(p.id)).length,
+          totalOrders: totals.orders_all || 0,
+          pendingOrdersCount: orderStatuses.pending + orderStatuses.confirming,
+          pendingPaymentCount: orderStatuses.pending,
+          confirmingCount: orderStatuses.confirming,
           completedOrdersCount: orderStatuses.delivered + orderStatuses.confirmed,
           orderStatuses,
           lowStockCount: lowStockItems.length,
+          alerts: {
+            confirmingStale: staleConfirming || 0,
+            recoveryRequired: recoveryPending || 0,
+            paymentMismatch,
+          },
         },
         lowStockItems,
-        recentOrders: list.slice(0, recentLimit).map(o => ({ ...o, item_count: itemCounts[o.id] || 0 })),
-        salesTrend: [],
+        recentOrders,
+        salesTrend,
         salesBySource,
+        lastUpdated: new Date().toISOString(),
       });
     } catch (e) {
       console.error('dashboard unexpected error', e);
@@ -332,14 +444,16 @@ export function registerAdminRoutes(app, ctx) {
       res.json({
         success: true,
         stats: {
-          totalRevenue: 0, todaySales: 0, todayOrders: 0,
+          totalRevenue: 0, todaySales: 0, monthSales: 0, todayOrders: 0, monthOrders: 0,
           totalProducts: 0, womensProducts: 0, newArrivalsCount: 0,
           totalCustomers: 0, totalOrders: 0,
-          pendingOrdersCount: 0, completedOrdersCount: 0,
-          orderStatuses: { pending:0, pending_verification:0, confirmed:0, processing:0, shipped:0, delivered:0, cancelled:0, refunded:0 },
+          pendingOrdersCount: 0, pendingPaymentCount: 0, confirmingCount: 0, completedOrdersCount: 0,
+          orderStatuses: { pending:0, confirming:0, confirmed:0, processing:0, shipped:0, delivered:0, cancelled:0, refunded:0 },
           lowStockCount: 0,
+          alerts: { confirmingStale: 0, recoveryRequired: 0, paymentMismatch: 0 },
         },
         lowStockItems: [], recentOrders: [], salesTrend: [], salesBySource: [],
+        lastUpdated: new Date().toISOString(),
         warning: 'Dashboard data temporarily unavailable — showing empty stats. Check server logs.',
       });
     }
@@ -1594,11 +1708,36 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPON_DELETE_FAILED'); }
   });
   // ---------- Orders ----------
+
+  /**
+   * One batched ledger read for a whole page of orders. Returns Map<orderId, payment>.
+   * Tolerant of pre-migration databases (missing balance_amount etc.) — the admin
+   * list must still render, just with less payment detail.
+   */
+  async function loadPaymentsByOrder(orderIds) {
+    const ids = [...new Set((orderIds || []).filter(Boolean))];
+    if (!ids.length) return new Map();
+    const { data } = await database().from('payments')
+      .select('order_id,status,provider_status,amount,balance_amount,recovery_required,payment_key,updated_at')
+      .in('order_id', ids)
+      .then(r => r, () => ({ data: [] }));
+    return new Map((data || []).map(p => [p.order_id, p]));
+  }
+
   function toAdminOrder(o, items, names, extra = {}) {
     const addr = o.address || {};
-    const derivedPay = o.status === 'paid' ? 'paid' : o.status === 'pending_payment' ? 'pending_payment' : o.status;
+    const pay = extra.payment || null;
     const media = extra.media || {};
     const ship = extra.ship || null;
+    const orderPaid = PAID_ORDER_STATUSES.includes(o.status);
+    const paymentMethod = derivePaymentMethod(o, pay);
+    const lines = (items || []).map(i => ({
+      product_name_ko: names?.[i.variant_id]?.name_ko || i.snapshot?.sku || '',
+      product_name_en: names?.[i.variant_id]?.name_en || '',
+      product_sku: i.snapshot?.sku || '',
+      image_url: media[i.variant_id] || '', price: i.unit_price, quantity: i.quantity,
+      size: i.snapshot?.size || '', color: i.snapshot?.color || '',
+    }));
     return {
       id: o.id, order_number: o.order_number, created_at: o.created_at,
       order_source: normalizeOrderSource(o.order_source),
@@ -1608,18 +1747,28 @@ export function registerAdminRoutes(app, ctx) {
       detail_address: addr.detail_address || '', shipping_memo: addr.shipping_memo || '',
       subtotal: o.subtotal, discount_amount: o.discount, coupon_code: o.coupon_code,
       shipping_fee: o.shipping, total_amount: o.amount,
-      payment_method: 'toss_card', payment_status: derivedPay, order_status: o.status,
-      payment_receipt_url: null, payment_sender_name: '', verified_by: null, verified_at: null,
+      // Payment state comes from the ledger, never from the fulfillment status.
+      payment_method: paymentMethod,
+      payment_status: paymentStatusFor(o, pay),
+      payment_provider: pay ? 'toss' : (paymentMethod === 'card' ? null : 'manual'),
+      payment_provider_status: pay?.provider_status || null,
+      payment_key_masked: maskPaymentKey(pay?.payment_key),
+      payment_balance_amount: pay?.balance_amount ?? null,
+      payment_recovery_required: !!pay?.recovery_required,
+      payment_mismatch: paymentMismatchFor(o, pay),
+      payment_updated_at: pay?.updated_at || null,
+      order_status: o.status,
+      payment_receipt_url: null,
+      payment_sender_name: o.depositor_name || addr.recipient || '',
+      depositor_name: o.depositor_name || '',
+      verified_by: null,
+      verified_at: o.paid_at || null,
       payment_admin_notes: null,
       courier_name: ship?.courier_name || '', tracking_number: ship?.tracking_number || '',
-      paid_at: ['paid', 'processing', 'shipped', 'delivered'].includes(o.status) ? o.created_at : null,
-      items: (items || []).map(i => ({
-        product_name_ko: names?.[i.variant_id]?.name_ko || i.snapshot?.sku || '',
-        product_name_en: names?.[i.variant_id]?.name_en || '',
-        product_sku: i.snapshot?.sku || '',
-        image_url: media[i.variant_id] || '', price: i.unit_price, quantity: i.quantity,
-        size: i.snapshot?.size || '', color: i.snapshot?.color || '',
-      })),
+      // Real approval time, not the order creation time.
+      paid_at: o.paid_at || (pay?.status === 'paid' ? pay.updated_at : null) || (orderPaid ? o.created_at : null),
+      item_count: lines.length,
+      items: lines,
     };
   }
 
@@ -1629,10 +1778,11 @@ export function registerAdminRoutes(app, ctx) {
     const rows = orderRows || [];
     if (!rows.length) return [];
     const ids = rows.map(o => o.id);
-    const [{ data: items }, { data: shipments }, { data: profiles }] = await Promise.all([
+    const [{ data: items }, { data: shipments }, { data: profiles }, payments] = await Promise.all([
       database().from('order_items').select('*').in('order_id', ids).then(r => r, () => ({ data: [] })),
       database().from('shipments').select('order_id,courier_name,tracking_number,created_at').in('order_id', ids).order('created_at', { ascending: false }).then(r => r, () => ({ data: [] })),
       database().from('profiles').select('id,email').in('id', [...new Set(rows.map(o => o.user_id))]).then(r => r, () => ({ data: [] })),
+      loadPaymentsByOrder(ids),
     ]);
     const list = items || [];
     const vids = [...new Set(list.map(i => i.variant_id).filter(Boolean))];
@@ -1666,6 +1816,7 @@ export function registerAdminRoutes(app, ctx) {
     }
     return rows.map(o => toAdminOrder(o, itemsByOrder.get(o.id) || [], names, {
       media, ship: shipByOrder.get(o.id) || null, email: emailByUser[o.user_id] || '',
+      payment: payments.get(o.id) || null,
     }));
   }
 
@@ -1679,7 +1830,48 @@ export function registerAdminRoutes(app, ctx) {
       const { data: vars } = await database().from('product_variants').select('id,product_id,products(name_ko,name_en)').in('id', vids);
       for (const v of (vars || [])) names[v.id] = v.products || {};
     }
-    return toAdminOrder(order, items, names);
+    const payments = await loadPaymentsByOrder([orderId]);
+    return toAdminOrder(order, items, names, { payment: payments.get(orderId) || null });
+  }
+
+  /**
+   * Exact revenue/order aggregates. Uses app.admin_totals() (KST boundaries,
+   * no row cap) and degrades to per-status head counts on pre-migration DBs.
+   */
+  async function loadAdminTotals() {
+    try {
+      const { data, error: rpcError } = await database().rpc('admin_totals');
+      if (!rpcError && data) return data;
+    } catch { /* function not installed yet */ }
+
+    const counts = async (status) => database().from('orders')
+      .select('id', { count: 'exact', head: true }).eq('status', status)
+      .then(r => r?.count || 0, () => 0);
+    const [statusCounts, all, today, month, paidRows] = await Promise.all([
+      (async () => {
+        const statuses = ['pending_payment', 'confirming', 'paid', 'processing', 'shipped', 'delivered', 'canceled', 'expired', 'refunded', 'refund_pending'];
+        const values = await Promise.all(statuses.map(counts));
+        return Object.fromEntries(statuses.map((s, i) => [s, values[i] || 0]));
+      })(),
+      database().from('orders').select('id', { count: 'exact', head: true }).then(r => r?.count || 0, () => 0),
+      database().from('orders').select('id', { count: 'exact', head: true }).gte('created_at', kstPeriodStart('day').toISOString()).then(r => r?.count || 0, () => 0),
+      database().from('orders').select('id', { count: 'exact', head: true }).gte('created_at', kstPeriodStart('month').toISOString()).then(r => r?.count || 0, () => 0),
+      database().from('orders').select('amount,created_at').in('status', PAID_ORDER_STATUSES).limit(5000).then(r => r.data || [], () => []),
+    ]);
+    const dayStart = kstPeriodStart('day').getTime();
+    const monthStart = kstPeriodStart('month').getTime();
+    const sumSince = (since) => paidRows
+      .filter(r => new Date(r.created_at).getTime() >= since)
+      .reduce((s, r) => s + (r.amount || 0), 0);
+    return {
+      revenue_today: sumSince(dayStart),
+      revenue_month: sumSince(monthStart),
+      revenue_all: paidRows.reduce((s, r) => s + (r.amount || 0), 0),
+      orders_today: today,
+      orders_month: month,
+      orders_all: all,
+      status_counts: statusCounts,
+    };
   }
 
   app.get('/api/v1/admin/orders', ...need(R.orders), async (req, res) => {
@@ -1693,12 +1885,19 @@ export function registerAdminRoutes(app, ctx) {
       let q = database().from('orders').select('*', { count: 'exact' }).order(sortCol, { ascending })
         .range(offset, offset + pageSize - 1);
       // UI labels predate the DB enum: map legacy display values to real
-      // statuses (pending_verification = awaiting deposit = pending_payment).
-      const STATUS_ALIASES = { cancelled: 'canceled', pending_verification: 'pending_payment', confirmed: 'paid' };
+      // statuses. `pending_verification` now means "verifying payment", which is
+      // the `confirming` state — it used to be aliased to pending_payment.
+      const STATUS_ALIASES = { cancelled: 'canceled', pending_verification: 'confirming', confirmed: 'paid' };
       if (status && status !== 'all') q = q.eq('status', STATUS_ALIASES[status] || status);
       if (payment_status && payment_status !== 'all') {
-        if (payment_status === 'paid') q = q.eq('status', 'paid');
-        else if (payment_status === 'pending_payment' || payment_status === 'under_review') q = q.eq('status', 'pending_payment');
+        // Paid is a FAMILY, not a single enum value: filtering for "결제 완료"
+        // must still return shipped and delivered orders.
+        if (payment_status === 'paid') q = q.in('status', PAID_ORDER_STATUSES);
+        else if (payment_status === 'confirming' || payment_status === 'under_review') q = q.eq('status', 'confirming');
+        else if (payment_status === 'pending_payment') q = q.eq('status', 'pending_payment');
+        else if (payment_status === 'deposit_pending') q = q.eq('status', 'pending_payment').neq('order_source', 'website');
+        else if (payment_status === 'failed') q = q.in('status', ['canceled', 'expired']);
+        else if (payment_status === 'refunded') q = q.in('status', ['refunded', 'refund_pending']);
       }
       if (source && source !== 'all') {
         if (isValidOrderSource(source)) q = q.eq('order_source', String(source).toLowerCase());
@@ -1722,7 +1921,10 @@ export function registerAdminRoutes(app, ctx) {
         if (source && source !== 'all' && String(e.message || '').includes('order_source')) {
           let fallback = database().from('orders').select('*').order(sortCol, { ascending })
             .range(offset, offset + pageSize - 1);
-          if (status && status !== 'all') fallback = fallback.eq('status', status === 'cancelled' ? 'canceled' : status);
+          if (status && status !== 'all') fallback = fallback.eq('status', STATUS_ALIASES[status] || status);
+          if (payment_status === 'paid') fallback = fallback.in('status', PAID_ORDER_STATUSES);
+          else if (payment_status === 'confirming' || payment_status === 'under_review') fallback = fallback.eq('status', 'confirming');
+          else if (payment_status === 'pending_payment') fallback = fallback.eq('status', 'pending_payment');
           const { data: fb, error: fbErr } = await fallback;
           if (fbErr) throw fbErr;
           const out = await adminOrderList((fb || []).filter(o => normalizeOrderSource(o.order_source) === String(source).toLowerCase()));
@@ -1750,6 +1952,11 @@ export function registerAdminRoutes(app, ctx) {
         return error(res, 400, 'INVALID_SOURCE');
       }
       const sourceDetail = String(b.source_detail || '').slice(0, 200);
+      // Deposit is the default for external channels; staff can still record a
+      // card/manual payment taken outside the storefront.
+      const manualPaymentMethod = ['card', 'bank_transfer', 'manual'].includes(b.payment_method)
+        ? b.payment_method
+        : 'bank_transfer';
       const customerName = String(b.customer_name || '').trim().slice(0, 60);
       const customerPhone = String(b.customer_phone || '').trim().slice(0, 30);
       const customerEmail = String(b.customer_email || '').trim().slice(0, 120);
@@ -1860,14 +2067,24 @@ export function registerAdminRoutes(app, ctx) {
       if (placed?.outcome === 'insufficient_stock') return error(res, 409, 'INSUFFICIENT_STOCK');
       if (placed?.outcome === 'coupon_invalid') return error(res, 400, 'COUPON_INVALID');
       if (placed?.outcome !== 'created') throw new Error('ORDER_CREATE_FAILED');
-      const extras = { order_source: orderSource, source_detail: sourceDetail || null };
+      const extras = { order_source: orderSource, source_detail: sourceDetail || null, payment_method: manualPaymentMethod };
+      if (b.depositor_name) extras.depositor_name = String(b.depositor_name).trim().slice(0, 40);
       if (orderSource !== 'website') {
         extras.expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       }
       try {
         await database().from('orders').update(extras).eq('id', placed.order_id);
       } catch (extrasErr) {
-        if (!String(extrasErr?.message || '').includes('order_source')) throw extrasErr;
+        // Legacy DB without the new columns: retry with what the schema has.
+        const msg = String(extrasErr?.message || '');
+        if (/payment_method|depositor_name/.test(msg)) {
+          const legacy = Object.fromEntries(
+            Object.entries(extras).filter(([key]) => key !== 'payment_method' && key !== 'depositor_name')
+          );
+          await database().from('orders').update(legacy).eq('id', placed.order_id).then(r => r, () => null);
+        } else if (!msg.includes('order_source')) {
+          throw extrasErr;
+        }
         // Legacy DB without order_source columns: the atomic order stands on defaults.
       }
       const { data: order } = await database().from('orders').select('*').eq('id', placed.order_id).maybeSingle();
@@ -1910,8 +2127,14 @@ export function registerAdminRoutes(app, ctx) {
       const filtered = (source && source !== 'all')
         ? rows.filter(r => r.source === String(source).toLowerCase())
         : rows;
-      const unpaidCount = (orders || []).filter(o => ['pending_payment', 'confirming'].includes(o.status)).length;
+      const unpaidCount = (orders || []).filter(o => o.status === 'pending_payment').length;
       const receiptPending = (orders || []).filter(o => o.status === 'confirming').length;
+      // Deposit orders are pending_payment orders that did not come from the
+      // card checkout. They are the ones that need a human to confirm the bank
+      // transfer.
+      const depositPending = (orders || []).filter(o =>
+        o.status === 'pending_payment' && normalizeOrderSource(o.order_source) !== 'website'
+      ).length;
       if (format === 'csv') {
         const csv = salesBySourceToCsv(filtered);
         res.set('Content-Type', 'text/csv; charset=utf-8');
@@ -1928,6 +2151,7 @@ export function registerAdminRoutes(app, ctx) {
             revenue: filtered.reduce((s, r) => s + r.revenue_paid, 0),
             unpaid: unpaidCount,
             receiptPending,
+            depositPending,
           },
         },
       });
@@ -2110,7 +2334,7 @@ export function registerAdminRoutes(app, ctx) {
         await database().from('orders').update({ status: 'processing' }).eq('id', order.id).eq('status', 'paid');
         await database().from('order_status_history').insert({ order_id: order.id, status: 'processing', note: 'Payment verified, fulfillment started', actor_id: req.locals.session.user_id });
         await auditLog(req, 'PAYMENT_VERIFY', { table: 'orders', id: order.id });
-        res.json({ success: true, message: '입금이 성공적으로 승인 확인되었습니다. 주문이 확정되었습니다.', data: await adminOrderDetail(order.id) });
+        res.json({ success: true, message: '출고가 승인되어 상품 준비 단계로 이동했습니다.', data: await adminOrderDetail(order.id) });
       } else {
         if (action !== 'reject' || order.status !== 'pending_payment') return error(res, 409, 'USE_PG_REFUND');
         const rel = await releaseHoldRpc({ p_order_id: order.id, p_from: ['pending_payment'], p_to: 'canceled', p_effect_key: `order-cancel:${order.id}`, p_kind: 'ORDER_CANCELED' });
@@ -2119,6 +2343,68 @@ export function registerAdminRoutes(app, ctx) {
         res.json({ success: true, message: '입금 확인이 반려 처리되었습니다.', data: await adminOrderDetail(order.id) });
       }
     } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); }
+  });
+
+  // Manual payment confirmation for orders whose money arrives outside the
+  // Toss flow (bank transfer / manual card / cash).
+  //
+  // Before this endpoint existed there was no way to move a deposit order into
+  // `paid`: the status machine only allowed pending_payment → canceled, and
+  // verify-payment required the order to already be paid. Deposit orders were
+  // therefore stuck forever and never counted toward revenue.
+  //
+  // This is the ONE intentional manual paid-marking path. It is guarded by the
+  // money role, step-up, a conditional pending_payment → paid transition (so
+  // double clicks cannot double-count) and an audit entry. The admin UI only
+  // offers it for orders whose money was collected outside the storefront, but
+  // the API stays permissive so a lost Toss webhook can still be reconciled.
+  app.patch('/api/v1/admin/orders/:id/confirm-deposit', authenticate, staff(R.money), stepUp, async (req, res) => {
+    try {
+      const { data: order } = await database().from('orders').select('id,status,payment_method,order_source').eq('id', req.params.id).maybeSingle();
+      if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
+      if (order.status !== 'pending_payment') return error(res, 409, 'DEPOSIT_NOT_APPLICABLE');
+
+      const method = ['card', 'bank_transfer', 'manual'].includes(order.payment_method) ? order.payment_method : 'bank_transfer';
+      const isDeposit = method === 'bank_transfer';
+      const depositor = String(req.body?.depositor_name || '').trim().slice(0, 40);
+      const paidAt = new Date().toISOString();
+      const patch = { status: 'paid', paid_at: paidAt };
+      if (depositor) patch.depositor_name = depositor;
+
+      // Conditional update: two admins clicking at once can only win once.
+      let claimed;
+      try {
+        ({ data: claimed } = await database().from('orders').update(patch)
+          .eq('id', order.id).eq('status', 'pending_payment').select('id').maybeSingle());
+      } catch (colErr) {
+        // Pre-migration DB has no paid_at/depositor_name columns.
+        if (!/paid_at|depositor_name/.test(String(colErr?.message || ''))) throw colErr;
+        ({ data: claimed } = await database().from('orders').update({ status: 'paid' })
+          .eq('id', order.id).eq('status', 'pending_payment').select('id').maybeSingle());
+      }
+      if (!claimed) return error(res, 409, 'DEPOSIT_NOT_APPLICABLE');
+
+      await database().from('order_status_history').insert({
+        order_id: order.id, status: 'paid',
+        note: `${isDeposit ? 'Deposit' : 'Manual payment'} confirmed by admin${depositor ? ` (${depositor})` : ''}`,
+        actor_id: req.locals.session.user_id,
+      }).then(r => r, () => null);
+      await auditLog(req, 'DEPOSIT_CONFIRM', {
+        table: 'orders', id: order.id,
+        before: { status: 'pending_payment' },
+        after: { status: 'paid', payment_method: method, depositor_name: depositor || null },
+      });
+      res.json({
+        success: true,
+        message: isDeposit
+          ? '입금이 확인되었습니다. 주문이 결제 완료로 이동합니다.'
+          : '결제가 확인되었습니다. 주문이 결제 완료로 이동합니다.',
+        data: await adminOrderDetail(order.id),
+      });
+    } catch (e) {
+      console.error('confirm-deposit error', e);
+      error(res, 503, 'ORDERS_UNAVAILABLE');
+    }
   });
 
   app.patch('/api/v1/admin/orders/:id/tracking', ...need(R.orders), async (req, res) => {
