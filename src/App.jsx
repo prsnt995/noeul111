@@ -1,4 +1,4 @@
-import React, { useState, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Route, Switch, useLocation } from 'wouter';
 
 // Context Providers
@@ -63,12 +63,70 @@ const AdminAuditPage = lazy(() => import('./pages/admin/AdminAuditPage.jsx').the
 const AdminPrivacyPage = lazy(() => import('./pages/admin/AdminPrivacyPage.jsx').then(m => ({ default: m.AdminPrivacyPage })));
 const AdminBusinessPage = lazy(() => import('./pages/admin/AdminBusinessPage.jsx').then(m => ({ default: m.AdminBusinessPage })));
 
+const SITE_ORIGIN = 'https://www.noeul.me';
+const BASE_TITLE = 'NOEUL | 노을 - Contemporary Korean Fashion';
+const PAGE_META = {
+  '/': ['NOEUL | 노을 - Contemporary Korean Fashion', '감각적인 실루엣과 미니멀리즘을 제안하는 프리미엄 서울 컨템포러리 패션 레이블, 노을.'],
+  '/shop': ['쇼핑 | NOEUL 노을', '노을의 전체 컬렉션을 만나보세요.'],
+  '/about': ['브랜드 소개 | NOEUL 노을', '노을이 추구하는 실루엣과 철학을 소개합니다.'],
+  '/contact': ['고객센터 | NOEUL 노을', '주문, 배송, 교환 및 반품 문의를 남겨주세요.'],
+  '/privacy': ['개인정보처리방침 | NOEUL 노을', '노을의 개인정보처리방침입니다.'],
+  '/terms': ['이용약관 | NOEUL 노을', '노을 서비스 이용약관입니다.'],
+  '/refund-exchange': ['교환 및 반품 | NOEUL 노을', '교환·반품 정책을 안내합니다.'],
+  '/shipping': ['배송 안내 | NOEUL 노을', '배송 기간과 배송비를 안내합니다.'],
+  '/cookies': ['쿠키 정책 | NOEUL 노을', '쿠키 사용에 대한 안내입니다.'],
+  '/disclaimer': ['면책 고지 | NOEUL 노을', '웹사이트 정보 이용에 관한 고지입니다.'],
+  '/business-info': ['사업자 정보 | NOEUL 노을', '노을의 사업자 등록 정보입니다.'],
+};
+// Routes that must never be indexed (private or transactional).
+const NOINDEX_PREFIXES = ['/admin', '/account', '/cart', '/checkout', '/order-success', '/auth'];
+
+function setMetaTag(selector, attr, key, content) {
+  if (typeof document === 'undefined') return;
+  let el = document.head.querySelector(selector);
+  if (!el) {
+    el = document.createElement('meta');
+    el.setAttribute(attr, key);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('content', content);
+}
+
+function syncRouteMeta(pathname) {
+  if (typeof document === 'undefined') return;
+  const path = pathname.split('?')[0].replace(/\/+$/, '') || '/';
+  const known = PAGE_META[path];
+  const isProduct = path.startsWith('/product/');
+  const isCustomPage = path.startsWith('/p/');
+  const title = known?.[0]
+    || (isProduct ? '상품 | NOEUL 노을' : isCustomPage ? 'NOEUL 노을' : BASE_TITLE);
+  const description = known?.[1]
+    || (isProduct ? '노을의 상품 상세 페이지입니다.' : '감각적인 실루엣과 미니멀리즘을 제안하는 프리미엄 서울 컨템포러리 패션 레이블, 노을.');
+  const canonical = `${SITE_ORIGIN}${path === '/' ? '/' : path}`;
+  const noindex = NOINDEX_PREFIXES.some(prefix => path === prefix || path.startsWith(`${prefix}/`)) || (!known && !isProduct && !isCustomPage);
+
+  document.title = title;
+  const canonicalEl = document.head.querySelector('link[rel="canonical"]');
+  if (canonicalEl) canonicalEl.setAttribute('href', canonical);
+  setMetaTag('meta[name="description"]', 'name', 'description', description);
+  setMetaTag('meta[name="robots"]', 'name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow');
+  setMetaTag('meta[property="og:title"]', 'property', 'og:title', title);
+  setMetaTag('meta[property="og:description"]', 'property', 'og:description', description);
+  setMetaTag('meta[property="og:url"]', 'property', 'og:url', canonical);
+  setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', title);
+  setMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', description);
+}
+
 function AppContent() {
   const [location] = useLocation();
   const [searchOpen, setSearchOpen] = useState(false);
 
   // Check if current route is an admin page
   const isAdminRoute = location.startsWith('/admin');
+
+  useEffect(() => {
+    syncRouteMeta(location);
+  }, [location]);
 
   return (
     <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100%', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>

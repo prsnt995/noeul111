@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
 import { PageHeader, DataTable, ErrorBanner, ConfirmModal } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
@@ -14,8 +13,6 @@ import {
   getExpenseCategoryLabel,
   getPaymentMethodLabel,
   calculateBusinessMetrics,
-  generateBusinessExcelWorkbook,
-  parseExpensesFromExcel,
 } from '../../utils/businessAccounting.js';
 import {
   FileSpreadsheet,
@@ -159,9 +156,10 @@ export function AdminBusinessPage() {
     loadAllBusinessData();
   }, [period, customFrom, customTo]);
 
-  // Excel Export Handler
-  const handleExportExcel = () => {
+  // Excel Export Handler — SheetJS is loaded on demand.
+  const handleExportExcel = async () => {
     try {
+      const { generateBusinessExcelWorkbook, writeBusinessExcelWorkbook } = await import('../../utils/businessExcel.js');
       const metrics = summaryData?.metrics || calculateBusinessMetrics({ orders, expenses, products });
       const currentPeriodLabel = ORDER_DATE_PERIODS.find((p) => p.id === period)?.ko || '전체 기간';
       const periodLabelWithDates = period === 'custom' && customFrom && customTo
@@ -179,7 +177,7 @@ export function AdminBusinessPage() {
 
       const todayStr = toKstDateString(new Date());
       const fileName = `NOEUL_경영관리보고서_${todayStr}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      writeBusinessExcelWorkbook(wb, fileName);
       showToast(`Excel 보고서가 성공적으로 다운로드되었습니다. (${fileName})`, 'success');
     } catch (err) {
       console.error('Excel Export Error:', err);
@@ -266,9 +264,10 @@ export function AdminBusinessPage() {
     if (!file) return;
 
     const reader = new window.FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const buffer = evt.target?.result;
+        const { parseExpensesFromExcel } = await import('../../utils/businessExcel.js');
         const result = parseExpensesFromExcel(buffer);
         setImportPreview(result);
         setImportModalOpen(true);

@@ -28,7 +28,7 @@ function generateManualOrderNumber() {
 // 0. Manual / external order creation (Instagram, WhatsApp, phone, other).
 // Bank-transfer flow only: starts pending_payment/pending_verification with
 // stock decremented, payment confirmed via verify-payment.
-router.post('/orders/manual', verifyRole(['super_admin', 'admin', 'order_manager']), (req, res) => {
+router.post('/orders/manual', verifyRole(['super_admin', 'admin']), (req, res) => {
   try {
     const {
       order_source,
@@ -390,7 +390,7 @@ router.patch('/orders/:id/verify-payment', verifyRole(['super_admin', 'admin']),
 // 4. Update order status (Wave 5: fulfillment transitions only. paid and
 // confirmed are NEVER assigned here — only the verification path above
 // produces them. Terminal states are immutable.)
-router.patch('/orders/:id/status', verifyRole(['super_admin', 'admin', 'order_manager']), (req, res) => {
+router.patch('/orders/:id/status', verifyRole(['super_admin', 'admin']), (req, res) => {
   try {
     const { id } = req.params;
     const { order_status } = req.body;
@@ -445,7 +445,7 @@ router.patch('/orders/:id/status', verifyRole(['super_admin', 'admin', 'order_ma
 
 // 5. Update tracking information (Wave 5: paid/confirmed/processing orders
 // only; courier and tracking number required; editors excluded.)
-router.patch('/orders/:id/tracking', verifyRole(['super_admin', 'admin', 'order_manager']), (req, res) => {
+router.patch('/orders/:id/tracking', verifyRole(['super_admin', 'admin']), (req, res) => {
   try {
     const { id } = req.params;
     const { courier_name, tracking_number } = req.body;

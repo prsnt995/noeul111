@@ -5,6 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { verifyAdmin } from '../../middleware/auth.js';
 import { query } from '../../db/database.js';
+import { UPLOAD_MAX_FILE_BYTES } from '../../../src/config/upload.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,8 +38,9 @@ const MIME_TO_EXT = {
   'image/png': '.png',
   'image/webp': '.webp',
   'image/gif': '.gif',
+  'image/avif': '.avif',
 };
-const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif']);
 const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
   const mime = String(file.mimetype || '').toLowerCase();
@@ -52,7 +54,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB limit
+  limits: { fileSize: UPLOAD_MAX_FILE_BYTES }, // shared, serverless-safe cap
 });
 
 const router = express.Router();

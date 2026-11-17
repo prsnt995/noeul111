@@ -289,7 +289,7 @@ router.post('/orders/:orderNumber/payment-receipt', verifyToken, upload.single('
     }
 
     const isOwner = order.user_id === req.user.id;
-    const isStaff = ['super_admin', 'admin', 'order_manager'].includes(req.user.role);
+    const isStaff = ['super_admin', 'admin'].includes(req.user.role);
     if (!isOwner && !isStaff) {
       return res.status(403).json({ success: false, message: '영수증 등록 권한이 없습니다.' });
     }

@@ -33,7 +33,6 @@ export function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [activeFilter, setActiveFilter] = useState('');
   const [sort, setSort] = useState('newest');
-  const [lastCategory, setLastCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // 1. Sync state with URL query parameters (any filter change restarts paging)
@@ -43,11 +42,13 @@ export function HomePage() {
     const c = sp.get('category') || 'all';
     const f = sp.get('filter') || '';
     const s = sp.get('search') || '';
+    const sortParam = sp.get('sort') || 'newest';
 
     setSelectedGender(g.toLowerCase());
     setSelectedCategory(c.toLowerCase());
     setActiveFilter(f.toLowerCase());
     setSearchQuery(s);
+    setSort(['newest', 'best', 'price_asc', 'price_desc'].includes(sortParam) ? sortParam : 'newest');
     setProducts([]);
     setLimit(24);
   }, [search]);
@@ -138,6 +139,7 @@ export function HomePage() {
         if (activeFilter === 'best') params.append('is_best', 'true');
         if (activeFilter === 'sale') params.append('is_sale', 'true');
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
+        if (sort !== 'newest') params.append('sort', sort);
         params.append('limit', String(limit));
 
         const json = await api.get(`/catalog/products?${params.toString()}`);
@@ -161,7 +163,7 @@ export function HomePage() {
 
     loadProducts();
     return () => { cancelled = true; };
-  }, [selectedGender, selectedCategory, activeFilter, searchQuery, limit]);
+  }, [selectedGender, selectedCategory, activeFilter, searchQuery, sort, limit]);
 
   // 5. Infinite scroll observer: as user scrolls down, automatically load more products
   useEffect(() => {
@@ -344,21 +346,37 @@ export function HomePage() {
               zIndex: 1,
             }}
           >
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.6875rem',
+                color: '#888888',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span>{t('shop.sort_by')}</span>
+              <select
+                value={sort}
+                onChange={(e) => {
+                  const nextSort = e.target.value;
+                  setSort(nextSort);
+                  const params = new URLSearchParams(window.location.search);
+                  if (nextSort === 'newest') params.delete('sort');
+                  else params.set('sort', nextSort);
+                  const qs = params.toString();
+                  setLocation(qs ? `/?${qs}` : '/');
+                }}
+                style={{ border: '1px solid #e4e4e7', borderRadius: '4px', padding: '4px 8px', minWidth: 110 }}
+              >
+                <option value="newest">{t('shop.sort_newest')}</option>
+                <option value="best">{t('shop.sort_best')}</option>
+                <option value="price_asc">{t('shop.sort_price_low')}</option>
+                <option value="price_desc">{t('shop.sort_price_high')}</option>
+              </select>
+            </label>
             {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
-  {/* Sort control */}
-  <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto', fontSize: '0.6875rem', color: '#888888'}}>
-    <span>Sort: </span>
-    <select
-      value={sort}
-      onChange={(e) => { setSort(e.target.value); const params = new URLSearchParams(window.location.search); if (e.target.value === 'newest') params.delete('sort'); else params.set('sort', e.target.value); setLocation(window.pathname + '?' + params.toString());}}
-      style={{border: '1px solid #e4e4e7', borderRadius: '4px', padding: '4px 8px', minWidth: 100}}
-    >
-      <option value="newest">Newest</option>
-      <option value="best">Best Sellers</option>
-      <option value="price_asc">Price Low→High</option>
-      <option value="price_desc">Price High→Low</option>
-    </select>
-  </div>
               <button
                 type="button"
                 onClick={handleReset}
@@ -494,23 +512,32 @@ export function HomePage() {
         ) : (
           <>
             <div key={`${selectedGender}-${selectedCategory}-${activeFilter}`} className="product-grid noeul-product-grid home-grid-animated">
-              {products.map((prod, i) => (
-                // Category divider when category changes
-                {lastCategory !== prod.category && lastCategory !== '' && <div className="category-divider" style={{borderTop: '1px solid #f0f0f0', margin: '12px 0', padding: '4px 0'}}><span style={{marginRight: '8px', color: '#888888', fontSize: '0.7rem'}}{prod.category_translation || prod.category}</span></div>}
-                {setLastCategory(prod.category)}
-                <ProductCard
-                  key={prod.id}
-                  product={prod}
-                  variant="overlay"
-                  eager={i < 5}
-                })
-                <ProductCard
-                  key={prod.id}
-                  product={prod}
-                  variant="overlay"
-                  eager={i < 5}
-                />
-              ))}
+              {products.map((prod, i) => {
+                const prev = products[i - 1];
+                const prevCategory = prev?.categories?.slug || prev?.category || '';
+                const nextCategory = prod.categories?.slug || prod.category || '';
+                const showDivider = i > 0 && nextCategory && nextCategory !== prevCategory;
+                return (
+                  <React.Fragment key={prod.id}>
+                    {showDivider && (
+                      <div
+                        className="category-divider"
+                        style={{
+                          gridColumn: '1 / -1',
+                          borderTop: '1px solid #f0f0f0',
+                          margin: '12px 0',
+                          padding: '4px 0',
+                        }}
+                      >
+                        <span style={{ marginRight: '8px', color: '#888888', fontSize: '0.7rem' }}>
+                          {prod.category_translation || nextCategory}
+                        </span>
+                      </div>
+                    )}
+                    <ProductCard product={prod} variant="overlay" eager={i < 5} />
+                  </React.Fragment>
+                );
+              })}
             </div>
 
             {/* Infinite Scroll Sentinel */}

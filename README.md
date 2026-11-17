@@ -12,7 +12,7 @@ NOEUL (노을) is a premium Seoul contemporary fashion e-commerce platform built
 | Payments | Toss Payments (card, easy pay) |
 | Auth | Cookie-session + Google OAuth + email/password |
 | Styling | Inline CSS + CSS variables, custom design system |
-| Tests | Vitest (302 tests, 25 files) |
+| Tests | Vitest (387 tests, 32 files) |
 | Lint | ESLint + Prettier |
 
 ## Project Structure
@@ -153,8 +153,8 @@ Backend API: `http://localhost:5001`
 
 ### Admin Auth
 - **Google OAuth:** Staff accounts sign in with allowlisted Google accounts
-- **Email/Password:** `POST /api/v1/auth/admin/login` — staff-only, requires an active `staff_members` row with one of `super_admin`, `admin`, `order_manager`, or `editor`
-- Admin routes are under `/api/v1/admin/*` and require staff authentication + step-up (MFA) for sensitive operations
+- **Email/Password:** `POST /api/v1/auth/admin/login` — staff-only, requires an active `staff_members` row with role `super_admin` or `admin` (the only two roles in the database)
+- Admin routes are under `/api/v1/admin/*` and require staff authentication; sensitive mutations also require step-up (AAL2 when `MFA_ENFORCEMENT=true`)
 
 ## Payments
 

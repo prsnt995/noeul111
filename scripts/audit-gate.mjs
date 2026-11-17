@@ -1,19 +1,15 @@
 #!/usr/bin/env node
 // Production dependency audit gate.
 //
-// `npm audit --omit=dev --audit-level=moderate` currently fails on xlsx,
-// which has two advisories and no patched release on npm (SheetJS publishes
-// newer builds outside the npm registry). The admin-only spreadsheet import/
-// export is the sole consumer; we keep the dependency pinned and allowlist it
-// here so every other production advisory still fails CI.
+// xlsx now resolves to SheetJS 0.20.3 from the vendor CDN tarball (the npm
+// registry stopped at 0.18.5, which has two unpatched advisories). Nothing is
+// allowlisted, so any moderate-or-higher production advisory fails CI.
 //
 // Usage: npm audit --omit=dev --json > audit.json || true
 //        node scripts/audit-gate.mjs audit.json
 import { readFileSync } from 'node:fs';
 
-const ALLOWLIST = new Map([
-  ['xlsx', 'No patched npm release (GHSA-4r6h-8v6p-xvw6, GHSA-5pgg-2g8v-p4x9); admin-only import/export.'],
-]);
+const ALLOWLIST = new Map();
 
 const severityRank = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
 const MIN_RANK = severityRank.moderate;

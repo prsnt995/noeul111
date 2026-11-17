@@ -8,7 +8,7 @@ import { Dropdown } from '../components/common/Dropdown.jsx';
 import { FilterChips } from '../components/common/FilterChips.jsx';
 import { CATEGORIES_BY_GENDER } from '../data/products.js';
 import { api } from '../utils/api.js';
-import { SlidersHorizontal, X, ChevronRight } from 'lucide-react';
+import { X } from 'lucide-react';
 
 export function ShopPage() {
   const { t } = useLanguage();
@@ -22,7 +22,6 @@ export function ShopPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [lastCategory, setLastCategory] = useState('');
   // Storefront paging: first 24, infinite scroll loads next PAGE_BATCH as user scrolls down.
   const [limit, setLimit] = useState(24);
   const [total, setTotal] = useState(0);
@@ -142,29 +141,6 @@ export function ShopPage() {
     if (selectedGender === 'men') return CATEGORIES_BY_GENDER.men;
     return [...CATEGORIES_BY_GENDER.women, ...CATEGORIES_BY_GENDER.men];
   }, [selectedGender, liveCategories]);
-
-  // Title formatting
-  const getPageHeading = () => {
-    if (searchQuery) {
-      return t('shop.search_results', { query: searchQuery });
-    }
-    if (activeFilter === 'new') return t('nav.new_arrivals');
-    if (activeFilter === 'best') return t('nav.best_sellers');
-    if (activeFilter === 'sale') return t('nav.sale');
-
-    let prefix = '';
-    if (selectedGender === 'women') prefix = t('nav.women');
-    else if (selectedGender === 'men') prefix = t('nav.men');
-    else prefix = t('nav.all');
-
-    if (selectedCategory !== 'all') {
-      const catObj = availableCategories.find((c) => c.key === selectedCategory);
-      const catName = catObj ? (catObj.label_ko || catObj.label) : selectedCategory;
-      return `${prefix} • ${catName}`;
-    }
-
-    return t('shop.collection', { prefix });
-  };
 
   return (
     <div style={{ backgroundColor: '#ffffff', minHeight: '100vh', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'clip' }}>
@@ -359,23 +335,32 @@ export function ShopPage() {
         ) : (
           <>
             <div className="noeul-product-grid product-grid">
-              {products.map((prod, i) => (
-                // Category divider when category changes
-                {lastCategory !== prod.category && lastCategory !== '' && <div className="category-divider" style={{borderTop: '1px solid #f0f0f0', margin: '12px 0', padding: '4px 0'}}><span style={{marginRight: '8px', color: '#888888', fontSize: '0.7rem'}}{prod.category_translation || prod.category}</span></div>}
-                {setLastCategory(prod.category)}
-                <ProductCard
-                  key={prod.id}
-                  product={prod}
-                  variant="overlay"
-                  eager={i < 5}
-                })
-                <ProductCard
-                  key={prod.id}
-                  product={prod}
-                  variant="overlay"
-                  eager={i < 5}
-                />
-              ))}
+              {products.map((prod, i) => {
+                const prev = products[i - 1];
+                const prevCategory = prev?.categories?.slug || prev?.category || '';
+                const nextCategory = prod.categories?.slug || prod.category || '';
+                const showDivider = i > 0 && nextCategory && nextCategory !== prevCategory;
+                return (
+                  <React.Fragment key={prod.id}>
+                    {showDivider && (
+                      <div
+                        className="category-divider"
+                        style={{
+                          gridColumn: '1 / -1',
+                          borderTop: '1px solid #f0f0f0',
+                          margin: '12px 0',
+                          padding: '4px 0',
+                        }}
+                      >
+                        <span style={{ marginRight: '8px', color: '#888888', fontSize: '0.7rem' }}>
+                          {prod.category_translation || nextCategory}
+                        </span>
+                      </div>
+                    )}
+                    <ProductCard product={prod} variant="overlay" eager={i < 5} />
+                  </React.Fragment>
+                );
+              })}
             </div>
 
             {/* Infinite Scroll Sentinel */}

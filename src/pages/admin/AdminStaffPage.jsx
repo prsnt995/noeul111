@@ -26,9 +26,7 @@ export function AdminStaffPage() {
     name: '',
     email: '',
     phone: '',
-    role: 'editor',
-    password: '',
-    new_password: '',
+    role: 'admin',
   });
 
   const fetchStaff = async () => {
@@ -57,9 +55,7 @@ export function AdminStaffPage() {
       name: '',
       email: '',
       phone: '',
-      role: 'editor',
-      password: '',
-      new_password: '',
+      role: 'admin',
     });
     setIsModalOpen(true);
   };
@@ -72,8 +68,6 @@ export function AdminStaffPage() {
       email: u.email,
       phone: u.phone || '',
       role: u.role,
-      password: '',
-      new_password: '',
     });
     setIsModalOpen(true);
   };
@@ -109,8 +103,6 @@ export function AdminStaffPage() {
   const ROLE_PILL = {
     super_admin: { label: '최고관리자 (Super Admin)', status: 'cancelled' },
     admin: { label: '총괄관리자 (Admin)', status: 'processing' },
-    editor: { label: '콘텐츠 에디터 (Editor)', status: 'paid' },
-    order_manager: { label: '주문/배송 매니저 (Order Manager)', status: 'pending_payment' },
   };
 
   const columns = [
@@ -173,7 +165,7 @@ export function AdminStaffPage() {
       <PageHeader
         ko="관리자 팀 & 권한 설정"
         en="Staff Roles"
-        desc="역할별(최고관리자, 에디터, 주문 매니저) 권한 분리 및 관리자 계정 생성 — Google 로그인 후 allowlist 등록 방식"
+        desc="최고관리자·총괄관리자 2단계 권한 — Google 로그인 후 allowlist 등록 방식"
         actions={(
           <button type="button" className="adm-btn adm-btn-primary" onClick={openAddModal}>
             <Plus size={16} aria-hidden />
@@ -188,9 +180,7 @@ export function AdminStaffPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '16px' }}>
         {[
           { role: 'super_admin', title: 'SUPER ADMIN', desc: '모든 설정, 재무, 권한을 포함한 100% 최고 통제권' },
-          { role: 'admin', title: 'ADMIN', desc: '상품, 주문, 프로모션 및 웹사이트 빌더 운영' },
-          { role: 'editor', title: 'EDITOR', desc: '배너, 페이지, 블로그, 섹션 및 상품 콘텐츠 관리' },
-          { role: 'order_manager', title: 'ORDER MANAGER', desc: '주문 상태 변경, 배송 운송장 번호 등록 및 CS' },
+          { role: 'admin', title: 'ADMIN', desc: '상품, 주문, 프로모션 및 웹사이트 운영' },
         ].map((r) => {
           const pill = ROLE_PILL[r.role];
           return (
@@ -262,23 +252,6 @@ export function AdminStaffPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">
-                    {isEditMode ? '비밀번호 변경 (변경 시에만 입력)' : '초기 비밀번호 *'}
-                  </label>
-                  <input
-                    type="password"
-                    required={!isEditMode}
-                    value={isEditMode ? formData.new_password : formData.password}
-                    onChange={(e) => {
-                      if (isEditMode) setFormData({ ...formData, new_password: e.target.value });
-                      else setFormData({ ...formData, password: e.target.value });
-                    }}
-                    placeholder="••••••••"
-                    className="form-input"
-                  />
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">역할 및 권한 등급 (Role) *</label>
                   <select
                     value={formData.role}
@@ -287,8 +260,6 @@ export function AdminStaffPage() {
                   >
                     <option value="super_admin">최고관리자 (Super Admin - 100% Full Access)</option>
                     <option value="admin">총괄관리자 (Admin - Operations & Products)</option>
-                    <option value="editor">콘텐츠 에디터 (Editor - Website Builder, Pages, Banners)</option>
-                    <option value="order_manager">주문/배송 매니저 (Order Manager - Orders & Shipping)</option>
                   </select>
                 </div>
 

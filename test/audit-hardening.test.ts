@@ -24,9 +24,9 @@ describe('Audit hardening regressions', () => {
   });
 
   it('fails the ads cron closed and compares secrets in constant time', () => {
-    expect(app.includes('function cronSecretMatches')).toBe(true);
-    expect(app.includes('if (production || env.ADS_CRON_SECRET)')).toBe(true);
-    expect(app.includes("cronSecretMatches(req, 'ADS_CRON_SECRET')")).toBe(true);
+    expect(app.includes('const adsSecret = env.ADS_CRON_SECRET || env.CRON_SECRET;')).toBe(true);
+    expect(app.includes("return error(res, 503, 'CRON_NOT_CONFIGURED');")).toBe(true);
+    expect(app.includes('secretMatches(req, adsSecret)')).toBe(true);
     expect(app.includes('timingSafeEqual')).toBe(true);
   });
 
@@ -115,9 +115,9 @@ describe('Audit hardening regressions', () => {
     expect(globalHeaders.some((h: any) => h.key === 'Content-Security-Policy')).toBe(true);
   });
 
-  it('keeps all four staff roles aligned between UI and API', () => {
-    expect(app.includes("const STAFF_ROLES = ['super_admin', 'admin', 'order_manager', 'editor'];")).toBe(true);
+  it('keeps the two DB staff roles aligned between UI and API', () => {
+    expect(app.includes("const STAFF_ROLES = ['super_admin', 'admin'];")).toBe(true);
     const authContext = read('src/context/AuthContext.jsx');
-    expect(authContext.includes("const STAFF_ROLES = ['super_admin', 'admin', 'order_manager', 'editor'];")).toBe(true);
+    expect(authContext.includes("const STAFF_ROLES = ['super_admin', 'admin'];")).toBe(true);
   });
 });

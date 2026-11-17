@@ -20,6 +20,7 @@ import {
   UPLOAD_FAILED_GENERIC,
   UPLOAD_FAILED_EMPTY,
 } from '../src/config/upload.js';
+import { notificationService } from '../server/services/notificationService.js';
 import { getCategoryPrefix, generateNextSku } from '../src/utils/product.js';
 import {
   EXPENSE_CATEGORIES,
@@ -123,21 +124,20 @@ export function kstDateKey(value) {
 // migration-schema tables (variant-first catalog, fixed/percentage coupons,
 // JSON content docs). No manual paid-marking exists anywhere here by design.
 //
-// Role model (deny by default via staff()):
+// Role model (deny by default via staff()). The database only allows these
+// two roles (staff_members_role_check), so the API must not invent others:
 //   super_admin — everything including staff CRUD and settings
 //   admin       — catalog, orders, CMS, settings, customers (no staff CRUD)
-//   order_manager — orders fulfillment + refunds + customer reads
-//   editor      — catalog + CMS content (no orders/customers/settings/staff)
 
 const R = {
   catalog: ['super_admin', 'admin'],
-  orders: ['super_admin', 'admin', 'order_manager'],
-  money: ['super_admin', 'admin', 'order_manager'],
+  orders: ['super_admin', 'admin'],
+  money: ['super_admin', 'admin'],
   cms: ['super_admin', 'admin'],
   settings: ['super_admin', 'admin'],
-  customers: ['super_admin', 'admin', 'order_manager'],
-  dashboard: ['super_admin', 'admin', 'order_manager'],
-  business: ['super_admin', 'admin', 'order_manager'],
+  customers: ['super_admin', 'admin'],
+  dashboard: ['super_admin', 'admin'],
+  business: ['super_admin', 'admin'],
 };
 
 const random = () => randomBytes(6).toString('base64url');
@@ -307,6 +307,37 @@ function pageEnvelope({ data = [], total = 0, page = 1, pageSize = 20 } = {}) {
   };
 }
 
+// PostgREST caps every response at `max-rows` (1000 on Supabase), so a single
+// `.limit(2000|5000)` truncates silently — reports then under-count revenue.
+// This pages the query to exhaustion. `makeQuery` must return a fresh builder
+// with a *total* order (a unique tiebreaker such as `id`), otherwise equal sort
+// keys can repeat or skip rows across page boundaries.
+const FETCH_ALL_PAGE_SIZE = 1000;
+const FETCH_ALL_MAX_ROWS = 200000;
+async function fetchAllRows(makeQuery, { pageSize = FETCH_ALL_PAGE_SIZE, max = FETCH_ALL_MAX_ROWS } = {}) {
+  const rows = [];
+  for (let offset = 0; offset < max; offset += pageSize) {
+    const { data, error: e } = await makeQuery().range(offset, offset + pageSize - 1);
+    if (e) throw e;
+    if (!Array.isArray(data) || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < pageSize) break;
+  }
+  return rows;
+}
+
+// PostgREST `.in()` filters travel in the query string: thousands of UUIDs
+// exceed URL limits. Chunk the ids and page each chunk with fetchAllRows.
+async function fetchInChunks(makeQuery, values, { chunkSize = 150, max = FETCH_ALL_MAX_ROWS } = {}) {
+  const ids = [...new Set((values || []).filter(Boolean))];
+  const rows = [];
+  for (let i = 0; i < ids.length && rows.length < max; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    rows.push(...await fetchAllRows(() => makeQuery(chunk), { max: max - rows.length }));
+  }
+  return rows;
+}
+
 // Variant-aggregated stock per product. Stock lives on product_variants,
 // so list-level stock filters must resolve matching product ids BEFORE the
 // range query — filtering composed rows after range silently breaks pages.
@@ -323,6 +354,9 @@ async function variantStockSums(db) {
 export function registerAdminRoutes(app, ctx) {
   const { database, error, auditLog, authenticate, staff, stepUp, releaseHoldRpc } = ctx;
   const need = roles => [authenticate, staff(roles)];
+  // Mutations that change money, access, or published content require a
+  // step-up (AAL2 when MFA enforcement is on) in addition to the role check.
+  const needStep = roles => [authenticate, staff(roles), stepUp];
 
   // ---------- Dashboard — resilient, never 503 (free-tier cold start, empty tables) ----------
   app.get('/api/v1/admin/dashboard/stats', ...need(R.dashboard), async (req, res) => {
@@ -342,9 +376,9 @@ export function registerAdminRoutes(app, ctx) {
         database().from('payments').select('order_id', { count: 'exact', head: true })
           .eq('recovery_required', true)
           .then(r => r?.count || 0, () => 0),
-        database().from('orders').select('order_source,status,amount').limit(5000).then(r => r.data || [], () => []),
-        database().from('orders').select('created_at,amount').in('status', PAID_ORDER_STATUSES)
-          .gte('created_at', trendStart.toISOString()).then(r => r.data || [], () => []),
+        fetchAllRows(() => database().from('orders').select('order_source,status,amount').order('id')).catch(() => []),
+        fetchAllRows(() => database().from('orders').select('created_at,amount').in('status', PAID_ORDER_STATUSES)
+          .gte('created_at', trendStart.toISOString()).order('created_at').order('id')).catch(() => []),
       ]);
       const recentRows = ordersRes.data || [];
       const products = productsRes.data || [];
@@ -571,7 +605,8 @@ export function registerAdminRoutes(app, ctx) {
     try {
       const { email, name, role } = req.body || {};
       const validRoles = ['super_admin', 'admin'];
-      if (!email || !validRoles.includes(role)) return error(res, 400, 'EMAIL_AND_ROLE_REQUIRED');
+      if (!email) return error(res, 400, 'EMAIL_REQUIRED');
+      if (!validRoles.includes(role)) return error(res, 400, 'INVALID_ROLE');
       const { data: profile } = await database().from('profiles').select('id,email,name').ilike('email', escapeIlike(String(email).trim())).maybeSingle();
       if (!profile) return error(res, 404, 'PROFILE_NOT_FOUND_SIGN_IN_FIRST');
       const { error: e } = await database().from('staff_members').upsert({ user_id: profile.id, role, active: true }, { onConflict: 'user_id' });
@@ -872,7 +907,57 @@ export function registerAdminRoutes(app, ctx) {
     return n;
   }
 
+  // Best-effort removal of uploaded objects when a media row is deleted or a
+  // product image is replaced. Without this the bucket fills up with orphans.
+  // Only URLs that point at our own Supabase Storage are touched, and anything
+  // still referenced by another product_media row is kept: the media picker
+  // lets an admin reuse one uploaded file across products.
+  async function removeStorageObjects(urls) {
+    let list = [...new Set((urls || []).filter(Boolean))];
+    if (!list.length || !process.env.SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return;
+    try {
+      const stillUsed = new Set();
+      for (let i = 0; i < list.length; i += 100) {
+        const { data } = await database().from('product_media').select('url').in('url', list.slice(i, i + 100));
+        for (const row of (data || [])) stillUsed.add(row.url);
+      }
+      if (stillUsed.size) list = list.filter(u => !stillUsed.has(u));
+      if (!list.length) return;
+    } catch {
+      // If the reference check fails, keep the objects rather than risk
+      // deleting a file another product still renders.
+      return;
+    }
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
+      const marker = '/storage/v1/object/public/';
+      const byBucket = new Map();
+      for (const url of list) {
+        let parsed;
+        try { parsed = new URL(url); } catch { continue; }
+        if (parsed.host !== new URL(process.env.SUPABASE_URL).host) continue;
+        const idx = parsed.pathname.indexOf(marker);
+        if (idx === -1) continue;
+        const rest = decodeURIComponent(parsed.pathname.slice(idx + marker.length));
+        const slash = rest.indexOf('/');
+        if (slash <= 0) continue;
+        const bucket = rest.slice(0, slash);
+        const objectPath = rest.slice(slash + 1);
+        if (!bucket || !objectPath) continue;
+        if (!byBucket.has(bucket)) byBucket.set(bucket, []);
+        byBucket.get(bucket).push(objectPath);
+      }
+      for (const [bucket, paths] of byBucket) {
+        if (paths.length) await sb.storage.from(bucket).remove(paths).catch(() => {});
+      }
+    } catch (e) {
+      console.error('[storage cleanup] failed:', e?.message || e);
+    }
+  }
+
   async function syncMedia(productId, images) {
+    const { data: previous } = await database().from('product_media').select('url').eq('product_id', productId);
     await database().from('product_media').delete().eq('product_id', productId);
     const rows = (images || []).filter(Boolean).map((item, i) => {
       const url = typeof item === 'string' ? item : item.url;
@@ -886,6 +971,9 @@ export function registerAdminRoutes(app, ctx) {
       const { error } = await database().from('product_media').insert(rows);
       if (error) throw error;
     }
+    const keep = new Set(rows.map(r => r.url));
+    const orphans = (previous || []).map(p => p.url).filter(u => u && !keep.has(u));
+    if (orphans.length) await removeStorageObjects(orphans);
   }
 
   // Read-only schema self-diagnosis for the product surface: probes the
@@ -1100,7 +1188,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.post('/api/v1/admin/products', ...need(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/products', ...needStep(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       if (!b.name_ko || !b.category_id || b.price === undefined) return error(res, 400, 'NAME_CATEGORY_PRICE_REQUIRED');
@@ -1227,7 +1315,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.put('/api/v1/admin/products/:id', ...need(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/products/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const { data: p } = await database().from('products').select('*').eq('id', req.params.id).maybeSingle();
@@ -1295,10 +1383,11 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.patch('/api/v1/admin/products/:id/status', ...need(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/products/:id/status', ...needStep(R.catalog), async (req, res) => {
     try {
       if (!['active', 'hidden'].includes(req.body?.status)) return error(res, 400, 'INVALID_STATUS');
       await database().from('products').update({ is_active: req.body.status === 'active' }).eq('id', req.params.id);
+      await auditLog(req, 'PRODUCT_STATUS', { table: 'products', id: req.params.id, after: { status: req.body.status } });
       res.json({ success: true, message: '상태가 변경되었습니다.', status: req.body.status });
     } catch (err) {
       console.error('[PATCH /api/v1/admin/products/:id/status failed]:', err);
@@ -1308,7 +1397,7 @@ export function registerAdminRoutes(app, ctx) {
 
   // Stock is product-total across variants; the delta is applied to the
   // fullest variant so the displayed total stays exact.
-  app.patch('/api/v1/admin/products/:id/stock', ...need(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/products/:id/stock', ...needStep(R.catalog), async (req, res) => {
     try {
       const { data: variants } = await database().from('product_variants').select('id,stock').eq('product_id', req.params.id);
       if (!(variants || []).length) return error(res, 404, 'NO_VARIANTS');
@@ -1327,7 +1416,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.delete('/api/v1/admin/products/:id', ...need(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/products/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       const { data: variants } = await database().from('product_variants').select('id').eq('product_id', req.params.id);
       const ids = (variants || []).map(v => v.id);
@@ -1338,6 +1427,7 @@ export function registerAdminRoutes(app, ctx) {
         }
       }
       // FK-safe order: delete referencing rows before the rows they reference.
+      const { data: removedMedia } = await database().from('product_media').select('url').eq('product_id', req.params.id);
       await database().from('product_media').delete().eq('product_id', req.params.id);
       await database().from('recently_viewed').delete().eq('product_id', req.params.id);
       if (ids.length) {
@@ -1349,6 +1439,7 @@ export function registerAdminRoutes(app, ctx) {
       await database().from('wishlists').delete().eq('product_id', req.params.id);
       const { error: e } = await database().from('products').delete().eq('id', req.params.id);
       if (e) throw e;
+      await removeStorageObjects((removedMedia || []).map(m => m.url));
       await auditLog(req, 'PRODUCT_DELETE', { table: 'products', id: req.params.id });
       res.json({ success: true, message: '상품이 삭제되었습니다.' });
     } catch (e) {
@@ -1368,7 +1459,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORIES_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/categories', ...need(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/categories', ...needStep(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const slug = String(b.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -1424,7 +1515,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORY_CREATE_FAILED'); }
   });
 
-  app.put('/api/v1/admin/categories/:id', ...need(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/categories/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const patch = {};
@@ -1469,7 +1560,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORY_UPDATE_FAILED'); }
   });
 
-  app.patch('/api/v1/admin/categories/reorder', ...need(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/categories/reorder', ...needStep(R.catalog), async (req, res) => {
     try {
       const ids = req.body?.orderedIds;
       if (!Array.isArray(ids)) return error(res, 400, 'IDS_REQUIRED');
@@ -1481,7 +1572,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORY_REORDER_FAILED'); }
   });
 
-  app.delete('/api/v1/admin/categories/:id', ...need(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/categories/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       const { data: refs } = await database().from('products').select('id').eq('category_id', req.params.id).limit(1);
       if ((refs || []).length) return error(res, 400, 'CATEGORY_IN_USE');
@@ -1501,7 +1592,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COLORS_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/colors', ...need(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/colors', ...needStep(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const name_ko = String(b.name_ko || b.name || '').trim().slice(0, 100);
@@ -1524,7 +1615,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COLOR_CREATE_FAILED'); }
   });
 
-  app.put('/api/v1/admin/colors/:id', ...need(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/colors/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const patch = {};
@@ -1550,7 +1641,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COLOR_UPDATE_FAILED'); }
   });
 
-  app.delete('/api/v1/admin/colors/:id', ...need(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/colors/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       const { data: color } = await database().from('colors').select('name_en,name_ko').eq('id', req.params.id).maybeSingle();
       if (!color) return error(res, 404, 'COLOR_NOT_FOUND');
@@ -1660,7 +1751,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPONS_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/coupons', ...need(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/coupons', ...needStep(R.catalog), async (req, res) => {
     try {
       const { row, error: err } = couponFromLegacy(req.body || {}, true);
       if (err) return error(res, 400, err);
@@ -1674,7 +1765,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPON_CREATE_FAILED'); }
   });
 
-  app.put('/api/v1/admin/coupons/:id', ...need(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/coupons/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       const { row, error: err } = couponFromLegacy(req.body || {}, false);
       if (err) return error(res, 400, err);
@@ -1700,7 +1791,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPON_UPDATE_FAILED'); }
   });
 
-  app.delete('/api/v1/admin/coupons/:id', ...need(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/coupons/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       await database().from('coupons').delete().eq('code', decodeURIComponent(req.params.id));
       await auditLog(req, 'COUPON_DELETE', { table: 'coupons', id: req.params.id });
@@ -1717,10 +1808,12 @@ export function registerAdminRoutes(app, ctx) {
   async function loadPaymentsByOrder(orderIds) {
     const ids = [...new Set((orderIds || []).filter(Boolean))];
     if (!ids.length) return new Map();
-    const { data } = await database().from('payments')
-      .select('order_id,status,provider_status,amount,balance_amount,recovery_required,payment_key,updated_at')
-      .in('order_id', ids)
-      .then(r => r, () => ({ data: [] }));
+    const data = await fetchInChunks(
+      chunk => database().from('payments')
+        .select('order_id,status,provider_status,amount,balance_amount,recovery_required,payment_key,updated_at')
+        .in('order_id', chunk).order('order_id'),
+      ids,
+    ).catch(() => []);
     return new Map((data || []).map(p => [p.order_id, p]));
   }
 
@@ -1778,23 +1871,22 @@ export function registerAdminRoutes(app, ctx) {
     const rows = orderRows || [];
     if (!rows.length) return [];
     const ids = rows.map(o => o.id);
-    const [{ data: items }, { data: shipments }, { data: profiles }, payments] = await Promise.all([
-      database().from('order_items').select('*').in('order_id', ids).then(r => r, () => ({ data: [] })),
-      database().from('shipments').select('order_id,courier_name,tracking_number,created_at').in('order_id', ids).order('created_at', { ascending: false }).then(r => r, () => ({ data: [] })),
-      database().from('profiles').select('id,email').in('id', [...new Set(rows.map(o => o.user_id))]).then(r => r, () => ({ data: [] })),
+    const [list, shipments, profiles, payments] = await Promise.all([
+      fetchInChunks(chunk => database().from('order_items').select('*').in('order_id', chunk).order('order_id').order('variant_id'), ids).catch(() => []),
+      fetchInChunks(chunk => database().from('shipments').select('order_id,courier_name,tracking_number,created_at').in('order_id', chunk).order('created_at', { ascending: false }).order('id'), ids).catch(() => []),
+      fetchInChunks(chunk => database().from('profiles').select('id,email').in('id', chunk).order('id'), rows.map(o => o.user_id)).catch(() => []),
       loadPaymentsByOrder(ids),
     ]);
-    const list = items || [];
-    const vids = [...new Set(list.map(i => i.variant_id).filter(Boolean))];
+    const vids = [...new Set((list || []).map(i => i.variant_id).filter(Boolean))];
     let names = {};
     let media = {};
     if (vids.length) {
-      const { data: vars } = await database().from('product_variants').select('id,product_id,products(name_ko,name_en)').in('id', vids).then(r => r, () => ({ data: [] }));
+      const vars = await fetchInChunks(chunk => database().from('product_variants').select('id,product_id,products(name_ko,name_en)').in('id', chunk).order('id'), vids).catch(() => []);
       const pidByVid = {};
       for (const v of (vars || [])) { names[v.id] = v.products || {}; if (v.product_id) pidByVid[v.id] = v.product_id; }
       const pids = [...new Set(Object.values(pidByVid))];
       if (pids.length) {
-        const { data: mediaRows } = await database().from('product_media').select('product_id,url,sort_order').in('product_id', pids).order('sort_order').then(r => r, () => ({ data: [] }));
+        const mediaRows = await fetchInChunks(chunk => database().from('product_media').select('product_id,url,sort_order').in('product_id', chunk).order('product_id').order('sort_order').order('id'), pids).catch(() => []);
         const firstByProduct = new Map();
         for (const m of (mediaRows || [])) {
           if (!firstByProduct.has(m.product_id)) firstByProduct.set(m.product_id, m.url);
@@ -1856,7 +1948,7 @@ export function registerAdminRoutes(app, ctx) {
       database().from('orders').select('id', { count: 'exact', head: true }).then(r => r?.count || 0, () => 0),
       database().from('orders').select('id', { count: 'exact', head: true }).gte('created_at', kstPeriodStart('day').toISOString()).then(r => r?.count || 0, () => 0),
       database().from('orders').select('id', { count: 'exact', head: true }).gte('created_at', kstPeriodStart('month').toISOString()).then(r => r?.count || 0, () => 0),
-      database().from('orders').select('amount,created_at').in('status', PAID_ORDER_STATUSES).limit(5000).then(r => r.data || [], () => []),
+      fetchAllRows(() => database().from('orders').select('amount,created_at').in('status', PAID_ORDER_STATUSES).order('created_at').order('id')).catch(() => []),
     ]);
     const dayStart = kstPeriodStart('day').getTime();
     const monthStart = kstPeriodStart('month').getTime();
@@ -1943,7 +2035,7 @@ export function registerAdminRoutes(app, ctx) {
   // Bank-transfer verify flow only: always starts pending_payment so stock is
   // reserved and payment is confirmed via the existing verify-payment path.
   // Placement is atomic via app.place_order (same as the storefront).
-  app.post('/api/v1/admin/orders/manual', ...need(R.orders), async (req, res) => {
+  app.post('/api/v1/admin/orders/manual', ...needStep(R.orders), async (req, res) => {
     try {
       const s = req.locals.session;
       const b = req.body || {};
@@ -2105,23 +2197,27 @@ export function registerAdminRoutes(app, ctx) {
   app.get('/api/v1/admin/reports/sales', ...need(R.dashboard), async (req, res) => {
     try {
       const { from, to, source, format } = req.query;
-      const cap = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000);
-      let q = database().from('orders').select('id,order_number,status,amount,created_at,order_source').order('created_at', { ascending: false }).limit(cap);
-      if (from) q = q.gte('created_at', String(from));
-      if (to) q = q.lte('created_at', String(to));
-      if (source && source !== 'all') {
-        if (!isValidOrderSource(source)) return error(res, 400, 'INVALID_SOURCE');
-        q = q.eq('order_source', String(source).toLowerCase());
-      }
-      let { data: orders, error: e } = await q;
-      if (e) {
-        if (String(e.message || '').includes('order_source')) {
-          const retry = await database().from('orders').select('id,order_number,status,amount,created_at').order('created_at', { ascending: false }).limit(1000);
-          if (retry.error) throw retry.error;
-          orders = retry.data;
-        } else {
-          throw e;
-        }
+      if (source && source !== 'all' && !isValidOrderSource(source)) return error(res, 400, 'INVALID_SOURCE');
+      // Totals are exact: page through PostgREST instead of truncating at a
+      // `.limit()`, which silently under-reported revenue past 1000 rows.
+      const makeSalesQuery = (withSource) => () => {
+        let q = database().from('orders')
+          .select(withSource
+            ? 'id,order_number,status,amount,created_at,order_source'
+            : 'id,order_number,status,amount,created_at')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false });
+        if (from) q = q.gte('created_at', String(from));
+        if (to) q = q.lte('created_at', String(to));
+        if (withSource && source && source !== 'all') q = q.eq('order_source', String(source).toLowerCase());
+        return q;
+      };
+      let orders;
+      try {
+        orders = await fetchAllRows(makeSalesQuery(true));
+      } catch (e) {
+        if (String(e?.message || '').includes('order_source')) orders = await fetchAllRows(makeSalesQuery(false));
+        else throw e;
       }
       const rows = buildSalesBySource(orders || []);
       const filtered = (source && source !== 'all')
@@ -2165,16 +2261,24 @@ export function registerAdminRoutes(app, ctx) {
   // Spend data comes from ad_spend_daily (populated by cron sync) or 0 if not yet synced.
   app.get('/api/v1/admin/ads/stats', ...need(R.dashboard), async (req, res) => {
     try {
-      const { from, to, platform, format } = req.query;
-      const cap = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000);
-      let q = database().from('orders').select('id,order_number,status,amount,created_at,order_source,utm_source,utm_medium,utm_campaign,utm_content,utm_term').order('created_at', { ascending: false }).limit(cap);
-      if (from) q = q.gte('created_at', String(from));
-      if (to) q = q.lte('created_at', String(to));
-      let { data: orders, error: e } = await q;
-      if (e) {
-        const retry = await database().from('orders').select('id,order_number,status,amount,created_at,order_source').order('created_at', { ascending: false }).limit(cap);
-        if (retry.error) throw retry.error;
-        orders = retry.data;
+      const { from, to, format } = req.query;
+      // Exact attribution totals across every matching order.
+      const makeAdsQuery = (withUtm) => () => {
+        let q = database().from('orders')
+          .select(withUtm
+            ? 'id,order_number,status,amount,created_at,order_source,utm_source,utm_medium,utm_campaign,utm_content,utm_term'
+            : 'id,order_number,status,amount,created_at,order_source')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false });
+        if (from) q = q.gte('created_at', String(from));
+        if (to) q = q.lte('created_at', String(to));
+        return q;
+      };
+      let orders;
+      try {
+        orders = await fetchAllRows(makeAdsQuery(true));
+      } catch {
+        orders = await fetchAllRows(makeAdsQuery(false)).catch(() => []);
       }
 
       const attributedOrders = (orders || []).filter(o =>
@@ -2297,7 +2401,7 @@ export function registerAdminRoutes(app, ctx) {
 
   // Command endpoint: fulfillment transitions only. paid is NEVER assigned
   // here — only the verified Toss confirm path produces paid (Wave 2).
-  app.patch('/api/v1/admin/orders/:id/status', ...need(R.orders), async (req, res) => {
+  app.patch('/api/v1/admin/orders/:id/status', ...needStep(R.orders), async (req, res) => {
     try {
       const next = req.body?.order_status;
       const { data: order } = await database().from('orders').select('status').eq('id', req.params.id).maybeSingle();
@@ -2409,18 +2513,34 @@ export function registerAdminRoutes(app, ctx) {
 
   app.patch('/api/v1/admin/orders/:id/tracking', ...need(R.orders), async (req, res) => {
     try {
-      const courier = String(req.body?.courier_name || '').trim();
-      const tracking = String(req.body?.tracking_number || '').trim();
+      const courier = String(req.body?.courier_name || '').trim().slice(0, 80);
+      const tracking = String(req.body?.tracking_number || '').trim().slice(0, 80);
       if (!courier || !tracking) return error(res, 400, 'COURIER_TRACKING_REQUIRED');
-      const { data: order } = await database().from('orders').select('status').eq('id', req.params.id).maybeSingle();
+      const { data: order } = await database().from('orders').select('*').eq('id', req.params.id).maybeSingle();
       if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
+
+      // Idempotent: retrying the same tracking number must not create a
+      // second shipment row or a second email.
+      const { data: existing } = await database().from('shipments').select('*')
+        .eq('order_id', order.id).eq('tracking_number', tracking).maybeSingle();
+      if (existing) {
+        return res.json({ success: true, message: '이미 등록된 운송장입니다.', data: existing, duplicated: true });
+      }
       if (!['paid', 'processing'].includes(order.status)) return error(res, 409, 'ORDER_NOT_SHIPPABLE');
-      const { data: shipment } = await database().from('shipments').insert({ order_id: req.params.id, courier_name: courier, tracking_number: tracking, status: 'dispatched' }).select().maybeSingle();
-      await database().from('orders').update({ status: 'shipped' }).eq('id', req.params.id).in('status', ['paid', 'processing']);
-      await database().from('order_status_history').insert({ order_id: req.params.id, status: 'shipped', note: 'Shipment dispatched', actor_id: req.locals.session.user_id });
-      await auditLog(req, 'ORDER_TRACKING', { table: 'orders', id: req.params.id });
+
+      const { data: shipment, error: shipErr } = await database().from('shipments')
+        .insert({ order_id: order.id, courier_name: courier, tracking_number: tracking, status: 'dispatched' })
+        .select().maybeSingle();
+      if (shipErr || !shipment) throw (shipErr || new Error('SHIPMENT_CREATE_FAILED'));
+      await database().from('orders').update({ status: 'shipped' }).eq('id', order.id).in('status', ['paid', 'processing']);
+      await database().from('order_status_history').insert({ order_id: order.id, status: 'shipped', note: `Shipment dispatched (${courier} ${tracking})`, actor_id: req.locals.session.user_id });
+      await auditLog(req, 'ORDER_TRACKING', { table: 'orders', id: order.id, after: { courier, tracking } });
+      await notificationService.sendShippingUpdate({ ...order, courier_name: courier, tracking_number: tracking });
       res.json({ success: true, message: '운송장 정보가 등록되었습니다.', data: shipment });
-    } catch { error(res, 503, 'ORDERS_UNAVAILABLE'); }
+    } catch (err) {
+      console.error('[admin tracking] failed:', err?.message || err);
+      error(res, 503, 'ORDERS_UNAVAILABLE');
+    }
   });
 
   // ---------- Reviews ----------
@@ -2461,7 +2581,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'REVIEWS_UNAVAILABLE'); }
   });
 
-  app.patch('/api/v1/admin/reviews/:id/status', ...need(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/reviews/:id/status', ...needStep(R.catalog), async (req, res) => {
     try {
       await database().from('reviews').update({ is_approved: !!req.body?.is_approved }).eq('id', req.params.id);
       await auditLog(req, 'REVIEW_MODERATE', { table: 'reviews', id: req.params.id });
@@ -2469,7 +2589,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'REVIEWS_UNAVAILABLE'); }
   });
 
-  app.patch('/api/v1/admin/reviews/:id/feature', ...need(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/reviews/:id/feature', ...needStep(R.catalog), async (req, res) => {
     try {
       await database().from('reviews').update({ is_featured: !!req.body?.is_featured }).eq('id', req.params.id);
       await auditLog(req, 'REVIEW_FEATURE', { table: 'reviews', id: req.params.id });
@@ -2477,7 +2597,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'REVIEWS_UNAVAILABLE'); }
   });
 
-  app.delete('/api/v1/admin/reviews/:id', ...need(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/reviews/:id', ...needStep(R.catalog), async (req, res) => {
     try {
       await database().from('reviews').delete().eq('id', req.params.id);
       await auditLog(req, 'REVIEW_DELETE', { table: 'reviews', id: req.params.id });
@@ -2545,9 +2665,11 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
 
-  app.delete('/api/v1/admin/media/:id', ...need(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/media/:id', ...needStep(R.catalog), async (req, res) => {
     try {
+      const existing = await findDocItem(database, 'media', req.params.id);
       await deleteDocItem(database, 'media', req.params.id);
+      if (existing?.url) await removeStorageObjects([existing.url]);
       await auditLog(req, 'MEDIA_DELETE', { table: 'media', id: req.params.id });
       res.json({ success: true });
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
@@ -2568,7 +2690,7 @@ export function registerAdminRoutes(app, ctx) {
         try {
           const { createClient } = await import('@supabase/supabase-js');
           const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
-          await sb.storage.createBucket(bucket, { public: true, fileSizeLimit: '8MB' }).catch(() => {});
+          await sb.storage.createBucket(bucket, { public: true, fileSizeLimit: String(UPLOAD_MAX_FILE_BYTES) }).catch(() => {});
           supabaseStorage = sb;
         } catch {}
       }
@@ -2699,7 +2821,7 @@ export function registerAdminRoutes(app, ctx) {
     return b && b.type && b.title_ko && b.title_en;
   }
 
-  app.post('/api/v1/admin/content/banners', ...need(R.cms), async (req, res) => {
+  app.post('/api/v1/admin/content/banners', ...needStep(R.cms), async (req, res) => {
     try {
       if (!validBanner(req.body)) return error(res, 400, 'TYPE_TITLE_REQUIRED');
       const b = req.body;
@@ -2717,18 +2839,20 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
   });
 
-  app.put('/api/v1/admin/content/banners/:id', ...need(R.cms), async (req, res) => {
+  app.put('/api/v1/admin/content/banners/:id', ...needStep(R.cms), async (req, res) => {
     try {
       const existing = await findDocItem(database, 'banners', req.params.id);
       if (!existing) return error(res, 404, 'BANNER_NOT_FOUND');
       await saveDocItem(database, 'banners', { ...existing, ...pickBanner(req.body || {}), id: existing.id });
+      await auditLog(req, 'BANNER_UPDATE', { table: 'content', id: req.params.id });
       res.json({ success: true });
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
   });
 
-  app.delete('/api/v1/admin/content/banners/:id', ...need(R.cms), async (req, res) => {
+  app.delete('/api/v1/admin/content/banners/:id', ...needStep(R.cms), async (req, res) => {
     try {
       await deleteDocItem(database, 'banners', req.params.id);
+      await auditLog(req, 'BANNER_DELETE', { table: 'content', id: req.params.id });
       res.json({ success: true });
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
   });
@@ -2740,15 +2864,12 @@ export function registerAdminRoutes(app, ctx) {
       const from = req.query.from || '';
       const to = req.query.to || '';
 
-      const [ordersRes, expensesRes, productsRes, variantsRes] = await Promise.all([
-        database().from('orders').select('*').order('created_at', { ascending: false }).limit(2000).then(r => r, () => ({ data: [] })),
-        database().from('business_expenses').select('*').order('expense_date', { ascending: false }).limit(2000).then(r => r, () => ({ data: [] })),
+      const [allOrders, allExpenses, productsRes, variantsRes] = await Promise.all([
+        fetchAllRows(() => database().from('orders').select('*').order('created_at', { ascending: false }).order('id', { ascending: false })).catch(() => []),
+        fetchAllRows(() => database().from('business_expenses').select('*').order('expense_date', { ascending: false }).order('id')).catch(() => []),
         database().from('products').select('id,sku,name_ko,name_en,price,discount_price,category_id').then(r => r, () => ({ data: [] })),
         database().from('product_variants').select('id,product_id,sku,color,size,stock,reserved').then(r => r, () => ({ data: [] })),
       ]);
-
-      const allOrders = ordersRes.data || [];
-      const allExpenses = expensesRes.data || [];
       const allProducts = productsRes.data || [];
       const allVariants = variantsRes.data || [];
 
@@ -2767,14 +2888,23 @@ export function registerAdminRoutes(app, ctx) {
 
       if (filteredOrders.length) {
         const oids = filteredOrders.map(o => o.id);
-        const { data: itemRows } = await database().from('order_items').select('*').in('order_id', oids).then(r => r, () => ({ data: [] }));
+        const [itemRows, refundRows] = await Promise.all([
+          fetchInChunks(chunk => database().from('order_items').select('*').in('order_id', chunk).order('order_id').order('variant_id'), oids).catch(() => []),
+          fetchInChunks(chunk => database().from('payment_refunds').select('order_id,amount')
+            .eq('status', 'completed').in('order_id', chunk).order('operation_id'), oids).catch(() => []),
+        ]);
         const itemsByOrder = new Map();
-        for (const it of (itemRows || [])) {
+        for (const it of itemRows) {
           if (!itemsByOrder.has(it.order_id)) itemsByOrder.set(it.order_id, []);
           itemsByOrder.get(it.order_id).push(it);
         }
+        const refundsByOrder = new Map();
+        for (const r of refundRows) {
+          refundsByOrder.set(r.order_id, (refundsByOrder.get(r.order_id) || 0) + (r.amount || 0));
+        }
         for (const o of filteredOrders) {
           o.items = itemsByOrder.get(o.id) || [];
+          o.refunded_amount = refundsByOrder.get(o.id) || 0;
         }
       }
 
@@ -2810,8 +2940,7 @@ export function registerAdminRoutes(app, ctx) {
       const search = req.query.search || '';
       const { page, pageSize, offset } = parseListQuery(req.query, { pageSize: 50, maxPageSize: 200 });
 
-      const { data: orderRows, error: oErr } = await database().from('orders').select('*').order('created_at', { ascending: false }).limit(2000);
-      if (oErr) throw oErr;
+      const orderRows = await fetchAllRows(() => database().from('orders').select('*').order('created_at', { ascending: false }).order('id', { ascending: false }));
 
       let orders = await adminOrderList(orderRows || []);
 
@@ -2872,14 +3001,14 @@ export function registerAdminRoutes(app, ctx) {
       const from = req.query.from || '';
       const to = req.query.to || '';
 
-      const [catRes, orderRowsRes, prodRes] = await Promise.all([
+      const [catRes, orderRows, prodRes] = await Promise.all([
         database().from('categories').select('*').order('sort_order', { ascending: true }).then(r => r, () => ({ data: [] })),
-        database().from('orders').select('*').order('created_at', { ascending: false }).limit(2000).then(r => r, () => ({ data: [] })),
+        fetchAllRows(() => database().from('orders').select('*').order('created_at', { ascending: false }).order('id', { ascending: false })).catch(() => []),
         database().from('products').select('id,sku,name_ko,category_id').then(r => r, () => ({ data: [] })),
       ]);
 
       const categories = catRes.data || [];
-      const allOrders = await adminOrderList(orderRowsRes.data || []);
+      const allOrders = await adminOrderList(orderRows || []);
       const products = prodRes.data || [];
 
       const prodCatMap = new Map((products || []).map(p => [p.sku, p.category_id]));
@@ -2988,7 +3117,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.post('/api/v1/admin/expenses', ...need(R.business), async (req, res) => {
+  app.post('/api/v1/admin/expenses', ...needStep(R.business), async (req, res) => {
     try {
       const b = req.body || {};
       const category = String(b.category || '').trim();
@@ -3027,7 +3156,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.put('/api/v1/admin/expenses/:id', ...need(R.business), async (req, res) => {
+  app.put('/api/v1/admin/expenses/:id', ...needStep(R.business), async (req, res) => {
     try {
       const id = req.params.id;
       const { data: existing } = await database().from('business_expenses').select('*').eq('id', id).maybeSingle();
@@ -3069,7 +3198,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.delete('/api/v1/admin/expenses/:id', ...need(R.business), async (req, res) => {
+  app.delete('/api/v1/admin/expenses/:id', ...needStep(R.business), async (req, res) => {
     try {
       const id = req.params.id;
       const { data: existing } = await database().from('business_expenses').select('*').eq('id', id).maybeSingle();
@@ -3086,7 +3215,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.post('/api/v1/admin/expenses/bulk', ...need(R.business), async (req, res) => {
+  app.post('/api/v1/admin/expenses/bulk', ...needStep(R.business), async (req, res) => {
     try {
       const items = req.body?.items;
       if (!Array.isArray(items) || items.length === 0 || items.length > 500) {

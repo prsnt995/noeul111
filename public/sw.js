@@ -1,14 +1,13 @@
-const CACHE_VERSION = 'noeul-v1';
+const CACHE_VERSION = 'noeul-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
-const STATIC_ASSETS = ['/', '/index.html'];
-
+// Never precache index.html: it points at hashed bundles, so a stale shell is
+// pinned to deleted assets after a deploy. Navigations are network-first and
+// only fall back to the cached shell when offline.
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting())
-  );
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
@@ -29,6 +28,10 @@ function isImageRequest(request) {
   return /\.(png|jpe?g|webp|avif|gif|svg)$/i.test(url.pathname);
 }
 
+function isHashedAsset(request) {
+  return new URL(request.url).pathname.startsWith('/assets/');
+}
+
 function isPublicApiRequest(request) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/v1/')) return false;
@@ -36,9 +39,44 @@ function isPublicApiRequest(request) {
   return publicPrefixes.some((p) => url.pathname.startsWith(p) || url.pathname === p);
 }
 
+// Network-first navigation with an offline shell fallback.
+async function handleNavigation(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response && response.status === 200) {
+      cache.put('/index.html', response.clone());
+    }
+    return response;
+  } catch (err) {
+    const cached = await cache.match('/index.html');
+    if (cached) return cached;
+    throw err;
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(handleNavigation(request));
+    return;
+  }
+
+  if (isHashedAsset(request)) {
+    // Content-hashed: immutable, safe to serve cache-first.
+    event.respondWith(
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request);
+        if (response && response.status === 200) cache.put(request, response.clone());
+        return response;
+      })
+    );
+    return;
+  }
 
   if (isImageRequest(request)) {
     // Cache-first for images.

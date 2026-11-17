@@ -10,7 +10,7 @@ router.get('/users/staff', verifyAdmin, (req, res) => {
     const staff = query.all(`
       SELECT id, email, name, phone, role, created_at, updated_at
       FROM users
-      WHERE role IN ('super_admin', 'admin', 'editor', 'order_manager')
+      WHERE role IN ('super_admin', 'admin')
       ORDER BY id ASC
     `);
     res.json({ success: true, data: staff });
@@ -20,8 +20,8 @@ router.get('/users/staff', verifyAdmin, (req, res) => {
   }
 });
 
-// Add staff member (finding #9): super_admin only. Editors and
-// order managers must never create/promote staff accounts.
+// Add staff member (finding #9): super_admin only. Regular admins must never
+// create/promote staff accounts.
 router.post('/users/staff', requireSuperAdmin, async (req, res) => {
   try {
     const { email, password, name, phone, role } = req.body;
@@ -39,9 +39,13 @@ router.post('/users/staff', requireSuperAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: '이미 등록된 이메일 계정입니다.' });
     }
 
+    if (!['super_admin', 'admin'].includes(role)) {
+      return res.status(400).json({ success: false, message: '역할은 super_admin 또는 admin이어야 합니다.' });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
-    const validRole = ['super_admin', 'admin', 'editor', 'order_manager'].includes(role) ? role : 'editor';
+    const validRole = role;
 
     const result = query.run(`
       INSERT INTO users (email, password_hash, name, phone, role)
@@ -68,7 +72,12 @@ router.put('/users/staff/:id', requireSuperAdmin, async (req, res) => {
       return res.status(404).json({ success: false, message: '대상 계정을 찾을 수 없습니다.' });
     }
 
-    const validRole = ['super_admin', 'admin', 'editor', 'order_manager'].includes(role) ? role : 'editor';
+    // An omitted role keeps the current one; an unknown role is rejected so a
+    // typo can never silently promote/demote an account.
+    if (role !== undefined && !['super_admin', 'admin'].includes(role)) {
+      return res.status(400).json({ success: false, message: '역할은 super_admin 또는 admin이어야 합니다.' });
+    }
+    const validRole = role === undefined ? target.role : role;
 
     // Protect the final super-admin from demotion/removal.
     if (target.role === 'super_admin' && validRole !== 'super_admin') {

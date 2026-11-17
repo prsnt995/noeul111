@@ -36,6 +36,8 @@ export default [
         next: 'readonly',
         window: 'readonly',
         document: 'readonly',
+        self: 'readonly',
+        caches: 'readonly',
         localStorage: 'readonly',
         sessionStorage: 'readonly',
         React: 'readonly',
@@ -104,7 +106,6 @@ export default [
         Infinity: 'readonly',
         undefined: 'readonly',
         null: 'readonly',
-        console: 'readonly',
       },
     },
     rules: {

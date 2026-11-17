@@ -43,6 +43,8 @@ const ORDER_STATUS_KO = {
   shipped: '배송중',
   delivered: '배송완료',
   cancelled: '주문 취소',
+  expired: '결제 기한 만료',
+  refund_pending: '환불 처리 중',
   refunded: '반품/환불',
 };
 

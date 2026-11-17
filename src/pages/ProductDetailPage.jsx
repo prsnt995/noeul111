@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRoute, useLocation, Link } from 'wouter';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { getOptimizedImageUrl, getProductPlaceholder, getSrcSet } from '../utils/imageHelper.js';
+import { api } from '../utils/api.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useWishlist } from '../context/WishlistContext.jsx';
 import { ProductCard } from '../components/common/ProductCard.jsx';
@@ -56,7 +57,6 @@ export function ProductDetailPage() {
       setQuantity(1);
       setRelated([]);
       try {
-        const { api } = await import('../utils/api.js');
         const data = await api.get(`/catalog/products/${encodeURIComponent(params.id)}`);
         if (data.success && data.data) {
           setProduct(data.data);

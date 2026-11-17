@@ -26,7 +26,10 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
   const swatches = Array.isArray(product.colors) ? product.colors : [];
   const colorCount = swatches.length;
   const colorSuffix = colorCount >= 2 ? t('product.color_count', { count: colorCount }) : '';
-  const categoryColor = product.category ? ("#" + (CATEGORIES_BY_GENDER.men.find(c=>c.key===product.category)?.color_hex || product.color_hex || "CCCCCC") : (product.color_hex || "CCCCCC"));
+  const rawCategoryColor = String(product.color_hex || '').trim();
+  const categoryColor = rawCategoryColor
+    ? (rawCategoryColor.startsWith('#') ? rawCategoryColor : `#${rawCategoryColor}`)
+    : '#cccccc';
   const primaryColorName = product.colors?.[0]?.name_en || product.color || "";
   const badgeText = primaryColorName ? primaryColorName[0] : "";
   const price = (product.discount_price || product.price)?.toLocaleString('ko-KR');

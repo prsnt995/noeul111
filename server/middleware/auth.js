@@ -57,8 +57,7 @@ export function verifyRole(allowedRoles) {
 }
 
 // Staff-only account management (finding #9): only super_admin may
-// create/update/delete staff accounts. Editors and order managers are
-// explicitly excluded.
+// create/update/delete staff accounts. Regular admins are explicitly excluded.
 export function requireSuperAdmin(req, res, next) {
   verifyToken(req, res, () => {
     if (req.user && req.user.role === 'super_admin') {

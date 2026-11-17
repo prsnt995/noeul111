@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext.jsx';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { getOptimizedImageUrl } from '../utils/imageHelper.js';
+import { api } from '../utils/api.js';
 import { Trash2, Plus, Minus, ArrowRight, Truck, ShoppingBag, Tag } from 'lucide-react';
 
 export function CartPage() {
@@ -33,7 +34,6 @@ export function CartPage() {
     const code = couponCode.trim().toUpperCase();
     // Prefer server validation; fallback to demo 10% preview only when quote endpoint unreachable (e.g. no Supabase)
     try {
-      const { api } = await import('../utils/api.js');
       const res = await api.post('/checkout/quote', { items: items.filter(i=>i.variant_id).map(i=>({ variant_id: i.variant_id, quantity: i.quantity })), coupon_code: code });
       if (res.success && res.data && typeof res.data.discount === 'number' && res.data.discount > 0) {
         setAppliedDiscount(res.data.discount);

@@ -64,7 +64,7 @@ describe('Wave 3 — Admin backend covers the admin UI', () => {
     }
   });
 
-  it('role policy: editor appears only in catalog/cms/dashboard sets', () => {
+  it('role policy: only the two DB roles exist in every permission set', () => {
     const admin = read('api/admin.js');
     const sets: Record<string, string[]> = {};
     for (const m of admin.matchAll(/^\s{2}(\w+): \[([^\]]*)\],?$/gm)) {
@@ -72,12 +72,9 @@ describe('Wave 3 — Admin backend covers the admin UI', () => {
     }
     expect(Object.keys(sets).length).toBeGreaterThan(3);
     for (const [name, roles] of Object.entries(sets)) {
-      if (roles.includes('editor')) {
-        expect(['catalog', 'cms', 'dashboard'].includes(name), `editor in ${name}`).toBe(true);
+      for (const role of roles) {
+        expect(['super_admin', 'admin'].includes(role), `${role} in ${name}`).toBe(true);
       }
-    }
-    for (const group of ['orders', 'money', 'settings', 'customers']) {
-      expect(sets[group].includes('editor'), `editor in ${group}`).toBe(false);
     }
     expect(admin.includes('need(R.orders)')).toBe(true);
     expect(admin.includes('need(R.customers)')).toBe(true);

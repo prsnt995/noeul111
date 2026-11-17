@@ -3,7 +3,7 @@ import { api, setCsrfToken } from '../utils/api.js';
 
 const AuthContext = createContext(null);
 
-const STAFF_ROLES = ['super_admin', 'admin', 'order_manager', 'editor'];
+const STAFF_ROLES = ['super_admin', 'admin'];
 
 // Pure role check (unit-tested): only allowlisted staff roles grant admin UI.
 // Never truthy-check role — /me returns 'customer' for non-staff.

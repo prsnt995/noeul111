@@ -27,7 +27,7 @@ if (production && required.some(k => !env[k])) throw new Error(`Missing producti
 const MFA_ENFORCEMENT = env.MFA_ENFORCEMENT === 'true';
 // Single source of truth for staff roles. Must match the CHECK constraint on
 // staff_members.role and the frontend STAFF_ROLES in src/context/AuthContext.jsx.
-const STAFF_ROLES = ['super_admin', 'admin', 'order_manager', 'editor'];
+const STAFF_ROLES = ['super_admin', 'admin'];
 // Keep in sync with the orders.order_source CHECK constraint (latest
 // migration: website | instagram | tiktok | other).
 const ORDER_SOURCES = new Set(['website', 'instagram', 'tiktok', 'other']);
@@ -45,9 +45,6 @@ function secretMatches(req, expected) {
   const a = Buffer.from(provided);
   const b = Buffer.from(String(expected));
   return a.length === b.length && timingSafeEqual(a, b);
-}
-function cronSecretMatches(req, secretName) {
-  return secretMatches(req, env[secretName]);
 }
 const stepUp = async (req, res, next) => { const s = req.locals?.session; if (!s) return next(); if (MFA_ENFORCEMENT && (!s.aal || s.aal !== 'aal2')) return error(res, 403, 'MFA_REQUIRED'); next(); };
 const privacyLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
@@ -88,11 +85,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://js.tosspayments.com', 'https://*.tosspayments.com'],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      fontSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', 'https://*.tosspayments.com', 'https://graph.facebook.com'],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://js.tosspayments.com', 'https://*.tosspayments.com', 'https://connect.facebook.net'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'https://www.facebook.com'],
+      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
+      connectSrc: ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', 'https://*.tosspayments.com', 'https://graph.facebook.com', 'https://connect.facebook.net', 'https://www.facebook.com'],
       frameSrc: ["'self'", 'https://*.tosspayments.com', 'https://*.supabase.co'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -104,7 +101,12 @@ app.use(cors({ origin: isOriginAllowed, credentials: true, methods: ['GET', 'POS
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') }));
 const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 50, standardHeaders: true, legacyHeaders: false });
 const paymentLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
-const checkoutLimiter = rateLimit({ windowMs: 15*60*1000, limit: 3, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') });
+// Toss retries failed webhooks, so this bucket must be separate from (and more
+// generous than) the customer-facing payment limiter.
+const webhookLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
+// 3 orders per 15 minutes blocked legitimate multi-order customers (and
+// shared NAT addresses). 20 still throttles scripted abuse.
+const checkoutLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeaders: true, legacyHeaders: false, skip: req => req.path.endsWith('/webhook') });
 const reviewLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const claimLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeaders: true, legacyHeaders: false });
 const quoteLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
@@ -192,10 +194,11 @@ function calculateShippingFee(lines, variants, cfg, subtotal, discount) {
 }
 
 // Finding #10: strict line validation shared by quote and order creation.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function validateOrderLines(items) {
   if (!items || !Array.isArray(items) || items.length === 0 || items.length > 50) return 'INVALID_ITEMS';
   for (const item of items) {
-    if (!item || typeof item.variant_id !== 'string' || !item.variant_id) return 'INVALID_ITEM';
+    if (!item || typeof item.variant_id !== 'string' || !UUID_RE.test(item.variant_id)) return 'INVALID_ITEM';
     if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) return 'INVALID_ITEM';
   }
   return null;
@@ -782,15 +785,17 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
     const lines = [];
     for (const [variantId, totalQty] of demand) {
       const v = variants.find(x => x.id === variantId);
-      if (!v || !v.active) return error(res, 400, 'VARIANT_UNAVAILABLE');
+      if (!v || !v.active || !v.products || v.products.is_active === false) return error(res, 400, 'VARIANT_UNAVAILABLE');
       if ((v.stock || 0) - (v.reserved || 0) < totalQty) return error(res, 409, 'INSUFFICIENT_STOCK');
     }
-    for (const item of items) {
-      const v = variants.find(x => x.id === item.variant_id);
+    // One line per variant: order_items is keyed by (order_id, variant_id), so
+    // duplicate cart lines must be aggregated before the insert.
+    for (const [variantId, totalQty] of demand) {
+      const v = variants.find(x => x.id === variantId);
       const base = v.products || {};
       const unit = Math.max(1, (base.discount_price || base.price || 0) + (v.price_delta || 0));
-      subtotal += unit * item.quantity;
-      lines.push({ variant_id: v.id, quantity: item.quantity, unit_price: unit, snapshot: { sku: v.sku, color: v.color, size: v.size } });
+      subtotal += unit * totalQty;
+      lines.push({ variant_id: v.id, quantity: totalQty, unit_price: unit, snapshot: { sku: v.sku, color: v.color, size: v.size } });
     }
     let discount = 0;
     let couponCode = null;
@@ -858,7 +863,10 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
         amount,
         coupon_code: couponCode,
         address: address || {},
-        status: 'pending_payment'
+        status: 'pending_payment',
+        customer_name: address?.recipient || s.profiles?.name || '',
+        customer_email: address?.email || s.profiles?.email || '',
+        customer_phone: address?.phone || ''
       }).select('*').maybeSingle();
       if (oErr || !ord) throw (oErr || new Error('ORDER_CREATE_FAILED'));
       placedOrder = ord;
@@ -899,6 +907,7 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
       placedOutcome = 'created';
     }
 
+    if (placedOutcome === 'invalid_items') return error(res, 400, 'INVALID_ITEMS');
     if (placedOutcome === 'conflict') return error(res, 409, 'IDEMPOTENCY_KEY_REUSE');
     if (placedOutcome === 'insufficient_stock') return error(res, 409, 'INSUFFICIENT_STOCK');
     if (placedOutcome === 'coupon_invalid') return error(res, 409, 'COUPON_INVALID');
@@ -1007,7 +1016,7 @@ const paymentStore = createPaymentStore({ database });
 const paymentService = createPaymentService({ env, store: paymentStore });
 registerPaymentRoutes(app, {
   service: paymentService,
-  authenticate, staff, stepUp, limiter: paymentLimiter,
+  authenticate, staff, stepUp, limiter: paymentLimiter, webhookLimiter,
 });
 
 // Vercel/serverless does not run the in-process recovery worker (it is only
@@ -1065,7 +1074,35 @@ app.get('/api/v1/cron/workers', async (req, res) => {
 });
 
 // SHIPMENT / TRACKING
-app.post('/api/v1/orders/:publicId/shipments', authenticate, staff(['super_admin','admin','order_manager']), stepUp, async (req, res) => { try { const s = req.locals.session; const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); if (!['paid','processing'].includes(order.status)) return error(res, 409, 'ORDER_NOT_SHIPPABLE'); const { data: shipment } = await database().from('shipments').insert({ order_id: order.id, courier_name: req.body.courier || '', tracking_number: req.body.tracking_number || '', status: 'dispatched' }).select().maybeSingle(); await database().from('orders').update({ status: 'shipped' }).eq('id', order.id); await database().from('order_status_history').insert({ order_id: order.id, status: 'shipped', note: 'Shipment dispatched', actor_id: s.user_id }); await notificationService.sendShippingUpdate(order); res.json({ success: true, data: shipment }); } catch { error(res, 503, 'SHIPMENT_UNAVAILABLE'); } });
+app.post('/api/v1/orders/:publicId/shipments', authenticate, staff(['super_admin','admin']), stepUp, async (req, res) => {
+  try {
+    const s = req.locals.session;
+    const courier = String(req.body?.courier || '').trim().slice(0, 80);
+    const tracking = String(req.body?.tracking_number || '').trim().slice(0, 80);
+    if (!courier || !tracking) return error(res, 400, 'COURIER_TRACKING_REQUIRED');
+    const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).maybeSingle();
+    if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
+    if (!['paid','processing'].includes(order.status)) return error(res, 409, 'ORDER_NOT_SHIPPABLE');
+
+    // Idempotent: retrying the same tracking number returns the existing row.
+    const { data: existing } = await database().from('shipments').select('*')
+      .eq('order_id', order.id).eq('tracking_number', tracking).maybeSingle();
+    if (existing) return res.json({ success: true, data: existing, duplicated: true });
+
+    const { data: shipment, error: shipErr } = await database().from('shipments')
+      .insert({ order_id: order.id, courier_name: courier, tracking_number: tracking, status: 'dispatched' })
+      .select().maybeSingle();
+    if (shipErr || !shipment) throw (shipErr || new Error('SHIPMENT_CREATE_FAILED'));
+    await database().from('orders').update({ status: 'shipped' }).eq('id', order.id).in('status', ['paid', 'processing']);
+    await database().from('order_status_history').insert({ order_id: order.id, status: 'shipped', note: `Shipment dispatched (${courier} ${tracking})`, actor_id: s.user_id });
+    await auditLog(req, 'ORDER_SHIPPED', { table: 'orders', id: order.id, after: { courier, tracking } });
+    await notificationService.sendShippingUpdate({ ...order, courier_name: courier, tracking_number: tracking });
+    res.json({ success: true, data: shipment });
+  } catch (err) {
+    console.error('[shipments] create failed:', err?.message || err);
+    error(res, 503, 'SHIPMENT_UNAVAILABLE');
+  }
+});
 app.get('/api/v1/orders/:publicId/tracking', authenticate, async (req, res) => { try { const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).eq('user_id', req.locals.session.user_id).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); const { data: events } = await database().from('order_status_history').select('*').eq('order_id', order.id).order('created_at', { ascending: false }); res.json({ success: true, data: { order, events } }); } catch { error(res, 503, 'TRACKING_UNAVAILABLE'); } });
 
 // REVIEW WRITE
@@ -1164,32 +1201,58 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
       }
     }
 
-    // In a full implementation, we'd call Meta's Conversions API endpoint:
-    // POST https://graph.facebook.com/v17.0/<AD_ACCOUNT_ID>/events
-    // with Authorization: Bearer <ACCESS_TOKEN>
-    //
-    // For now, we log the payload and return success.
-    // TODO: Uncomment and configure when Meta access token is available:
-    /*
+    // Server-side Conversions API. Requires META_PIXEL_ID and
+    // META_ACCESS_TOKEN; without them the endpoint still returns the payload
+    // (the browser pixel is the fallback) but reports `sent: false` so the
+    // caller/monitoring can tell the difference.
+    const pixelId = env.META_PIXEL_ID;
     const metaToken = env.META_ACCESS_TOKEN;
-    if (metaToken) {
-      const { data, error } = await fetch(
-        `https://graph.facebook.com/v17.0/${env.META_AD_ACCOUNT_ID}/events`,
-        {
+    let capi = { sent: false, reason: 'not_configured' };
+    if (pixelId && metaToken) {
+      try {
+        const graphBody = {
+          data: [{
+            event_name: 'Purchase',
+            event_time: Math.floor(Date.now() / 1000),
+            event_id: order.order_number,
+            action_source: 'website',
+            event_source_url: `${normalizeOrigin(env.APP_ORIGIN)}/`,
+            user_data: {
+              ...(fbp ? { fbp: String(fbp).slice(0, 200) } : {}),
+              ...(fbc ? { fbc: String(fbc).slice(0, 200) } : {}),
+              client_ip_address: req.ip,
+              client_user_agent: req.get('user-agent') || '',
+            },
+            custom_data: {
+              value: amount,
+              currency: currency || 'KRW',
+              content_ids: [],
+              content_type: 'product',
+              num_items: 1,
+              order_id: order.order_number,
+            },
+          }],
+        };
+        if (env.META_TEST_EVENT_CODE) graphBody.test_event_code = env.META_TEST_EVENT_CODE;
+        const graphRes = await fetch(`https://graph.facebook.com/v19.0/${encodeURIComponent(pixelId)}/events`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${metaToken}`,
-          },
-          body: JSON.stringify({ data: [purchasePayload] }),
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${metaToken}` },
+          body: JSON.stringify(graphBody),
+        });
+        const graphJson = await graphRes.json().catch(() => ({}));
+        if (!graphRes.ok) {
+          capi = { sent: false, reason: graphJson?.error?.message || `HTTP_${graphRes.status}` };
+        } else {
+          capi = { sent: true, events_received: graphJson.events_received ?? null };
         }
-      );
-      if (error) throw error;
+      } catch (err) {
+        capi = { sent: false, reason: err?.message || 'CAPI_REQUEST_FAILED' };
+        console.error('[meta/capi/purchase] send failed:', err?.message || err);
+      }
     }
-    */
 
-    console.log('[meta/capi/purchase] CAPI Purchase event payload ready:', JSON.stringify({ order_number: order.order_number, amount, currency, has_fbp: !!fbp, has_fbc: !!fbc }));
-    res.json({ success: true, data: { payload: purchasePayload } });
+    console.log('[meta/capi/purchase] Purchase event:', JSON.stringify({ order_number: order.order_number, amount, sent: capi.sent }));
+    res.json({ success: true, data: { payload: purchasePayload, capi } });
   } catch (err) {
     console.error('[meta/capi/purchase] error:', err);
     error(res, 500, 'META_CAPI_ERROR');
@@ -1202,14 +1265,17 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
    2. Evaluates alert rules (low stock, spend cap, CPA spike, zero conversions)
    3. Logs alerts to ad_alert_log
    4. Auto-pauses campaigns on low stock (gated by ADS_AUTO_PAUSE_ENABLED)
-   Secured by ADS_CRON_SECRET env var (Vercel sends it as Authorization header).
+   Secured by ADS_CRON_SECRET, falling back to CRON_SECRET (the value Vercel
+   Cron sends automatically). Without either secret the endpoint is disabled in
+   production.
 */
 app.get('/api/v1/cron/ads-sync', async (req, res) => {
   try {
-    // Fail closed: without a configured secret the endpoint is disabled in
-    // production (previously any caller could trigger syncs and auto-pauses).
-    if (production || env.ADS_CRON_SECRET) {
-      if (!cronSecretMatches(req, 'ADS_CRON_SECRET')) return error(res, 401, 'CRON_UNAUTHORIZED');
+    const adsSecret = env.ADS_CRON_SECRET || env.CRON_SECRET;
+    if (adsSecret) {
+      if (!secretMatches(req, adsSecret)) return error(res, 401, 'CRON_UNAUTHORIZED');
+    } else if (production) {
+      return error(res, 503, 'CRON_NOT_CONFIGURED');
     }
 
     const results = { synced: 0, alerts: [], paused: [], errors: [] };
@@ -1391,6 +1457,46 @@ ${items}
 }
 app.get('/api/v1/feed/meta.xml', metaFeedHandler);
 app.get('/feed/meta.xml', metaFeedHandler);
+
+// Dynamic sitemap: static marketing pages plus every active product. Served
+// from the API so new products are discoverable without a redeploy, and
+// rewritten from /sitemap.xml in vercel.json.
+const SITEMAP_STATIC_PATHS = [
+  ['/', '1.0', 'daily'],
+  ['/shop', '0.8', 'daily'],
+  ['/about', '0.7', 'monthly'],
+  ['/contact', '0.6', 'monthly'],
+  ['/privacy', '0.5', 'yearly'],
+  ['/terms', '0.5', 'yearly'],
+  ['/refund-exchange', '0.5', 'yearly'],
+  ['/shipping', '0.5', 'yearly'],
+  ['/business-info', '0.5', 'yearly'],
+];
+app.get('/sitemap.xml', async (_req, res) => {
+  try {
+    const baseUrl = normalizeOrigin(env.APP_ORIGIN || 'https://www.noeul.me');
+    const { data: products } = await database()
+      .from('products')
+      .select('slug,created_at')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+    const urls = SITEMAP_STATIC_PATHS.map(([path, priority, changefreq]) => {
+      const loc = `${baseUrl}${path === '/' ? '/' : path}`;
+      return `  <url><loc>${escapeXml(loc)}</loc><changefreq>${changefreq}</changefreq><priority>${priority}</priority></url>`;
+    });
+    for (const p of (products || [])) {
+      if (!p.slug) continue;
+      const lastmod = p.created_at ? `\n    <lastmod>${escapeXml(new Date(p.created_at).toISOString())}</lastmod>` : '';
+      urls.push(`  <url><loc>${escapeXml(`${baseUrl}/product/${encodeURIComponent(p.slug)}`)}</loc>${lastmod}\n    <changefreq>weekly</changefreq><priority>0.7</priority></url>`);
+    }
+    res.set('Content-Type', 'application/xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`);
+  } catch (err) {
+    console.error('[sitemap] failed:', err?.message || err);
+    res.status(503).type('text/plain').send('sitemap unavailable');
+  }
+});
 
 function escapeXml(str) {
   return String(str || '')

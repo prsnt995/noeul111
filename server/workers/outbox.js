@@ -16,19 +16,48 @@ async function fetchOrder(supabase, orderId) {
   return data || null;
 }
 
+async function fetchOrderItems(supabase, orderId) {
+  const { data } = await supabase
+    .from('order_items')
+    .select('quantity,unit_price,snapshot,product_variants(sku,color,size,products(name_ko,name_en))')
+    .eq('order_id', orderId);
+  return (data || []).map(item => ({
+    name: item.product_variants?.products?.name_ko
+      || item.product_variants?.products?.name_en
+      || item.snapshot?.sku
+      || '상품',
+    sku: item.product_variants?.sku || item.snapshot?.sku || '',
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+  }));
+}
+
+// A failed send must fail the event so the outbox retries it. Returning
+// `success:false` without throwing used to mark undelivered mail as done.
+async function sendOrThrow(promise) {
+  const result = await promise;
+  if (!result || !result.success) throw new Error(result?.error || 'NOTIFICATION_FAILED');
+  return result;
+}
+
 async function dispatch(supabase, event) {
   const payload = typeof event.payload === 'string' ? JSON.parse(event.payload || '{}') : (event.payload || {});
   const order = payload.order_id ? await fetchOrder(supabase, payload.order_id) : null;
   switch (event.kind) {
-    case 'ORDER_CREATED':
-      if (order) await notificationService.sendOrderConfirmation({ ...order, items: [] });
+    case 'ORDER_CREATED': {
+      if (!order) throw new Error('ORDER_NOT_FOUND');
+      const items = await fetchOrderItems(supabase, order.id);
+      await sendOrThrow(notificationService.sendOrderConfirmation({ ...order, items }));
       break;
+    }
     case 'ORDER_CANCELED':
     case 'ORDER_EXPIRED':
-      if (order) await notificationService.sendCancellationNotification({ ...order, cancel_reason: event.kind === 'ORDER_EXPIRED' ? '결제 기한 만료' : (order.cancel_reason || '고객 요청') });
+      if (!order) throw new Error('ORDER_NOT_FOUND');
+      await sendOrThrow(notificationService.sendCancellationNotification({ ...order, cancel_reason: event.kind === 'ORDER_EXPIRED' ? '결제 기한 만료' : (order.cancel_reason || '고객 요청') }));
       break;
     case 'PAYMENT_CONFIRMED':
-      if (order) await notificationService.sendPaymentNotification(order);
+      if (!order) throw new Error('ORDER_NOT_FOUND');
+      await sendOrThrow(notificationService.sendPaymentNotification(order));
       break;
      default: {
         await supabase.from('outbox').update({ dead_at: new Date().toISOString(), last_error: `Unknown outbox kind: ${event.kind}`, lease_until: null, lease_token: null }).eq('id', event.id);

@@ -11,11 +11,13 @@ import {
   toKstDateTimeString,
   isOrderInPeriod,
   calculateBusinessMetrics,
-  generateBusinessExcelWorkbook,
-  parseExpensesFromExcel,
   getExpenseCategoryLabel,
   getPaymentMethodLabel,
 } from '../src/utils/businessAccounting.js';
+import {
+  generateBusinessExcelWorkbook,
+  parseExpensesFromExcel,
+} from '../src/utils/businessExcel.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');

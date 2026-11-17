@@ -7,10 +7,16 @@
 export const PRODUCT_IMAGE_MAX = 20;
 
 /** Max files the upload endpoint accepts per request (DoS guard). */
-export const UPLOAD_MAX_FILES_PER_REQUEST = 20;
+export const UPLOAD_MAX_FILES_PER_REQUEST = 4;
 
-/** Max bytes per file accepted by the API (8 MB, mirrors the bucket). */
-export const UPLOAD_MAX_FILE_BYTES = 8 * 1024 * 1024;
+/**
+ * Max bytes per file accepted by the API (mirrors the bucket).
+ *
+ * Vercel functions reject request bodies above 4.5 MB *before* Express runs,
+ * so a per-request total above that is a silent hard failure. With 4 files at
+ * 1 MB the worst case is 4 MB plus multipart overhead — safely under the limit.
+ */
+export const UPLOAD_MAX_FILE_BYTES = 1 * 1024 * 1024;
 
 /** Files above this size are compressed client-side before upload. */
 export const UPLOAD_DOWNSCALE_ABOVE_BYTES = 512 * 1024;

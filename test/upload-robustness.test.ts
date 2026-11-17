@@ -23,11 +23,13 @@ const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
 const F = (name: string, size: number, type: string) => ({ name, size, type });
 
 describe('Upload robustness — shared limits', () => {
-  it('cap is raised past 10 and aligned across layers', () => {
+  it('per-request payload stays under the 4.5 MB serverless body limit', () => {
     expect(PRODUCT_IMAGE_MAX).toBeGreaterThan(10);
-    expect(UPLOAD_MAX_FILES_PER_REQUEST).toBeGreaterThanOrEqual(PRODUCT_IMAGE_MAX);
-    expect(UPLOAD_MAX_FILE_BYTES).toBe(8 * 1024 * 1024);
-    expect(UPLOAD_BATCH_SIZE).toBeLessThanOrEqual(10);
+    // Per-product total (20) and per-request files are different concepts:
+    // the client uploads in batches, so the request cap only needs to cover one batch.
+    expect(UPLOAD_MAX_FILES_PER_REQUEST).toBeGreaterThanOrEqual(UPLOAD_BATCH_SIZE);
+    expect(UPLOAD_MAX_FILE_BYTES * UPLOAD_MAX_FILES_PER_REQUEST).toBeLessThan(4.5 * 1024 * 1024);
+    expect(UPLOAD_MAX_FILE_BYTES * UPLOAD_BATCH_SIZE).toBeLessThan(4.5 * 1024 * 1024);
   });
 
   it('backend enforces the shared constants (no hardcoded drift)', () => {
