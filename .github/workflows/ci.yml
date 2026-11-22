@@ -14,6 +14,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
+          # Node 22 required by package.json engines: >=22.12.0
+          # (was Node 20; updated to match current engines field and avoid
+          # CI failures from version mismatch + missing package-lock.json).
           node-version: '22'
           cache: 'npm'
 
