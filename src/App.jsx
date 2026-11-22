@@ -129,7 +129,7 @@ function AppContent() {
   }, [location]);
 
   return (
-    <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100%', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100%', overflowX: 'clip', display: 'flex', flexDirection: 'column' }}>
       {/* Storefront Header */}
       {!isAdminRoute && (
         <Header onOpenSearch={() => setSearchOpen(true)} />

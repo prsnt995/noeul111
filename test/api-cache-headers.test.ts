@@ -28,6 +28,7 @@ describe('API cache headers', () => {
     '/api/v1/pages/about',
     '/api/v1/store/settings/public',
     '/api/v1/products/1/reviews',
+    '/api/v1/storefront/home',
   ])('edge-caches public GET %s', async (path: string) => {
     const res = await request(app).get(path);
     expect(res.headers['cache-control']).toBe(PUBLIC_CACHE);

@@ -16,6 +16,7 @@ export function FastDeliveryBanner({
   config = DEFAULT_DELIVERY_CONFIG,
   className = '',
   style = {},
+  variant = 'default',
 }) {
   const {
     enabled = true,
@@ -29,9 +30,11 @@ export function FastDeliveryBanner({
 
   if (!enabled) return null;
 
+  const isSlim = variant === 'slim';
+
   return (
     <section
-      className={`fast-delivery-banner ${className}`}
+      className={`fast-delivery-banner${isSlim ? ' fast-delivery-banner--slim' : ''} ${className}`}
       style={style}
       aria-label="빠른 배송 안내: 오늘 출발 내일 도착"
       title={disclaimerText || undefined}

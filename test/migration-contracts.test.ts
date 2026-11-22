@@ -34,8 +34,8 @@ describe('Phase 5-7 — Code↔migration contract alignment', () => {
       "from('outbox_events')", "from('site_settings')", "from('carts')",
       "from('homepage_sections')", "from('menu_items')",
       'discount_amount', 'payment_status',
-      'payment_method', 'discount_value', 'start_date',
-      'end_date', 'existing.length', 'order.total_amount',
+      'payment_method', 'discount_value',
+      'existing.length', 'order.total_amount',
     ];
     // discount_type is a live app.coupons column since 014 (fixed/percentage),
     // not a retired legacy identifier.

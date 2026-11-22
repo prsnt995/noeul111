@@ -11,7 +11,6 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const read = (f: string) => fs.readFileSync(path.join(root, f), 'utf8');
 
 const GRID_PAGES = [
-  'src/pages/HomePage.jsx',
   'src/pages/ShopPage.jsx',
 ];
 
@@ -41,10 +40,12 @@ describe('Storefront paging — load more', () => {
     }
   });
 
-  it('BEST strip shows the top 10 flagged products', () => {
+  it('home uses the storefront aggregate for BEST + category rows', () => {
     const src = read('src/pages/HomePage.jsx');
-    expect(src.includes('json.data.slice(0, 10)'), 'top-10 cap').toBe(true);
-    expect(src.includes('json.data.slice(0, 6)'), 'old top-6 cap gone').toBe(false);
+    expect(src.includes('useStorefrontHome'), 'aggregate hook').toBe(true);
+    expect(src.includes('<BestSellersCarousel'), 'BEST rail').toBe(true);
+    expect(src.includes('<CategoryRow'), 'category rows').toBe(true);
+    expect(src.includes('<PromoBanner'), 'banner slots').toBe(true);
   });
 
   it('backend still honors limit/offset with a total for the grids', () => {    const app = read('api/app.js');

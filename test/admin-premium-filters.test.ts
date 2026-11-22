@@ -68,23 +68,25 @@ describe('Premium filters — storefront', () => {
     expect(src.includes('<select'), 'no native select left').toBe(false);
   });
 
-  it('home uses segmented control and per-filter chips', () => {
+  it('home is curated and delegates filtering to shop', () => {
     const src = read('src/pages/HomePage.jsx');
-    expect(src.includes('GenderSegmented'), 'segmented control').toBe(true);
-    expect(src.includes('<FilterChips'), 'chips row').toBe(true);
-    expect(src.includes('edge-fade'), 'edge fades').toBe(true);
+    expect(src.includes('useStorefrontHome'), 'aggregate hook').toBe(true);
+    expect(src.includes('<CategoryRow'), 'category rows').toBe(true);
+    expect(src.includes('<PromoBanner'), 'banner slots').toBe(true);
+    expect(src.includes('GenderSegmented'), 'no gender filter on home').toBe(false);
+    expect(src.includes('<FilterChips'), 'no filter chips on home').toBe(false);
+    const shop = read('src/pages/ShopPage.jsx');
+    expect(shop.includes('GenderSegmented'), 'shop owns the gender filter').toBe(true);
+    expect(shop.includes('<FilterChips'), 'shop owns chips').toBe(true);
   });
 
-  it('home filter bar is slim: gender+quick chips in row 1, categories alone in scrollable row 2', () => {
-    const src = read('src/pages/HomePage.jsx');
-    expect(src.includes('Row 1: gender segmented + quick chips'), 'row 1 layout').toBe(true);
-    expect(src.includes('Row 2: categories only'), 'row 2 layout').toBe(true);
-    expect(src.includes("aria-label={t('home.shop_by_category')}"), 'category tablist').toBe(true);
-    // Sticky bar closes before the chips block (chips scroll away).
-    const stickyClose = src.indexOf('Active-filter chips: NOT sticky');
-    const chipsOpen = src.indexOf('<FilterChips');
-    expect(stickyClose, 'sticky section marker').toBeGreaterThan(-1);
-    expect(chipsOpen, 'chips below sticky bar').toBeGreaterThan(stickyClose);
+  it('shop toolbar is sticky below the header and the sidebar owns filters', () => {
+    const src = read('src/pages/ShopPage.jsx');
+    const css = read('src/styles/storefront.css');
+    expect(src.includes('shop-toolbar'), 'sticky toolbar').toBe(true);
+    expect(src.includes('shop-sidebar'), 'desktop sidebar').toBe(true);
+    expect(src.includes('shop-sheet'), 'mobile filter sheet').toBe(true);
+    expect(css.includes('top: var(--header-h)'), 'header offset').toBe(true);
   });
 
   it('floating rail paints above sticky filter bars but below header and modals', () => {
@@ -146,8 +148,9 @@ describe('Premium filters — overlay stacking (no filter-over-modal overlap)', 
   });
 
   it('shop/home roots use overflow-x clip so sticky bars never ride over the header', () => {
-    expect(read('src/pages/ShopPage.jsx').includes("overflowX: 'clip'"), 'shop clip').toBe(true);
-    expect(read('src/pages/HomePage.jsx').includes("overflowX: 'clip'"), 'home clip').toBe(true);
+    const css = read('src/styles/storefront.css');
+    expect(/\.lux-home\s*\{[^}]*overflow-x:\s*clip/.test(css), 'home clip').toBe(true);
+    expect(/\.shop-page\s*\{[^}]*overflow-x:\s*clip/.test(css), 'shop clip').toBe(true);
   });
 
   it('admin overlays stack above filter popovers (120)', () => {

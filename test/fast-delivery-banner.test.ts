@@ -32,7 +32,7 @@ describe('Fast Delivery Banner Configuration & Component', () => {
 
   it('HomePage mounts FastDeliveryBanner immediately before BestSellersCarousel', () => {
     const src = read('src/pages/HomePage.jsx');
-    const bannerIdx = src.indexOf('<FastDeliveryBanner />');
+    const bannerIdx = src.indexOf('<FastDeliveryBanner');
     const carouselIdx = src.indexOf('<BestSellersCarousel');
     expect(bannerIdx, 'FastDeliveryBanner must be present').toBeGreaterThan(-1);
     expect(carouselIdx, 'BestSellersCarousel must be present').toBeGreaterThan(-1);

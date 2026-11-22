@@ -1,567 +1,137 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation, useSearch } from 'wouter';
+import React from 'react';
 import { useLanguage } from '../context/LanguageContext.jsx';
-import { ProductCard } from '../components/common/ProductCard.jsx';
-import { BestSellersCarousel } from '../components/home/BestSellersCarousel.jsx';
+import { useStorefrontHome } from '../hooks/useStorefrontHome.js';
+import { HomeHero } from '../components/home/HomeHero.jsx';
 import { FastDeliveryBanner } from '../components/home/FastDeliveryBanner.jsx';
-import { GenderSegmented } from '../components/common/GenderSegmented.jsx';
-import { FilterChips } from '../components/common/FilterChips.jsx';
-import { CATEGORIES_BY_GENDER } from '../data/products.js';
-import { api } from '../utils/api.js';
+import { BestSellersCarousel } from '../components/home/BestSellersCarousel.jsx';
+import { CategoryTiles } from '../components/home/CategoryTiles.jsx';
+import { CategoryRow } from '../components/home/CategoryRow.jsx';
+import { PromoBanner } from '../components/home/PromoBanner.jsx';
+import { EditorialBlock } from '../components/home/EditorialBlock.jsx';
+import { HomeSkeleton } from '../components/home/HomeSkeleton.jsx';
+import { getOptimizedImageUrl, getPrimaryProductImage, safeHttpUrl } from '../utils/imageHelper.js';
 
+/**
+ * Homepage — curated discovery.
+ *
+ * The server returns a page model (`mode`, `maxRows`, `best`, `new`,
+ * `categories`, `banners`) so the layout adapts to inventory:
+ *   sparse  (<12)   → hero + BEST + tiles + new + editorial
+ *   standard (12–30) → adds up to 3 category rows
+ *   rich    (>30)   → adds up to 6 category rows
+ *
+ * Category rows keep their existing admin `sort_order`. Banners render
+ * between rows using `anchor_category` + `anchor_position`.
+ */
 export function HomePage() {
   const { t } = useLanguage();
-  const [, setLocation] = useLocation();
-  // useSearch subscribes to query changes (useLocation only sees the
-  // pathname, so query-only pill navigation would never re-sync state).
-  const search = useSearch();
+  const { data, loading, error } = useStorefrontHome();
 
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [bestProducts, setBestProducts] = useState([]);
-  const [bestLoading, setBestLoading] = useState(true);
-  const [liveCategories, setLiveCategories] = useState([]);
-  // Storefront paging: first 24, infinite scroll loads next PAGE_BATCH as user scrolls down.
-  const [limit, setLimit] = useState(24);
-  const [total, setTotal] = useState(0);
-  const PAGE_BATCH = 24;
-  const observerTarget = useRef(null);
-
-  // Active filter state from URL
-  const [selectedGender, setSelectedGender] = useState('all');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [activeFilter, setActiveFilter] = useState('');
-  const [sort, setSort] = useState('newest');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // 1. Sync state with URL query parameters (any filter change restarts paging)
-  useEffect(() => {
-    const sp = new URLSearchParams(search);
-    const g = sp.get('gender') || 'all';
-    const c = sp.get('category') || 'all';
-    const f = sp.get('filter') || '';
-    const s = sp.get('search') || '';
-    const sortParam = sp.get('sort') || 'newest';
-
-    setSelectedGender(g.toLowerCase());
-    setSelectedCategory(c.toLowerCase());
-    setActiveFilter(f.toLowerCase());
-    setSearchQuery(s);
-    setSort(['newest', 'best', 'price_asc', 'price_desc'].includes(sortParam) ? sortParam : 'newest');
-    setProducts([]);
-    setLimit(24);
-  }, [search]);
-
-  // 2. Live categories (frontend-only, falls back to hardcoded list)
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/catalog/categories').then((res) => {
-      if (!cancelled && res.success && Array.isArray(res.data) && res.data.length) {
-        setLiveCategories(
-          res.data.map((c) => ({
-            key: (c.slug || '').toLowerCase(),
-            label: c.name_en || c.slug,
-            label_ko: c.name_ko || c.slug,
-          }))
-        );
-      }
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  const availableCategories = useMemo(() => {
-    if (liveCategories.length) {
-      if (selectedGender === 'men') {
-        return liveCategories.filter((c) =>
-          ['tshirts', 'shirts', 'jeans', 'pants', 'underwear', 'socks', 'jackets', 'hoodies', 'accessories', 'bags'].includes(c.key)
-        );
-      }
-      if (selectedGender === 'women') {
-        return liveCategories.filter((c) =>
-          ['tshirts', 'shirts', 'jeans', 'pants', 'underwear', 'socks', 'dresses', 'skirts', 'jackets', 'hoodies', 'accessories', 'bags'].includes(c.key)
-        );
-      }
-      return liveCategories;
-    }
-    if (selectedGender === 'men') return CATEGORIES_BY_GENDER.men;
-    if (selectedGender === 'women') return CATEGORIES_BY_GENDER.women;
-    const seen = new Map();
-    [...CATEGORIES_BY_GENDER.women, ...CATEGORIES_BY_GENDER.men].forEach((c) => {
-      if (!seen.has(c.key)) seen.set(c.key, c);
-    });
-    return [...seen.values()];
-  }, [selectedGender, liveCategories]);
-
-  // 3. Fetch BEST items (top 10, follows gender + category so each
-  // category has its own strip — fully controlled by admin is_best flag)
-  useEffect(() => {
-    let cancelled = false;
-    async function loadBest() {
-      setBestLoading(true);
-      try {
-        const params = new URLSearchParams();
-        if (selectedGender !== 'all') params.append('gender', selectedGender);
-        if (selectedCategory !== 'all') params.append('category', selectedCategory);
-        params.append('is_best', 'true');
-        const json = await api.get(`/catalog/products?${params.toString()}`);
-        if (!cancelled) {
-          if (json.success && Array.isArray(json.data)) {
-            setBestProducts(json.data.slice(0, 10));
-          } else {
-            setBestProducts([]);
-          }
-        }
-      } catch (err) {
-        if (!cancelled) setBestProducts([]);
-      } finally {
-        if (!cancelled) setBestLoading(false);
-      }
-    }
-    loadBest();
-    return () => { cancelled = true; };
-  }, [selectedGender, selectedCategory]);
-
-  // 4. Fetch grid products dynamically
-  useEffect(() => {
-    let cancelled = false;
-    async function loadProducts() {
-      if (limit === 24 || products.length === 0) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
-      try {
-        const params = new URLSearchParams();
-        if (selectedGender !== 'all') params.append('gender', selectedGender);
-        if (selectedCategory !== 'all') params.append('category', selectedCategory);
-        if (activeFilter === 'new') params.append('is_new', 'true');
-        if (activeFilter === 'best') params.append('is_best', 'true');
-        if (activeFilter === 'sale') params.append('is_sale', 'true');
-        if (searchQuery.trim()) params.append('search', searchQuery.trim());
-        if (sort !== 'newest') params.append('sort', sort);
-        params.append('limit', String(limit));
-
-        const json = await api.get(`/catalog/products?${params.toString()}`);
-        if (cancelled) return;
-        if (json.success && Array.isArray(json.data)) {
-          setProducts(json.data);
-          setTotal(Number(json.total ?? json.data.length) || 0);
-        } else {
-          setProducts([]);
-          setTotal(0);
-        }
-      } catch (err) {
-        if (!cancelled) { setProducts([]); setTotal(0); }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
-    }
-
-    loadProducts();
-    return () => { cancelled = true; };
-  }, [selectedGender, selectedCategory, activeFilter, searchQuery, sort, limit]);
-
-  // 5. Infinite scroll observer: as user scrolls down, automatically load more products
-  useEffect(() => {
-    if (loading || loadingMore) return;
-    if (products.length >= total || total === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setLimit((prev) => prev + PAGE_BATCH);
-        }
-      },
-      {
-        root: null,
-        rootMargin: '400px',
-        threshold: 0,
-      }
+  if (loading && !data) {
+    return (
+      <div className="lux-home">
+        <HomeSkeleton />
+      </div>
     );
+  }
 
-    const el = observerTarget.current;
-    if (el) observer.observe(el);
-
-    return () => {
-      if (el) observer.unobserve(el);
-    };
-  }, [loading, loadingMore, products.length, total]);
-
-  // Handle switching gender filter smoothly — single source of truth via wouter
-  const handleGenderSwitch = (gender) => {
-    const params = new URLSearchParams(window.location.search);
-    if (gender === 'all') {
-      params.delete('gender');
-    } else {
-      params.set('gender', gender);
-    }
-    params.delete('category');
-    const qs = params.toString();
-    const target = qs ? `/?${qs}` : '/';
-    setLocation(target);
-  };
-
-  const handleCategorySelect = (slug) => {
-    const params = new URLSearchParams(window.location.search);
-    if (!slug || slug === 'all') {
-      params.delete('category');
-    } else {
-      params.set('category', slug);
-    }
-    const qs = params.toString();
-    const target = qs ? `/?${qs}` : '/';
-    setLocation(target);
-  };
-
-  const handleFilterSelect = (f) => {
-    const params = new URLSearchParams(window.location.search);
-    if (!f || f === '' || f === 'all') {
-      params.delete('filter');
-    } else {
-      params.set('filter', f);
-    }
-    const qs = params.toString();
-    const target = qs ? `/?${qs}` : '/';
-    setLocation(target);
-  };
-
-  const handleReset = () => {
-    setLocation('/');
-  };
-
-  const handleSearchClear = () => {
-    const params = new URLSearchParams(window.location.search);
-    params.delete('search');
-    const qs = params.toString();
-    setLocation(qs ? `/?${qs}` : '/');
-  };
-
-  const categoryLabel = (c) => (c.label_ko || c.label);
-
-  return (
-    <div
-      style={{
-        backgroundColor: '#ffffff',
-        minHeight: '100vh',
-        width: '100%',
-        maxWidth: '100%',
-        boxSizing: 'border-box',
-        overflowX: 'clip',
-      }}
-    >
-      {/* =========================================================
-          PREMIUM FAST DELIVERY BANNER (below nav, above best items)
-          ========================================================= */}
-      <FastDeliveryBanner />
-
-      {/* =========================================================
-          BEST ITEMS CAROUSEL (top, 6 items, pixel-step paging)
-          ========================================================= */}
-      <BestSellersCarousel
-        items={bestProducts}
-        loading={bestLoading}
-        title={t('home.best_title')}
-        subtitle={t('home.best_sub')}
-      />
-
-      {/* =========================================================
-          SLIM STICKY FILTER BAR (2 rows — stays pinned, never heavy):
-          Row 1 = gender segmented + quick chips + count/reset
-          Row 2 = categories only (scrolls when there are many)
-          Active-filter chips live BELOW the sticky bar and scroll away.
-          ========================================================= */}
-      <div
-        className="noeul-category-bar home-filter-bar"
-        style={{
-          borderBottom: '1px solid #f0f0f0',
-          padding: '8px 12px 10px',
-          backgroundColor: '#ffffff',
-          position: 'sticky',
-          top: 56,
-          zIndex: 95,
-          width: '100%',
-          maxWidth: '100%',
-          boxSizing: 'border-box',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-        }}
-      >
-        {/* Row 1: gender segmented + quick chips + count/reset */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', maxWidth: '100%' }}>
-          <div style={{ flexShrink: 0 }}>
-            <GenderSegmented
-              value={selectedGender}
-              ariaLabel={t('nav.all')}
-              options={[
-                { key: 'all', label: t('nav.all') },
-                { key: 'men', label: t('nav.men') },
-                { key: 'women', label: t('nav.women') },
-              ]}
-              onChange={handleGenderSwitch}
-            />
-          </div>
-
-          <div className="home-category-pills" role="tablist" aria-label={t('shop.filters')} style={{ flex: 1, minWidth: 0 }}>
-            {[
-              { key: '', label: t('home.view_all') },
-              { key: 'new', label: t('nav.new_arrivals') },
-              { key: 'best', label: t('nav.best_sellers') },
-              { key: 'sale', label: t('nav.sale') },
-            ].map((f) => {
-              const isSelected = (activeFilter || '') === f.key;
-              return (
-                <button
-                  key={f.key || 'all'}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => handleFilterSelect(f.key)}
-                  className={`home-pill home-chip${isSelected ? ' active' : ''}${f.key === 'sale' ? ' sale' : ''}`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '0.6875rem',
-              color: '#888888',
-              letterSpacing: '0.04em',
-              fontWeight: 500,
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-              marginLeft: 'auto',
-              backgroundColor: '#ffffff',
-              paddingLeft: '4px',
-              zIndex: 1,
-            }}
-          >
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.6875rem',
-                color: '#888888',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <span>{t('shop.sort_by')}</span>
-              <select
-                value={sort}
-                onChange={(e) => {
-                  const nextSort = e.target.value;
-                  setSort(nextSort);
-                  const params = new URLSearchParams(window.location.search);
-                  if (nextSort === 'newest') params.delete('sort');
-                  else params.set('sort', nextSort);
-                  const qs = params.toString();
-                  setLocation(qs ? `/?${qs}` : '/');
-                }}
-                style={{ border: '1px solid #e4e4e7', borderRadius: '4px', padding: '4px 8px', minWidth: 110 }}
-              >
-                <option value="newest">{t('shop.sort_newest')}</option>
-                <option value="best">{t('shop.sort_best')}</option>
-                <option value="price_asc">{t('shop.sort_price_low')}</option>
-                <option value="price_desc">{t('shop.sort_price_high')}</option>
-              </select>
-            </label>
-            {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
-              <button
-                type="button"
-                onClick={handleReset}
-                aria-label={t('shop.reset_filters')}
-                style={{
-                  background: 'none',
-                  border: '1px solid #e4e4e7',
-                  borderRadius: '9999px',
-                  fontSize: '0.6875rem',
-                  fontWeight: 700,
-                  color: '#52525b',
-                  padding: '3px 10px',
-                  cursor: 'pointer',
-                }}
-              >
-                {t('shop.reset_filters')} ✕
-              </button>
-            )}
-            <span aria-live="polite">
-              {loading ? '...' : `${products.length} ${t('home.items')}`}
-            </span>
-          </div>
-        </div>
-
-        {/* Row 2: categories only — scrolls when there are many */}
-        <div className="home-category-pills edge-fade" role="tablist" aria-label={t('home.shop_by_category')}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={selectedCategory === 'all'}
-            onClick={() => handleCategorySelect('all')}
-            className={`home-pill${selectedCategory === 'all' ? ' active' : ''}`}
-          >
-            {t('shop.all_categories')}
-          </button>
-          {availableCategories.map((c) => {
-            const isSelected = selectedCategory === c.key;
-            return (
-              <button
-                key={c.key}
-                type="button"
-                role="tab"
-                aria-selected={isSelected}
-                onClick={() => handleCategorySelect(c.key)}
-                className={`home-pill${isSelected ? ' active' : ''}`}
-              >
-                {categoryLabel(c)}
-              </button>
-            );
-          })}
+  if (!data) {
+    return (
+      <div className="lux-home">
+        <div className="lux-container lux-section" style={{ textAlign: 'center' }}>
+          <span className="lux-eyebrow">NOEUL</span>
+          <h1 className="lux-section-title">컬렉션을 불러오지 못했습니다</h1>
+          <p style={{ color: 'var(--ink-2)', fontSize: 13, margin: '12px 0 22px' }}>
+            {error || '잠시 후 다시 시도해 주세요.'}
+          </p>
+          <a href="/shop" className="lux-btn">전체 상품 보기</a>
         </div>
       </div>
+    );
+  }
 
-      {/* Active-filter chips: NOT sticky — scrolls away with content */}
-      {(selectedGender !== 'all' || selectedCategory !== 'all' || activeFilter || searchQuery) && (
-        <div style={{ padding: '10px 12px 0', backgroundColor: '#ffffff' }}>
-          <FilterChips
-            chips={[
-              ...(selectedGender !== 'all' ? [{
-                key: 'gender',
-                label: selectedGender === 'men' ? t('nav.men') : t('nav.women'),
-                onClear: () => handleGenderSwitch('all'),
-              }] : []),
-              ...(selectedCategory !== 'all' ? [{
-                key: 'category',
-                label: (() => {
-                  const c = availableCategories.find((x) => x.key === selectedCategory);
-                  return c ? categoryLabel(c) : selectedCategory;
-                })(),
-                onClear: () => handleCategorySelect('all'),
-              }] : []),
-              ...(activeFilter ? [{
-                key: 'filter',
-                label: activeFilter === 'new' ? t('nav.new_arrivals') : activeFilter === 'best' ? t('nav.best_sellers') : t('nav.sale'),
-                onClear: () => handleFilterSelect(''),
-              }] : []),
-              ...(searchQuery ? [{
-                key: 'search',
-                label: `“${searchQuery}”`,
-                onClear: handleSearchClear,
-              }] : []),
-            ]}
-            onResetAll={handleReset}
-            resetLabel={t('shop.reset_filters')}
-          />
-        </div>
-      )}
+  const banners = data.banners || {};
+  const categories = Array.isArray(data.categories) ? data.categories : [];
+  const best = Array.isArray(data.best) ? data.best : [];
+  const fresh = Array.isArray(data.new) ? data.new : [];
+  const maxRows = Number.isFinite(Number(data.maxRows)) ? Number(data.maxRows) : 0;
+  const rows = maxRows > 0 ? categories.slice(0, maxRows) : [];
+  const between = Array.isArray(banners.between_categories) ? banners.between_categories : [];
+  const rowSlugs = new Set(rows.map((c) => c.slug));
 
-      {/* =========================================================
-          PRODUCT GRID
-          ========================================================= */}
-      <main
-        style={{
-          width: '100%',
-          maxWidth: '100%',
-          boxSizing: 'border-box',
-          padding: '0 0 40px',
-          margin: 0,
-          overflowX: 'hidden',
-        }}
-      >
-        {loading && products.length === 0 ? (
-          <div className="product-grid noeul-product-grid" aria-label={t('home.loading')}>
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => (
-              <div key={k} className="best-skeleton-card" aria-hidden="true">
-                <div className="best-skeleton-media" />
-              </div>
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 20px', color: '#666666' }}>
-            <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '8px' }}>{t('home.no_products')}</p>
-            <p style={{ fontSize: '0.8125rem', color: '#888888', marginBottom: '20px' }}>
-              {t('home.no_products_desc')}
-            </p>
-            <button
-              type="button"
-              onClick={handleReset}
-              style={{
-                padding: '8px 20px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                letterSpacing: '0.06em',
-                backgroundColor: '#000000',
-                color: '#ffffff',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              {t('home.view_all_products')}
-            </button>
-          </div>
-        ) : (
-          <>
-            <div key={`${selectedGender}-${selectedCategory}-${activeFilter}`} className="product-grid noeul-product-grid home-grid-animated">
-              {products.map((prod, i) => {
-                const prev = products[i - 1];
-                const prevCategory = prev?.categories?.slug || prev?.category || '';
-                const nextCategory = prod.categories?.slug || prod.category || '';
-                const showDivider = i > 0 && nextCategory && nextCategory !== prevCategory;
-                return (
-                  <React.Fragment key={prod.id}>
-                    {showDivider && (
-                      <div
-                        className="category-divider"
-                        style={{
-                          gridColumn: '1 / -1',
-                          borderTop: '1px solid #f0f0f0',
-                          margin: '12px 0',
-                          padding: '4px 0',
-                        }}
-                      >
-                        <span style={{ marginRight: '8px', color: '#888888', fontSize: '0.7rem' }}>
-                          {prod.category_translation || nextCategory}
-                        </span>
-                      </div>
-                    )}
-                    <ProductCard product={prod} variant="overlay" eager={i < 5} />
-                  </React.Fragment>
-                );
-              })}
-            </div>
+  const bannersAt = (slug, position) => between.filter((b) => (
+    b
+    && b.anchor_category === slug
+    && (b.anchor_position === 'before' ? 'before' : 'after') === position
+  ));
+  // Banners anchored to a category that did not make the row cut still render
+  // after the category block rather than silently disappearing.
+  const looseBanners = between.filter((b) => b && !rowSlugs.has(b.anchor_category));
 
-            {/* Infinite Scroll Sentinel */}
-            <div ref={observerTarget} style={{ height: '20px', margin: '10px 0' }} />
+  const heroProduct = best[0] || categories.find((c) => c.products?.length)?.products?.[0];
+  const footerBanners = Array.isArray(banners.before_footer) ? banners.before_footer : [];
+  const editorialBanner = footerBanners[0];
+  const editorialImage = safeHttpUrl(editorialBanner?.image_url)
+    || (fresh[0] ? getOptimizedImageUrl(getPrimaryProductImage(fresh[0]), 1000) : '')
+    || (heroProduct ? getOptimizedImageUrl(getPrimaryProductImage(heroProduct), 1000) : '');
 
-            {loadingMore && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '24px 0',
-                  gap: '10px',
-                }}
-              >
-                <div className="infinite-scroll-spinner" />
-                <span style={{ fontSize: '0.8125rem', color: '#71717a', fontWeight: 500 }}>
-                  {t('home.loading')}
-                </span>
-              </div>
-            )}
-          </>
-        )}
-      </main>
+  return (
+    <div className="lux-home">
+      <HomeHero banner={banners.hero} site={data.site} heroProduct={heroProduct} />
+
+      <FastDeliveryBanner variant="slim" />
+
+      <BestSellersCarousel
+        items={best}
+        title={t('home.best_title')}
+        subtitle={t('home.best_sub')}
+        moreHref="/shop?filter=best"
+        eyebrow="BEST SELLERS"
+      />
+
+      {(Array.isArray(banners.after_best) ? banners.after_best : []).map((b) => (
+        <PromoBanner key={b.id || `after-best-${b.title_ko || b.image_url}`} banner={b} />
+      ))}
+
+      <CategoryTiles categories={categories} />
+
+      {rows.map((cat) => (
+        <React.Fragment key={cat.slug}>
+          {bannersAt(cat.slug, 'before').map((b) => (
+            <PromoBanner key={b.id || `${cat.slug}-before-${b.title_ko || b.image_url}`} banner={b} />
+          ))}
+          <CategoryRow category={cat} />
+          {bannersAt(cat.slug, 'after').map((b) => (
+            <PromoBanner key={b.id || `${cat.slug}-after-${b.title_ko || b.image_url}`} banner={b} />
+          ))}
+        </React.Fragment>
+      ))}
+
+      {looseBanners.map((b) => (
+        <PromoBanner key={b.id || `loose-${b.title_ko || b.image_url}`} banner={b} />
+      ))}
+
+      <BestSellersCarousel
+        items={fresh}
+        title={t('home.new_arrivals')}
+        subtitle={t('home.new_arrivals_sub')}
+        moreHref="/shop?filter=new"
+        eyebrow="NEW IN"
+      />
+
+      {footerBanners.slice(1).map((b) => (
+        <PromoBanner key={b.id || `footer-${b.title_ko || b.image_url}`} banner={b} />
+      ))}
+
+      <EditorialBlock image={editorialImage} />
+
+      {error ? (
+        <p className="lux-container" style={{ paddingTop: 0, paddingBottom: 24, fontSize: 11, color: 'var(--muted)' }}>
+          일부 콘텐츠를 불러오지 못했습니다. ({error})
+        </p>
+      ) : null}
     </div>
   );
 }
+
+export default HomePage;

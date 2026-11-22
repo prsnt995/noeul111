@@ -115,7 +115,7 @@ const passwordResetLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standar
 app.use(express.json({ limit: '256kb', strict: true }));
 const PUBLIC_CACHE_CONTROL = 'public, max-age=30, s-maxage=60, stale-while-revalidate=120';
 const PUBLIC_CACHE_PATHS = ['/api/v1/store/settings/public'];
-const PUBLIC_CACHE_PREFIXES = ['/api/v1/catalog/', '/api/v1/content/', '/api/v1/pages/', '/api/v1/products/'];
+const PUBLIC_CACHE_PREFIXES = ['/api/v1/catalog/', '/api/v1/content/', '/api/v1/pages/', '/api/v1/products/', '/api/v1/storefront/'];
 app.use((req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Referrer-Policy', 'strict-origin-when-cross-origin'); if (req.method !== 'GET') { res.set('Cache-Control', 'no-store'); return next(); } const p = req.path; const pub = PUBLIC_CACHE_PATHS.includes(p) || PUBLIC_CACHE_PREFIXES.some(pre => p.startsWith(pre)); res.set('Cache-Control', pub ? PUBLIC_CACHE_CONTROL : 'private, max-age=0'); next(); });
 
 const serverSb = env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY) ? createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }) : null;
@@ -696,10 +696,101 @@ app.get('/api/v1/catalog/products', async (req, res) => { try { let q = database
       if (!catRows || catRows.length === 0) { res.json({ success: true, data: [], total: 0 }); return; }
       q = q.in('category_id', catRows.map(r=>r.id));
       }
-    } if (req.query.gender) q = q.in('gender', [req.query.gender, 'unisex']); if (req.query.is_new === 'true' || req.query.is_new === '1' || req.query.isNew === 'true') q = q.eq('is_new', true); if (req.query.is_best === 'true' || req.query.is_best === '1' || req.query.isBest === 'true') q = q.eq('is_best', true); if (req.query.is_sale === 'true' || req.query.is_sale === '1' || req.query.sale === 'true' || req.query.isSale === 'true') q = q.not('discount_price', 'is', null); if (req.query.sort === 'price_asc') q = q.order('price', { ascending: true }); else if (req.query.sort === 'price_desc') q = q.order('price', { ascending: false }); else if (req.query.sort === 'popular' || req.query.sort === 'best') { if (await hasBestRank()) q = q.order('best_rank', { ascending: true, nullsFirst: false }); q = q.order('is_best', { ascending: false }); } const bestFilter = req.query.is_best === 'true' || req.query.is_best === '1' || req.query.isBest === 'true'; if (bestFilter && req.query.sort !== 'popular' && req.query.sort !== 'best' && req.query.sort !== 'price_asc' && req.query.sort !== 'price_desc' && await hasBestRank()) q = q.order('best_rank', { ascending: true, nullsFirst: false }); q = q.order('created_at', { ascending: false }); const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 500); const offset = Math.max(Number(req.query.offset) || 0, 0); const { data, count, error: e } = await q.range(offset, offset + limit - 1); if (e) throw e; res.json({ success: true, data: (data || []).map(normalizeProduct), total: (count ?? (data || []).length) }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
+    } if (req.query.gender) q = q.in('gender', [req.query.gender, 'unisex']); if (req.query.is_new === 'true' || req.query.is_new === '1' || req.query.isNew === 'true') q = q.eq('is_new', true); if (req.query.is_best === 'true' || req.query.is_best === '1' || req.query.isBest === 'true') q = q.eq('is_best', true); if (req.query.is_sale === 'true' || req.query.is_sale === '1' || req.query.sale === 'true' || req.query.isSale === 'true') q = q.not('discount_price', 'is', null); if (req.query.min_price !== undefined && req.query.min_price !== '') { const v = Number(req.query.min_price); if (Number.isFinite(v) && v >= 0) q = q.gte('price', v); } if (req.query.max_price !== undefined && req.query.max_price !== '') { const v = Number(req.query.max_price); if (Number.isFinite(v) && v >= 0) q = q.lte('price', v); } if (req.query.sort === 'price_asc') q = q.order('price', { ascending: true }); else if (req.query.sort === 'price_desc') q = q.order('price', { ascending: false }); else if (req.query.sort === 'popular' || req.query.sort === 'best') { if (await hasBestRank()) q = q.order('best_rank', { ascending: true, nullsFirst: false }); q = q.order('is_best', { ascending: false }); } const bestFilter = req.query.is_best === 'true' || req.query.is_best === '1' || req.query.isBest === 'true'; if (bestFilter && req.query.sort !== 'popular' && req.query.sort !== 'best' && req.query.sort !== 'price_asc' && req.query.sort !== 'price_desc' && await hasBestRank()) q = q.order('best_rank', { ascending: true, nullsFirst: false }); q = q.order('created_at', { ascending: false }); const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 500); const offset = Math.max(Number(req.query.offset) || 0, 0); const { data, count, error: e } = await q.range(offset, offset + limit - 1); if (e) throw e; res.json({ success: true, data: (data || []).map(normalizeProduct), total: (count ?? (data || []).length) }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
 
 app.get('/api/v1/catalog/products/:id', async (req, res) => { try { const raw = String(req.params.id || '').trim(); const isNumeric = /^\d+$/.test(raw); let q = database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true); if (isNumeric) q = q.eq('id', Number(raw)); else q = q.eq('slug', raw); const { data, error: e } = await q.maybeSingle(); if (e || !data) return error(res, 404, 'PRODUCT_NOT_FOUND'); const current = normalizeProduct(data); let related = []; try { const [sameCat, best] = await Promise.all([database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('category_id', data.category_id).neq('id', data.id).order('created_at', { ascending: false }).limit(12).then(r => r.data || [], () => []), database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('is_best', true).neq('id', data.id).order('created_at', { ascending: false }).limit(12).then(r => r.data || [], () => [])]); const seen = new Map(); for (const p of [...(sameCat || []), ...(best || [])]) if (p && !seen.has(p.id)) seen.set(p.id, p); const pool = [...seen.values()].map(normalizeProduct); let ratings = {}; try { const ids = pool.map(p => p.id); if (ids.length) { const { data: revs } = await database().from('reviews').select('product_id,rating').in('product_id', ids).eq('is_approved', true); ratings = averageRatings(revs || []); } } catch {} related = rankRelated(current, pool, { limit: 4, ratings }); } catch { related = []; } if (!related.length) { const fb = await database().from('products').select('*,categories(slug),product_variants(*),product_media(*)').eq('is_active', true).eq('category_id', data.category_id).neq('id', data.id).order('created_at', { ascending: false }).limit(4).then(r => r.data || [], () => []); related = (fb || []).map(normalizeProduct); } res.json({ success: true, data: current, related: related }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
 app.get('/api/v1/catalog/categories', async (req, res) => { try { const { data, error: e } = await database().from('categories').select('*').eq('is_active', true).order('sort_order'); if (e) return error(res, 503, 'CATALOG_UNAVAILABLE'); res.json({ success: true, data }); } catch { error(res, 503, 'CATALOG_UNAVAILABLE'); } });
+// Storefront homepage aggregate: one round trip for the mode-driven home.
+// mode = sparse (<12) | standard (12-30) | rich (>30). The client only renders
+// what the server returns, so the page stays correct for any catalog size.
+app.get('/api/v1/storefront/home', async (req, res) => {
+  try {
+    const db = database();
+    const [productsRes, catsRes, bannersRes, headerRes, siteRes] = await Promise.all([
+      db.from('products').select('*,categories(slug,name_ko,name_en),product_variants(*),product_media(*)').eq('is_active', true).order('created_at', { ascending: false }).limit(500),
+      db.from('categories').select('*').eq('is_active', true).order('sort_order').order('id'),
+      db.from('content').select('value').eq('key', 'banners').eq('published', true).maybeSingle(),
+      db.from('content').select('value').eq('key', 'header_config').eq('published', true).maybeSingle(),
+      db.from('content').select('value').eq('key', 'site').eq('published', true).maybeSingle(),
+    ]);
+    if (productsRes.error) throw productsRes.error;
+    const products = (productsRes.data || []).map(normalizeProduct).filter(Boolean);
+    const total = products.length;
+    const mode = total < 12 ? 'sparse' : total <= 30 ? 'standard' : 'rich';
+    const maxRows = mode === 'sparse' ? 0 : mode === 'standard' ? 3 : 6;
+    const rank = (p) => (Number.isFinite(Number(p.best_rank)) ? Number(p.best_rank) : 9999);
+    const best = products.filter(p => p.is_best).sort((a, b) => rank(a) - rank(b)).slice(0, 8);
+    if (best.length < 4) {
+      for (const p of products) {
+        if (best.length >= 8) break;
+        if (!best.some(b => b.id === p.id)) best.push(p);
+      }
+    }
+    let newest = products.filter(p => p.is_new).slice(0, 8);
+    if (newest.length < 4) {
+      for (const p of products) {
+        if (newest.length >= 8) break;
+        if (!newest.some(n => n.id === p.id)) newest.push(p);
+      }
+    }
+    const byCat = new Map();
+    for (const p of products) {
+      const slug = p.categories?.slug || p.category || '';
+      if (!slug) continue;
+      if (!byCat.has(slug)) byCat.set(slug, []);
+      byCat.get(slug).push(p);
+    }
+    const categories = (catsRes.data || []).map(c => ({
+      slug: c.slug,
+      name_ko: c.name_ko,
+      name_en: c.name_en,
+      image_url: c.image_url || '',
+      description_ko: c.description_ko || '',
+      gender: c.gender || 'unisex',
+      count: (byCat.get(c.slug) || []).length,
+      products: (byCat.get(c.slug) || []).slice(0, 4),
+    })).filter(c => c.count > 0);
+
+    const now = new Date();
+    const activeBanners = (Array.isArray(bannersRes.data?.value) ? bannersRes.data.value : [])
+      .filter(b => b && b.is_active !== false)
+      .filter(b => {
+        if (b.start_date && new Date(b.start_date) > now) return false;
+        if (b.end_date && new Date(`${b.end_date}T23:59:59`) < now) return false;
+        return true;
+      })
+      .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+    const banners = { hero: null, after_best: [], between_categories: [], before_footer: [], mega_men: null, mega_women: null, shop_top: null };
+    for (const b of activeBanners) {
+      const placement = b.placement || (b.type === 'hero' ? 'home_hero' : b.type === 'promo' ? 'home_between_categories' : '');
+      if (placement === 'home_hero') banners.hero = banners.hero || b;
+      else if (placement === 'home_after_best') banners.after_best.push(b);
+      else if (placement === 'home_between_categories') banners.between_categories.push(b);
+      else if (placement === 'home_before_footer') banners.before_footer.push(b);
+      else if (placement === 'nav_mega_men') banners.mega_men = banners.mega_men || b;
+      else if (placement === 'nav_mega_women') banners.mega_women = banners.mega_women || b;
+      else if (placement === 'shop_top') banners.shop_top = banners.shop_top || b;
+    }
+    res.json({
+      success: true,
+      data: {
+        mode,
+        total,
+        maxRows,
+        best,
+        new: newest,
+        categories,
+        banners,
+        header_config: headerRes.data?.value || {},
+        site: siteRes.data?.value || {},
+      },
+    });
+  } catch (e) {
+    console.error('[storefront/home]', e?.message || e);
+    error(res, 503, 'STOREFRONT_UNAVAILABLE');
+  }
+});
+
 app.get('/api/v1/content/:key', async (req, res) => { try { const key = req.params.key === 'public' ? 'shipping' : req.params.key; const { data, error: e } = await database().from('content').select('value').eq('key', key).eq('published', true).maybeSingle(); if (e || !data) return error(res, 404, 'CONTENT_NOT_FOUND'); res.json({ success: true, data: data.value }); } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); } });
 // Custom storefront pages (route /p/:slug) backed by the content table.
 // Authors publish key `page:<slug>` with {title_ko,title_en,content_ko,

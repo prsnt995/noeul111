@@ -2808,7 +2808,14 @@ export function registerAdminRoutes(app, ctx) {
 
   // Banner fields any cms-role holder may write (no mass assignment:
   // unknown keys such as script-bearing extras are dropped).
-  const BANNER_FIELDS = ['type', 'title_ko', 'title_en', 'subtitle_ko', 'subtitle_en', 'image_url', 'mobile_image_url', 'link_url', 'button_text_ko', 'button_text_en', 'start_date', 'end_date', 'sort_order', 'is_active'];
+  const BANNER_FIELDS = [
+    'type', 'title_ko', 'title_en', 'subtitle_ko', 'subtitle_en', 'image_url', 'mobile_image_url',
+    'link_url', 'button_text_ko', 'button_text_en', 'start_date', 'end_date', 'sort_order', 'is_active',
+    // Placement model: where the storefront renders this banner.
+    'placement', 'anchor_category', 'anchor_position',
+    // Presentation + accessibility.
+    'alt_ko', 'alt_en', 'theme', 'cta_style', 'overlay_opacity', 'open_in_new_tab', 'header_overlay',
+  ];
   function pickBanner(b) {
     const out = {};
     for (const k of BANNER_FIELDS) if (b[k] !== undefined) out[k] = b[k];
@@ -2832,6 +2839,11 @@ export function registerAdminRoutes(app, ctx) {
         link_url: b.link_url || '', button_text_ko: b.button_text_ko || '', button_text_en: b.button_text_en || '',
         start_date: b.start_date || null, end_date: b.end_date || null,
         sort_order: Number(b.sort_order || 0), is_active: b.is_active === undefined ? true : !!b.is_active,
+        placement: b.placement || '', anchor_category: b.anchor_category || '', anchor_position: b.anchor_position === 'before' ? 'before' : 'after',
+        alt_ko: b.alt_ko || '', alt_en: b.alt_en || '', theme: ['light', 'dark', 'auto'].includes(b.theme) ? b.theme : 'auto',
+        cta_style: ['ghost', 'solid', 'underline'].includes(b.cta_style) ? b.cta_style : 'ghost',
+        overlay_opacity: Number.isFinite(Number(b.overlay_opacity)) ? Math.max(0, Math.min(100, Number(b.overlay_opacity))) : 35,
+        open_in_new_tab: !!b.open_in_new_tab, header_overlay: !!b.header_overlay,
       };
       await saveDocItem(database, 'banners', item);
       await auditLog(req, 'BANNER_CREATE', { table: 'content', id: item.id });

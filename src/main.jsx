@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
+import './styles/storefront.css';
 import './styles/admin.css';
 
 // Meta Pixel is initialised only when VITE_META_PIXEL_ID is set, so a missing

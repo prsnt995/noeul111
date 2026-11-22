@@ -1,88 +1,77 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Link } from 'wouter';
+import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { ProductCard } from '../common/ProductCard.jsx';
 
-const AUTOPLAY_MS = 2500;
-const TRACK_GAP = 12;
-
-// Fixed slide widths keep BEST cards compact: 280px desktop → 373px tall
-// media (3/4), smaller on tablet/mobile. Never percentage-based.
-function getSlideWidth() {
-  if (typeof window === 'undefined') return 280;
-  if (window.innerWidth <= 768) return 220;
-  if (window.innerWidth <= 1024) return 250;
-  return 280;
-}
-
-export function BestSellersCarousel({ items = [], loading = false, title, subtitle }) {
-  const [slideW, setSlideW] = useState(getSlideWidth);
-  const [viewportW, setViewportW] = useState(null);
-  const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [touchX, setTouchX] = useState(null);
-  const timerRef = useRef(null);
+/**
+ * Horizontal product rail used for BEST and NEW arrivals.
+ *
+ * Native scroll-snap instead of pixel-stepped transforms: it is smoother on
+ * trackpads/touch, needs no resize math, and never leaves a blank gap at the
+ * end. Arrows are progressive enhancement for mouse users and hide when the
+ * rail does not overflow.
+ */
+export function BestSellersCarousel({
+  items = [],
+  loading = false,
+  title,
+  subtitle,
+  moreHref = '/shop?filter=best',
+  moreLabel = '전체보기',
+  eyebrow = 'BEST SELLERS',
+}) {
   const viewportRef = useRef(null);
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
 
-  const total = items.length;
-
-  useEffect(() => {
-    const measure = () => {
-      setSlideW(getSlideWidth());
-      setViewportW(viewportRef.current?.clientWidth || 0);
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+  const measure = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setCanPrev(el.scrollLeft > 4);
+    setCanNext(max > 4 && el.scrollLeft < max - 4);
   }, []);
 
-  // Pixel-exact track: offset clamps so the track end lands flush with the
-  // viewport end — never a blank gap.
-  const step = slideW + TRACK_GAP;
-  const trackW = total * slideW + Math.max(0, total - 1) * TRACK_GAP;
-  const showControls = total > 0 && viewportW !== null && trackW > viewportW + 1;
-  const maxOffset = Math.max(0, trackW - (viewportW ?? 0));
-  const maxStart = viewportW === null ? 0 : Math.floor(maxOffset / step);
-  const offset = Math.min(index * step, maxOffset);
-
-  const goNext = useCallback(() => {
-    if (!showControls) return;
-    setIndex((i) => (i >= maxStart ? 0 : i + 1));
-  }, [showControls, maxStart]);
-
-  const goPrev = useCallback(() => {
-    if (!showControls) return;
-    setIndex((i) => (i <= 0 ? maxStart : i - 1));
-  }, [showControls, maxStart]);
-
   useEffect(() => {
-    setIndex((i) => Math.min(i, maxStart));
-  }, [maxStart, total]);
+    const el = viewportRef.current;
+    if (!el) return undefined;
+    measure();
+    el.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    // Re-measure once images/fonts settle.
+    const timer = setTimeout(measure, 300);
+    return () => {
+      el.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+      clearTimeout(timer);
+    };
+  }, [measure, items.length, loading]);
 
-  useEffect(() => {
-    if (loading || paused || !showControls) return undefined;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
-    timerRef.current = setInterval(goNext, AUTOPLAY_MS);
-    return () => clearInterval(timerRef.current);
-  }, [loading, paused, showControls, goNext]);
+  const step = (dir) => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const first = el.querySelector('.lux-rail__item');
+    const gap = 20;
+    const width = first ? first.getBoundingClientRect().width + gap : el.clientWidth * 0.8;
+    el.scrollBy({ left: dir * width, behavior: 'smooth' });
+  };
 
   if (loading) {
     return (
-      <section className="best-carousel-section" aria-label={title || 'Best items'}>
-        <div className="best-carousel-head">
-          <div>
-            <p className="best-carousel-kicker">{subtitle || ''}</p>
-            <h2 className="best-carousel-title">{title || 'BEST'}</h2>
+      <section className="lux-section lux-section--tight" aria-label={title || 'BEST'}>
+        <div className="lux-container">
+          <div className="lux-section-head">
+            <div>
+              <span className="lux-eyebrow">{eyebrow}</span>
+              <h2 className="lux-section-title">{title || 'BEST'}</h2>
+            </div>
           </div>
-        </div>
-        <div className="best-carousel-viewport" ref={viewportRef}>
-          <div className="best-carousel-track" style={{ gap: TRACK_GAP }}>
-            {[0, 1, 2].map((k) => (
-              <div key={k} className="best-carousel-slide" style={{ flex: '0 0 auto', width: slideW, maxWidth: slideW }}>
-                <div className="best-skeleton-card">
-                  <div className="best-skeleton-media" />
-                  <div className="best-skeleton-line" />
-                  <div className="best-skeleton-line short" />
-                </div>
+          <div className="lux-rail__viewport" aria-hidden="true">
+            {[0, 1, 2, 3].map((k) => (
+              <div key={k} className="lux-rail__item">
+                <div className="lux-skeleton" style={{ aspectRatio: '3 / 4' }} />
+                <div className="lux-skeleton" style={{ height: 12, marginTop: 14, width: '72%' }} />
+                <div className="lux-skeleton" style={{ height: 10, marginTop: 8, width: '38%' }} />
               </div>
             ))}
           </div>
@@ -91,105 +80,65 @@ export function BestSellersCarousel({ items = [], loading = false, title, subtit
     );
   }
 
-  if (!total) return null;
+  if (!items.length) return null;
 
   return (
-    <section
-      className="best-carousel-section"
-      aria-roledescription="carousel"
-      aria-label={title || 'Best items'}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setPaused(false); }}
-    >
-      <div className="best-carousel-head">
-        <div>
-          {subtitle && <p className="best-carousel-kicker">{subtitle}</p>}
-          <h2 className="best-carousel-title">{title || 'BEST'}</h2>
-        </div>
-        {showControls && (
-          <div className="best-carousel-arrows">
-            <button type="button" className="best-carousel-arrow" onClick={goPrev} aria-label="Previous best items">
-              <ChevronLeft size={18} />
-            </button>
-            <button type="button" className="best-carousel-arrow" onClick={goNext} aria-label="Next best items">
-              <ChevronRight size={18} />
-            </button>
+    <section className="lux-section lux-section--tight" aria-label={title || 'BEST'}>
+      <div className="lux-container">
+        <div className="lux-section-head">
+          <div>
+            <span className="lux-eyebrow">{eyebrow}</span>
+            <h2 className="lux-section-title">{title || 'BEST'}</h2>
+            {subtitle ? <p className="lux-rail__sub">{subtitle}</p> : null}
           </div>
-        )}
-      </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+            {moreHref ? (
+              <Link href={moreHref} className="lux-link-more">
+                {moreLabel} <ArrowRight size={13} aria-hidden />
+              </Link>
+            ) : null}
+            <div className="lux-rail__arrows">
+              <button
+                type="button"
+                className="lux-rail__arrow"
+                onClick={() => step(-1)}
+                disabled={!canPrev}
+                aria-label="이전 상품"
+              >
+                <ChevronLeft size={17} aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="lux-rail__arrow"
+                onClick={() => step(1)}
+                disabled={!canNext}
+                aria-label="다음 상품"
+              >
+                <ChevronRight size={17} aria-hidden />
+              </button>
+            </div>
+          </div>
+        </div>
 
-      <div
-        className="best-carousel-viewport"
-        ref={viewportRef}
-        onTouchStart={(e) => {
-          if (!showControls) return;
-          setTouchX(e.touches[0].clientX);
-          setPaused(true);
-        }}
-        onTouchEnd={(e) => {
-          if (!showControls) return;
-          if (touchX === null) {
-            setPaused(false);
-            return;
-          }
-          const dx = e.changedTouches[0].clientX - touchX;
-          if (Math.abs(dx) > 35) {
-            if (dx < 0) goNext();
-            else goPrev();
-          }
-          setTouchX(null);
-          // On hover-capable devices the mouse handlers own the pause state;
-          // only touch-only devices resume here.
-          if (!window.matchMedia?.('(hover: hover)').matches) setPaused(false);
-        }}
-      >
         <div
-          className="best-carousel-track"
-          style={
-            showControls
-              ? {
-                  gap: TRACK_GAP,
-                  width: trackW,
-                  transform: `translateX(-${offset}px)`,
-                }
-              : { gap: TRACK_GAP, width: '100%', transform: 'none', justifyContent: 'center' }
-          }
+          className="lux-rail__viewport"
+          ref={viewportRef}
+          role="region"
+          aria-roledescription="carousel"
+          aria-label={title || 'BEST'}
         >
           {items.map((prod, i) => (
             <div
               key={prod.id || prod.slug}
-              className="best-carousel-slide"
-              style={{ flex: '0 0 auto', width: slideW, maxWidth: slideW }}
+              className="lux-rail__item"
               aria-roledescription="slide"
-              aria-label={`Best item ${i + 1} of ${total}`}
+              aria-label={`${i + 1} / ${items.length}`}
             >
               <ProductCard product={prod} variant="classic" eager={i === 0} />
             </div>
           ))}
         </div>
       </div>
-
-      {showControls && (
-        <div
-          className="best-carousel-dots"
-          role="group"
-          aria-label="Best items pages"
-          onKeyDown={(e) => { if (e.key === 'ArrowLeft') goPrev(); else if (e.key === 'ArrowRight') goNext(); }}
-        >
-          {Array.from({ length: maxStart + 1 }, (_, i) => (
-            <button
-              key={i}
-              type="button"
-              aria-current={i === index ? true : undefined}
-              aria-label={`Go to best items page ${i + 1} of ${maxStart + 1}`}
-              className={i === index ? 'active' : ''}
-              onClick={() => setIndex(i)}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
