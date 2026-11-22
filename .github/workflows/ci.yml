@@ -1,4 +1,10 @@
 name: NOEUL CI
+#
+# CI pipeline. package.json and package-lock.json are required for:
+#   - npm ci (reproducible installs)
+#   - npm audit (production dependency security)
+#   - typecheck / lint / test / build workflows
+#
 
 on:
   push:
