@@ -30,13 +30,13 @@ describe('Fast Delivery Banner Configuration & Component', () => {
     expect(src.includes('#B89458'), 'champagne gold stroke color code in truck SVG').toBe(true);
   });
 
-  it('HomePage mounts FastDeliveryBanner immediately before BrowseSection', () => {
+  it('HomePage mounts FastDeliveryBanner immediately before BestSellersCarousel', () => {
     const src = read('src/pages/HomePage.jsx');
     const bannerIdx = src.indexOf('<FastDeliveryBanner');
-    const browseIdx = src.indexOf('<BrowseSection');
+    const carouselIdx = src.indexOf('<BestSellersCarousel');
     expect(bannerIdx, 'FastDeliveryBanner must be present').toBeGreaterThan(-1);
-    expect(browseIdx, 'BrowseSection must be present').toBeGreaterThan(-1);
-    expect(bannerIdx, 'FastDeliveryBanner must be placed above BrowseSection').toBeLessThan(browseIdx);
+    expect(carouselIdx, 'BestSellersCarousel must be present').toBeGreaterThan(-1);
+    expect(bannerIdx, 'FastDeliveryBanner must be placed above BestSellersCarousel').toBeLessThan(carouselIdx);
   });
 
   it('CSS includes required color tokens, dimensions, background image, and animations', () => {

@@ -3,19 +3,26 @@ import { useLanguage } from '../context/LanguageContext.jsx';
 import { useStorefrontHome } from '../hooks/useStorefrontHome.js';
 import { HomeHero } from '../components/home/HomeHero.jsx';
 import { FastDeliveryBanner } from '../components/home/FastDeliveryBanner.jsx';
-import { BrowseSection } from '../components/home/BrowseSection.jsx';
+import { BestSellersCarousel } from '../components/home/BestSellersCarousel.jsx';
+import { CategoryTiles } from '../components/home/CategoryTiles.jsx';
+import { CategoryRow } from '../components/home/CategoryRow.jsx';
 import { PromoBanner } from '../components/home/PromoBanner.jsx';
 import { EditorialBlock } from '../components/home/EditorialBlock.jsx';
 import { HomeSkeleton } from '../components/home/HomeSkeleton.jsx';
 import { getOptimizedImageUrl, getPrimaryProductImage, safeHttpUrl } from '../utils/imageHelper.js';
 
 /**
- * Homepage — curated discovery.
+ * Homepage — curated discovery (Editorial Boutique).
  *
- *   hero → service strip → browse (category index + recent 4) → promo → editorial
+ *   hero → service strip → BEST strip → category tiles → category rows
+ *   (with admin banner slots between them) → new arrivals → editorial
  *
- * Filtering/sorting/pagination live entirely on /shop, so the home page stays
- * light and curated regardless of catalog size.
+ * Layout adapts to inventory via the server-provided `mode`/`maxRows`:
+ *   sparse  (<12)   → hero + BEST + tiles + new + editorial
+ *   standard (12–30) → adds up to 3 category rows
+ *   rich    (>30)   → adds up to 6 category rows
+ *
+ * Filtering/sorting/pagination live entirely on /shop.
  */
 export function HomePage() {
   const { t } = useLanguage();
@@ -46,17 +53,28 @@ export function HomePage() {
 
   const banners = data.banners || {};
   const categories = Array.isArray(data.categories) ? data.categories : [];
-  const recent = Array.isArray(data.new) ? data.new : [];
-  const heroProduct = recent[0] || categories.find((c) => c.products?.length)?.products?.[0];
+  const best = Array.isArray(data.best) ? data.best : [];
+  const fresh = Array.isArray(data.new) ? data.new : [];
+  const maxRows = Number.isFinite(Number(data.maxRows)) ? Number(data.maxRows) : 0;
+  const rows = maxRows > 0 ? categories.slice(0, maxRows) : [];
+  const between = Array.isArray(banners.between_categories) ? banners.between_categories : [];
+  const rowSlugs = new Set(rows.map((c) => c.slug));
 
-  const promoBanners = (Array.isArray(banners.after_browse) && banners.after_browse.length)
-    ? banners.after_browse
-    : (Array.isArray(banners.after_best) ? banners.after_best : []);
+  const bannersAt = (slug, position) => between.filter((b) => (
+    b
+    && b.anchor_category === slug
+    && (b.anchor_position === 'before' ? 'before' : 'after') === position
+  ));
+  const looseBanners = between.filter((b) => b && !rowSlugs.has(b.anchor_category));
 
+  const heroProduct = best[0] || categories.find((c) => c.products?.length)?.products?.[0];
+  const afterBest = Array.isArray(banners.after_best) ? banners.after_best : [];
+  const afterBrowse = Array.isArray(banners.after_browse) ? banners.after_browse : [];
+  const promoAfterBest = afterBest.length ? afterBest : afterBrowse;
   const footerBanners = Array.isArray(banners.before_footer) ? banners.before_footer : [];
   const editorialBanner = footerBanners[0];
   const editorialImage = safeHttpUrl(editorialBanner?.image_url)
-    || (recent[0] ? getOptimizedImageUrl(getPrimaryProductImage(recent[0]), 1000) : '')
+    || (fresh[0] ? getOptimizedImageUrl(getPrimaryProductImage(fresh[0]), 1000) : '')
     || (heroProduct ? getOptimizedImageUrl(getPrimaryProductImage(heroProduct), 1000) : '');
 
   return (
@@ -65,11 +83,43 @@ export function HomePage() {
 
       <FastDeliveryBanner variant="slim" />
 
-      <BrowseSection categories={categories} recent={recent} />
+      <BestSellersCarousel
+        items={best}
+        title={t('home.best_title')}
+        subtitle={t('home.best_sub')}
+        moreHref="/shop?filter=best"
+        eyebrow="BEST SELLERS"
+      />
 
-      {promoBanners.map((b) => (
-        <PromoBanner key={b.id || `promo-${b.title_ko || b.image_url}`} banner={b} />
+      {promoAfterBest.map((b) => (
+        <PromoBanner key={b.id || `after-best-${b.title_ko || b.image_url}`} banner={b} />
       ))}
+
+      <CategoryTiles categories={categories} />
+
+      {rows.map((cat) => (
+        <React.Fragment key={cat.slug}>
+          {bannersAt(cat.slug, 'before').map((b) => (
+            <PromoBanner key={b.id || `${cat.slug}-before-${b.title_ko || b.image_url}`} banner={b} />
+          ))}
+          <CategoryRow category={cat} />
+          {bannersAt(cat.slug, 'after').map((b) => (
+            <PromoBanner key={b.id || `${cat.slug}-after-${b.title_ko || b.image_url}`} banner={b} />
+          ))}
+        </React.Fragment>
+      ))}
+
+      {looseBanners.map((b) => (
+        <PromoBanner key={b.id || `loose-${b.title_ko || b.image_url}`} banner={b} />
+      ))}
+
+      <BestSellersCarousel
+        items={fresh}
+        title={t('home.new_arrivals')}
+        subtitle={t('home.new_arrivals_sub')}
+        moreHref="/shop?filter=new"
+        eyebrow="NEW IN"
+      />
 
       {footerBanners.slice(1).map((b) => (
         <PromoBanner key={b.id || `footer-${b.title_ko || b.image_url}`} banner={b} />

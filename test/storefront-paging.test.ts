@@ -40,10 +40,11 @@ describe('Storefront paging — load more', () => {
     }
   });
 
-  it('home uses the storefront aggregate for browse + recent products', () => {
+  it('home uses the storefront aggregate for BEST + category rows', () => {
     const src = read('src/pages/HomePage.jsx');
     expect(src.includes('useStorefrontHome'), 'aggregate hook').toBe(true);
-    expect(src.includes('<BrowseSection'), 'browse section').toBe(true);
+    expect(src.includes('<BestSellersCarousel'), 'BEST rail').toBe(true);
+    expect(src.includes('<CategoryRow'), 'category rows').toBe(true);
     expect(src.includes('<PromoBanner'), 'banner slots').toBe(true);
   });
 
