@@ -38,7 +38,7 @@ export function ProductCard({ product, variant = 'classic', eager = false }) {
   // Screen readers get the full info from the label (overlay is visual).
   const accessibleName = `${name}${colorSuffix ? `, ${colorSuffix}` : ''}, ${price}원${hasSale ? `, ${t('product.sale')}` : ''}${soldOut ? `, ${t('product.sold_out')}` : ''}`;
   useEffect(() => { const el=cardRef.current; if (!el) return; const observer=new IntersectionObserver(([entry])=>setVisible(entry.isIntersecting && entry.intersectionRatio >= .6),{threshold:[0,.6,1]}); observer.observe(el); return ()=>observer.disconnect(); }, []);
-  useEffect(() => { if (images.length<2 || !visible || paused || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined; const timer=setInterval(()=>setIndex(i=>(i+1)%images.length),850); return ()=>clearInterval(timer); }, [images.length,visible,paused]);
+  useEffect(() => { if (images.length<2 || !visible || paused || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined; const timer=setInterval(()=>setIndex(i=>(i+1)%images.length),5000); return ()=>clearInterval(timer); }, [images.length,visible,paused]);
   useEffect(() => { setIndex(0); }, [swatchColor]);
   if (!product) return null;
   const open = e => {
