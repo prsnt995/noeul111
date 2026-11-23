@@ -71,7 +71,7 @@ describe('Premium filters — storefront', () => {
   it('home is curated and delegates filtering to shop', () => {
     const src = read('src/pages/HomePage.jsx');
     expect(src.includes('useStorefrontHome'), 'aggregate hook').toBe(true);
-    expect(src.includes('<CategoryRow'), 'category rows').toBe(true);
+    expect(src.includes('<BrowseSection'), 'browse section').toBe(true);
     expect(src.includes('<PromoBanner'), 'banner slots').toBe(true);
     expect(src.includes('GenderSegmented'), 'no gender filter on home').toBe(false);
     expect(src.includes('<FilterChips'), 'no filter chips on home').toBe(false);

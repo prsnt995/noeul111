@@ -219,17 +219,7 @@ export function Footer() {
                 </div>
 
                 <div>
-                  <span style={{ color: '#636366' }}>통신판매업 신고번호: </span>
                   <span style={{ color: '#8e8e93', fontFamily: 'monospace' }}>{verifiedBusiness.ecommerceNumber}</span>
-                  {' '}
-                  <a
-                    href={verifiedBusiness.businessLookupUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#d1d1d6', textDecoration: 'underline', fontSize: '0.6875rem' }}
-                  >
-                    사업자정보 확인
-                  </a>
                 </div>
               </div>
 

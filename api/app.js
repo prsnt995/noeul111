@@ -760,11 +760,11 @@ app.get('/api/v1/storefront/home', async (req, res) => {
         return true;
       })
       .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
-    const banners = { hero: null, after_best: [], between_categories: [], before_footer: [], mega_men: null, mega_women: null, shop_top: null };
+    const banners = { hero: null, after_best: [], after_browse: [], between_categories: [], before_footer: [], mega_men: null, mega_women: null, shop_top: null };
     for (const b of activeBanners) {
       const placement = b.placement || (b.type === 'hero' ? 'home_hero' : b.type === 'promo' ? 'home_between_categories' : '');
       if (placement === 'home_hero') banners.hero = banners.hero || b;
-      else if (placement === 'home_after_best') banners.after_best.push(b);
+      else if (placement === 'home_after_best' || placement === 'home_after_browse') { banners.after_browse.push(b); banners.after_best = banners.after_browse; }
       else if (placement === 'home_between_categories') banners.between_categories.push(b);
       else if (placement === 'home_before_footer') banners.before_footer.push(b);
       else if (placement === 'nav_mega_men') banners.mega_men = banners.mega_men || b;

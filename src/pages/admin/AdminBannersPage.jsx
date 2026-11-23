@@ -22,7 +22,8 @@ const PAGE_SIZE = 12;
 // anchor fields below to pick the exact seam.
 const PLACEMENTS = [
   { value: 'home_hero', label: '홈 히어로', desc: '홈 최상단 대형 배너' },
-  { value: 'home_after_best', label: '베스트 다음', desc: 'BEST 레일 바로 아래' },
+  { value: 'home_after_best', label: '베스트 다음', desc: 'BEST 레일 바로 아래 (레거시)' },
+  { value: 'home_after_browse', label: '탐색 다음', desc: '카테고리/최근 상품 다음 프로모션' },
   { value: 'home_between_categories', label: '카테고리 사이', desc: '지정 카테고리 앞/뒤' },
   { value: 'home_before_footer', label: '에디토리얼 전', desc: '신상품 다음, 에디토리얼 앞' },
   { value: 'nav_mega_men', label: 'MEN 메가 메뉴', desc: '데스크탑 MEN 패널 이미지' },
