@@ -1,26 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { ProductCard } from '../common/ProductCard.jsx';
+
+const INITIAL = 4;
 
 /**
  * One category section on the homepage.
  *
- * Layout scales with inventory:
- *   1 product   → editorial duo (card + copy)
- *   2–3 products → two-up grid
- *   4 products   → four-up grid
- *   5+ products  → horizontal rail
- * Zero products → not rendered by the parent.
+ * Layout scales with the *visible* inventory:
+ *   1 product        → editorial duo (card + copy)
+ *   2–3 products     → two-up grid
+ *   4+ products      → four-up grid (wraps)
+ *
+ * Only the first INITIAL items render until the user expands the section
+ * with the "더 보기" button at the bottom, which reveals every product in
+ * that category in place.
  */
 export function CategoryRow({ category }) {
+  const [expanded, setExpanded] = useState(false);
   const products = Array.isArray(category?.products) ? category.products : [];
   if (!products.length) return null;
 
   const titleEn = category.name_en || category.slug;
   const titleKo = category.name_ko || '';
   const href = `/shop?category=${encodeURIComponent(category.slug)}`;
-  const count = products.length;
+  const hasMore = products.length > INITIAL;
+  const shown = expanded ? products : products.slice(0, INITIAL);
+  const count = shown.length;
 
   const card = (product, index) => (
     <ProductCard key={product.id || product.slug} product={product} variant="classic" eager={index === 0} />
@@ -39,7 +46,7 @@ export function CategoryRow({ category }) {
           </Link>
         </div>
 
-        {count === 1 ? (
+        {count === 1 && !expanded && products.length === 1 ? (
           <div className="lux-duo">
             <div className="lux-duo__card">{card(products[0], 0)}</div>
             <div className="lux-duo__panel">
@@ -54,23 +61,32 @@ export function CategoryRow({ category }) {
               </Link>
             </div>
           </div>
-        ) : count <= 3 ? (
+        ) : count <= 3 && !expanded ? (
           <div className="lux-cat-grid lux-cat-grid--two">
-            {products.slice(0, 4).map(card)}
-          </div>
-        ) : count <= 4 ? (
-          <div className="lux-cat-grid">
-            {products.slice(0, 4).map(card)}
+            {shown.map(card)}
           </div>
         ) : (
-          <div className="lux-rail__viewport">
-            {products.map((product, index) => (
-              <div key={product.id || product.slug} className="lux-rail__item">
-                {card(product, index)}
-              </div>
-            ))}
+          <div className="lux-cat-grid">
+            {shown.map(card)}
           </div>
         )}
+
+        {hasMore ? (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 28 }}>
+            <button
+              type="button"
+              className="lux-btn"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+            >
+              {expanded ? (
+                <>접기 <ChevronUp size={14} aria-hidden /></>
+              ) : (
+                <>더 보기 · {products.length - INITIAL}개 더 <ChevronDown size={14} aria-hidden /></>
+              )}
+            </button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -748,7 +748,7 @@ app.get('/api/v1/storefront/home', async (req, res) => {
       description_ko: c.description_ko || '',
       gender: c.gender || 'unisex',
       count: (byCat.get(c.slug) || []).length,
-      products: (byCat.get(c.slug) || []).slice(0, 4),
+      products: (byCat.get(c.slug) || []),
     })).filter(c => c.count > 0);
 
     const now = new Date();
