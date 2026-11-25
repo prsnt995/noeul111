@@ -5,8 +5,9 @@ import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { HomeBlocks } from '../../components/home/HomeBlocks.jsx';
 import { newBlock, normalizeBlocks, blockSummary, groupBannerRows, moveBlock } from '../../utils/homeLayout.js';
-import { Plus, Trash2, Copy, ChevronUp, ChevronDown, Eye, EyeOff, GripVertical, Save, Upload, RotateCcw, X, Monitor, Smartphone, Package } from 'lucide-react';
+import { Plus, Trash2, Copy, ChevronUp, ChevronDown, Eye, EyeOff, GripVertical, Save, Upload, RotateCcw, X, Monitor, Smartphone, Package, ImageIcon } from 'lucide-react';
 import ProductPickerModal from '../../components/admin/home/ProductPickerModal.jsx';
+import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
 import '../../styles/admin-home.css';
 
 const BLOCK_PALETTE = [
@@ -40,6 +41,7 @@ export function AdminHomePage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewWidth, setPreviewWidth] = useState(1200);
   const [pickerBlockId, setPickerBlockId] = useState(null);
+  const [mediaTarget, setMediaTarget] = useState(null);
 
   const markDirty = useCallback(() => setDirty(true), []);
 
@@ -190,6 +192,33 @@ export function AdminHomePage() {
     }
   };
 
+  const createBannerFromImage = async (blockId, url, kind = 'promo') => {
+    try {
+      const created = await adminApi.post('/admin/content/banners', {
+        type: kind === 'hero' ? 'hero' : 'promo',
+        placement: kind === 'hero' ? 'home_hero' : 'home_after_best',
+        title_ko: '홈 배너',
+        title_en: 'Home Banner',
+        image_url: url,
+        is_active: true,
+        sort_order: 1,
+      });
+      const newId = created?.data?.id;
+      if (!newId) throw new Error('BANNER_CREATE_FAILED');
+      setBanners(prev => [created.data, ...prev]);
+      if (kind === 'hero' || kind === 'editorial') {
+        updateBlock(blockId, { banner_id: newId, source: 'specific', image_mode: 'banner' });
+      } else {
+        updateBlock(blockId, { source: 'specific', banner_id: newId });
+      }
+      showToast('배너가 생성되고 블록에 연결되었습니다.', 'success');
+    } catch (e) {
+      showToast(e?.message || '배너 생성 실패', 'error');
+    } finally {
+      setMediaTarget(null);
+    }
+  };
+
   const previewData = useMemo(() => {
     const base = storefrontData || {};
     return { ...base, layout: blocks };
@@ -276,6 +305,9 @@ export function AdminHomePage() {
                       <strong>{BLOCK_PALETTE.find(p => p.type === b.type)?.label || b.type}</strong>
                       <small>{blockSummary(b, ctx)}</small>
                     </div>
+                    {b.banner_id && banners.find(x => x.id === b.banner_id)?.image_url && (
+                      <img src={banners.find(x => x.id === b.banner_id).image_url} alt="" style={{ width: 40, height: 26, objectFit: 'cover', borderRadius: 3, border: '1px solid #ddd' }} />
+                    )}
                     <div className="adm-home-block__actions">
                       <button type="button" title="위로" onClick={() => move(index, index - 1)} disabled={index === 0}><ChevronUp size={14} /></button>
                       <button type="button" title="아래로" onClick={() => move(index, index + 1)} disabled={index === blocks.length - 1}><ChevronDown size={14} /></button>
@@ -295,9 +327,11 @@ export function AdminHomePage() {
                         block={b}
                         categories={categories}
                         banners={banners}
+                        storefrontData={storefrontData}
                         ctx={ctx}
                         onChange={(patch) => updateBlock(b.id, patch)}
                         onPickProducts={() => setPickerBlockId(b.id)}
+                        onPickImage={(kind) => setMediaTarget({ blockId: b.id, kind })}
                       />
                     </div>
                   )}
@@ -325,6 +359,15 @@ export function AdminHomePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Media picker (banner photo) */}
+      {mediaTarget && (
+        <MediaPickerModal
+          isOpen
+          onClose={() => setMediaTarget(null)}
+          onSelect={(url) => createBannerFromImage(mediaTarget.blockId, url, mediaTarget.kind)}
+        />
       )}
 
       {/* Product picker */}
@@ -374,7 +417,7 @@ export function AdminHomePage() {
   );
 }
 
-function BlockEditor({ block, categories, banners, ctx, onChange, onPickProducts }) {
+function BlockEditor({ block, categories, banners, storefrontData, ctx, onChange, onPickProducts, onPickImage }) {
   const catOptions = categories || [];
   const bannerOptions = banners || [];
   switch (block.type) {
@@ -388,6 +431,14 @@ function BlockEditor({ block, categories, banners, ctx, onChange, onPickProducts
             <option value="">(자동)</option>
             {bannerOptions.map(b => <option key={b.id} value={b.id}>{b.title_ko || b.title_en || b.id}</option>)}
           </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPickImage('hero')}>
+              <ImageIcon size={12} /> 배너 사진 추가/변경
+            </button>
+            {block.banner_id && banners.find(b => b.id === block.banner_id)?.image_url && (
+              <img src={banners.find(b => b.id === block.banner_id).image_url} alt="" style={{ width: 60, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }} />
+            )}
+          </div>
           <label>높이</label>
           <select className="form-select" value={block.height} onChange={(e) => onChange({ height: e.target.value })}>
             <option value="sm">작게</option><option value="md">보통</option><option value="lg">크게</option>
@@ -424,6 +475,18 @@ function BlockEditor({ block, categories, banners, ctx, onChange, onPickProducts
               <button type="button" className="btn btn-ghost btn-sm" onClick={onPickProducts}>
                 <Package size={12} /> 상품 선택 ({(block.product_ids || []).length})
               </button>
+              {(block.product_ids || []).length > 0 && (
+                <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                  {(block.product_ids || []).slice(0, 8).map((id, i) => {
+                    const all = (storefrontData?.categories || []).flatMap(c => c.products || []);
+                    const p = all.find(x => x.id === id);
+                    const img = p ? ((Array.isArray(p.images) && p.images[0]) || p.image_url || '') : '';
+                    return img
+                      ? <img key={i} src={img} alt="" title={p?.name_ko} style={{ width: 32, height: 42, objectFit: 'cover', borderRadius: 3, border: '1px solid #ddd' }} />
+                      : <span key={i} style={{ fontSize: 10, padding: '2px 6px', background: '#eef2ff', borderRadius: 4, color: '#3730a3' }}>#{id}</span>;
+                  })}
+                </div>
+              )}
             </div>
           )}
           <label>개수</label>
@@ -459,6 +522,21 @@ function BlockEditor({ block, categories, banners, ctx, onChange, onPickProducts
           </select>
           <label>상품 개수</label>
           <input type="number" min={2} max={12} className="form-input" value={block.limit} onChange={(e) => onChange({ limit: Number(e.target.value) })} />
+          {block.category_slug && (
+            <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+              {(() => {
+                const sfCat = (storefrontData?.categories || []).find(c => c.slug === block.category_slug);
+                const prods = sfCat?.products || [];
+                return prods.slice(0, 6).map((p, i) => {
+                  const img = (Array.isArray(p.images) && p.images[0]) || p.image_url || '';
+                  return img ? <img key={i} src={img} alt="" style={{ width: 32, height: 42, objectFit: 'cover', borderRadius: 3, border: '1px solid #ddd' }} /> : null;
+                });
+              })()}
+              <span style={{ fontSize: 10, color: '#888', alignSelf: 'center' }}>
+                {categories.find(c => c.slug === block.category_slug)?.product_count ?? 0}개 상품
+              </span>
+            </div>
+          )}
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <input type="checkbox" checked={block.show_anchored_banners !== false} onChange={(e) => onChange({ show_anchored_banners: e.target.checked })} />
             연결된 배너 표시
@@ -493,6 +571,14 @@ function BlockEditor({ block, categories, banners, ctx, onChange, onPickProducts
                 <option value="">(선택)</option>
                 {bannerOptions.map(b => <option key={b.id} value={b.id}>{b.title_ko || b.title_en || b.id}</option>)}
               </select>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPickImage('banner')}>
+                  <ImageIcon size={12} /> 사진 추가/변경
+                </button>
+                {block.banner_id && banners.find(b => b.id === block.banner_id)?.image_url && (
+                  <img src={banners.find(b => b.id === block.banner_id).image_url} alt="" style={{ width: 60, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }} />
+                )}
+              </div>
             </>
           )}
           <label>너비</label>
@@ -513,6 +599,9 @@ function BlockEditor({ block, categories, banners, ctx, onChange, onPickProducts
           <select className="form-select" value={block.image_mode} onChange={(e) => onChange({ image_mode: e.target.value })}>
             <option value="auto">자동</option><option value="banner">지정 배너</option>
           </select>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPickImage('editorial')} style={{ alignSelf: 'flex-start' }}>
+            <ImageIcon size={12} /> 배너 사진 추가/변경
+          </button>
           {block.image_mode === 'banner' && (
             <>
               <label>배너</label>
