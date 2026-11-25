@@ -1,5 +1,6 @@
 import { POLICY_VERSION } from '../src/config/business.js';
 import 'dotenv/config';
+import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -11,6 +12,7 @@ import bcrypt from 'bcryptjs';
 import { emailService } from '../server/services/emailService.js';
 import { notificationService } from '../server/services/notificationService.js';
 import { encryptSessionTokens } from '../server/lib/sessionCrypto.js';
+import { generateOtp, hashOtp, verifyOtpHash } from '../server/lib/otp.js';
 import { startOutboxWorker, runOutboxBatch } from '../server/workers/outbox.js';
 import { startExpiryWorker, runExpiryBatch } from '../server/workers/expiry.js';
 import { registerAdminRoutes } from './admin.js';
@@ -112,7 +114,11 @@ const claimLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeader
 const quoteLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const cancelLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const passwordResetLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
+const otpLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: true, legacyHeaders: false });
+const emailCheckLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeaders: true, legacyHeaders: false });
 app.use(express.json({ limit: '256kb', strict: true }));
+// Dev-only local upload fallback (see api/admin.js upload route).
+if (process.env.NODE_ENV !== 'production') app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
 const PUBLIC_CACHE_CONTROL = 'public, max-age=30, s-maxage=60, stale-while-revalidate=120';
 const PUBLIC_CACHE_PATHS = ['/api/v1/store/settings/public'];
 const PUBLIC_CACHE_PREFIXES = ['/api/v1/catalog/', '/api/v1/content/', '/api/v1/pages/', '/api/v1/products/', '/api/v1/storefront/'];
@@ -291,23 +297,23 @@ app.get('/health/ready', async (req, res) => { try { const { error } = await dat
 // survives the cross-domain redirect chain (localhost → supabase.co → localhost).
 // Relying only on a cookie fails because SameSite=Lax cookies are often not
 // sent when the browser arrives from a cross-origin redirect.
-app.get('/api/v1/auth/google/start', authLimiter, async (req, res) => { try { const state = random(); const verifier = random(); const redirectTo = `${origin}/api/v1/auth/google/callback?oauth_state=${encodeURIComponent(state)}`; const authorize = new URL(`${env.SUPABASE_URL}/auth/v1/authorize`); authorize.searchParams.set('provider', 'google'); authorize.searchParams.set('redirect_to', redirectTo); authorize.searchParams.set('code_challenge', pkceChallenge(verifier)); authorize.searchParams.set('code_challenge_method', 'S256'); authorize.searchParams.set('access_type', 'offline'); authorize.searchParams.set('prompt', 'consent'); const { error: insErr } = await database().from('oauth_states').insert({ id_hash: sha(state), verifier, expires_at: new Date(Date.now() + 600000).toISOString() }); if (insErr) { console.error('[start] oauth_states insert failed:', insErr); return error(res, 500, insErr.code === 'PGRST106' ? 'SUPABASE_SCHEMA_NOT_EXPOSED' : 'AUTH_DB_ERROR'); } res.set('Set-Cookie', `noeul_oauth=${encodeURIComponent(state)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${production ? '; Secure' : ''}`); res.redirect(authorize.toString()); } catch (e) { console.error('google start failed', e); error(res, 503, 'AUTH_NOT_CONFIGURED'); } });
+app.get('/api/v1/auth/google/start', authLimiter, async (req, res) => { try { const state = random(); const verifier = random(); const redirectTo = `${origin}/api/v1/auth/google/callback?oauth_state=${encodeURIComponent(state)}`; const authorize = new URL(`${env.SUPABASE_URL}/auth/v1/authorize`); authorize.searchParams.set('provider', 'google'); authorize.searchParams.set('redirect_to', redirectTo); authorize.searchParams.set('code_challenge', pkceChallenge(verifier)); authorize.searchParams.set('code_challenge_method', 'S256'); authorize.searchParams.set('access_type', 'offline'); authorize.searchParams.set('prompt', 'select_account'); const { error: insErr } = await database().from('oauth_states').insert({ id_hash: sha(state), verifier, expires_at: new Date(Date.now() + 600000).toISOString() }); if (insErr) { console.error('[start] oauth_states insert failed:', insErr); return error(res, 500, insErr.code === 'PGRST106' ? 'SUPABASE_SCHEMA_NOT_EXPOSED' : 'AUTH_DB_ERROR'); } res.set('Set-Cookie', `noeul_oauth=${encodeURIComponent(state)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${production ? '; Secure' : ''}`); res.redirect(authorize.toString()); } catch (e) { console.error('google start failed', e); error(res, 503, 'AUTH_NOT_CONFIGURED'); } });
 
 app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
   try {
     const cookies = parseCookies(req.headers.cookie);
     const state = req.query.oauth_state || cookies.noeul_oauth;
     if (!state || !req.query.code) {
-      return error(res, 400, 'INVALID_CALLBACK');
+      return res.redirect('/auth?error=INVALID_CALLBACK');
     }
     const stateHash = sha(state);
     const { data: row, error: stateErr } = await database().from('oauth_states').delete().eq('id_hash', stateHash).gt('expires_at', new Date().toISOString()).select('verifier').maybeSingle();
     if (stateErr) {
       console.error('[callback] oauth_states db error', stateErr);
-      return error(res, 500, stateErr.code === 'PGRST106' ? 'SUPABASE_SCHEMA_NOT_EXPOSED' : 'DATABASE_ERROR');
+      return res.redirect('/auth?error=OAUTH_DB_ERROR');
     }
     if (!row) {
-      return error(res, 400, 'OAUTH_STATE_EXPIRED');
+      return res.redirect('/auth?error=OAUTH_STATE_EXPIRED');
     }
     const tokenRes = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=pkce`, {
       method: 'POST',
@@ -316,21 +322,42 @@ app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
     });
     const token = await tokenRes.json();
     if (!tokenRes.ok || !token.access_token || !token.user) {
-      return error(res, 401, 'GOOGLE_IDENTITY_REQUIRED');
+      return res.redirect('/auth?error=GOOGLE_IDENTITY_REQUIRED');
     }
-    const id = random();
-    const csrf = random();
-    // Password-account guard: a password-registered email must not be
-    // silently merged into a Google identity. Redirect with a code the
-    // /auth page surfaces as "please sign in with email + password".
     const loginEmail = String(token.user.email || '').trim().toLowerCase();
-    if (loginEmail) {
-      try {
-        const { data: conflict } = await database().from('profiles').select('id,email,auth_provider').ilike('email', escapeIlike(loginEmail)).limit(10);
-        const taken = (conflict || []).find(r => String(r.email || '').toLowerCase() === loginEmail && r.id !== token.user.id && r.auth_provider === 'password');
-        if (taken) return res.redirect('/auth?error=ACCOUNT_EXISTS_USE_PASSWORD');
-      } catch { /* guard is best-effort; fall through to upsert */ }
+    if (!loginEmail) {
+      return res.redirect('/auth?error=GOOGLE_EMAIL_REQUIRED');
     }
+    // Google must only hand us a verified email.
+    const googleVerified = Boolean(
+      token.user.email_confirmed_at
+      || token.user.email_verified
+      || token.user.user_metadata?.email_verified
+      || (Array.isArray(token.user.identities) && token.user.identities.some(i => i?.identity_data?.email_verified))
+    );
+    if (!googleVerified) {
+      return res.redirect('/auth?error=GOOGLE_EMAIL_UNVERIFIED');
+    }
+
+    // Strict account separation: never merge Google into an existing identity.
+    try {
+      const { data: profRows } = await database().from('profiles').select('id,email,auth_provider,disabled').ilike('email', escapeIlike(loginEmail)).limit(10);
+      const sameEmail = (profRows || []).filter(r => String(r.email || '').toLowerCase() === loginEmail);
+      const otherId = sameEmail.find(r => r.id !== token.user.id);
+      if (otherId) {
+        if (otherId.auth_provider === 'password') return res.redirect('/auth?error=ACCOUNT_EXISTS_USE_PASSWORD');
+        return res.redirect('/auth?error=ACCOUNT_EXISTS');
+      }
+      const self = sameEmail.find(r => r.id === token.user.id);
+      if (self?.disabled) return res.redirect('/auth?error=ACCOUNT_DISABLED');
+    } catch { /* guard best-effort */ }
+
+    // Block if a password signup is still pending for this email.
+    try {
+      const { data: pending } = await database().from('pending_signups').select('email').eq('email', loginEmail).maybeSingle();
+      if (pending) return res.redirect('/auth?error=PENDING_EMAIL_SIGNUP');
+    } catch { /* guard best-effort */ }
+
     try {
       await database().from('profiles').upsert({
         id: token.user.id,
@@ -339,7 +366,6 @@ app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
         auth_provider: 'google'
       });
     } catch (upErr) {
-      // DBs without the password-auth migration have no auth_provider column.
       if (String(upErr?.message || '').includes('auth_provider')) {
         await database().from('profiles').upsert({
           id: token.user.id,
@@ -348,6 +374,9 @@ app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
         });
       } else throw upErr;
     }
+
+    const id = random();
+    const csrf = random();
 
     const sessionPayload = {
       id_hash: sha(id),
@@ -366,18 +395,63 @@ app.get('/api/v1/auth/google/callback', authLimiter, async (req, res) => {
     }
     if (sessErr) {
       console.error('[callback] session insert failed:', sessErr);
-      return error(res, 500, 'SESSION_INSERT_FAILED');
+      return res.redirect('/auth?error=SESSION_INSERT_FAILED');
     }
 
     setCookie(res, cookieName, id);
     res.append('Set-Cookie', 'noeul_oauth=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure');
-    res.redirect('/account');
+    res.redirect('/account?welcome=1');
   } catch (e) {
     console.error('[callback] error', e);
     error(res, 503, 'AUTH_CALLBACK_FAILED');
   }
 });
 
+
+// Dev-only diagnostics for auth configuration (no secrets).
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/v1/auth/diagnostics', (req, res) => {
+    res.json({
+      success: true,
+      db: Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY)),
+      google: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY),
+      smtp: Boolean(process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.EMAIL_PASSWORD),
+      sessionKey: /^[0-9a-f]{64}$/i.test(process.env.SESSION_KEY || ''),
+    });
+  });
+}
+
+// Dev-only diagnostics for orders/payments: reports whether the DB RPCs that
+// checkout depends on are reachable, without mutating any data.
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/v1/orders/diagnostics', async (_req, res) => {
+    const out = { db: false, placeOrderRpc: false, paymentHealthRpc: false, details: {} };
+    try {
+      const db = database();
+      out.db = true;
+      try {
+        const { data, error: e } = await db.rpc('place_order', {
+          p_user_id: '00000000-0000-0000-0000-000000000000',
+          p_order_number: 'DIAG',
+          p_idempotency_key: 'diag-00000000',
+          p_request_hash: 'diag',
+          p_subtotal: 0, p_discount: 0, p_shipping: 0, p_amount: 0,
+          p_coupon_code: null, p_address: {}, p_items: [],
+        });
+        out.placeOrderRpc = !e;
+        out.details.placeOrder = e ? String(e.message || e) : (data?.outcome || 'ok');
+      } catch (e) { out.details.placeOrder = String(e?.message || e); }
+      try {
+        const { data, error: e } = await db.rpc('pg_payment_health');
+        out.paymentHealthRpc = !e && data === true;
+        out.details.paymentHealth = e ? String(e.message || e) : String(data);
+      } catch (e) { out.details.paymentHealth = String(e?.message || e); }
+    } catch (e) {
+      out.details.db = String(e?.message || e);
+    }
+    res.json({ success: true, data: out });
+  });
+}
 
 // EMAIL + PASSWORD AUTH (v1, alongside Google OAuth).
 // Passwords live in app.credentials (bcrypt, cost 12), never in profiles.
@@ -444,6 +518,11 @@ async function passwordUserResponse(userId, role) {
   return { id: profile.id, uid: profile.id, name: profile.name, email: profile.email, role: role || (staffRow?.active ? staffRow.role : 'customer') };
 }
 
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_SENDS = 5;
+
 // POST /api/v1/auth/register {email, password>=8, name, phone?}
 // Phone is accepted (UI sends it) but profiles has no phone column in v1 — ignored.
 app.post('/api/v1/auth/register', authLimiter, async (req, res) => {
@@ -451,48 +530,231 @@ app.post('/api/v1/auth/register', authLimiter, async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
     const name = String(req.body?.name || '').trim().slice(0, 60);
+    const phone = String(req.body?.phone || '').trim().slice(0, 30);
     if (rawEmailTooLong(req.body?.email) || !isValidEmail(email)) return error(res, 400, 'INVALID_EMAIL');
     if (password.length < 8) return error(res, 400, 'PASSWORD_TOO_SHORT');
     if (!name) return error(res, 400, 'NAME_REQUIRED');
-    const { data: existing } = await database().from('profiles').select('id,email').ilike('email', escapeIlike(email)).limit(10);
-    if ((existing || []).some(r => String(r.email || '').toLowerCase() === email)) {
-      // Point the user at the right path: password accounts sign in below,
-      // Google accounts use Continue with Google. Defaults to Google wording
-      // when the credentials table is unreachable (unmigrated DB).
-      let conflictCode = 'ACCOUNT_EXISTS_USE_GOOGLE';
-      try {
-        const { data: cred } = await database().from('credentials').select('email').ilike('email', escapeIlike(email)).limit(10);
-        if ((cred || []).some(r => String(r.email || '').toLowerCase() === email)) conflictCode = 'ACCOUNT_EXISTS_USE_PASSWORD';
-      } catch { /* keep Google wording */ }
-      return error(res, 409, conflictCode);
+
+    // New-user gate: block any email that already owns an account.
+    const { data: credRows } = await database().from('credentials').select('email').ilike('email', escapeIlike(email)).limit(10);
+    if ((credRows || []).some(r => String(r.email || '').toLowerCase() === email)) {
+      return error(res, 409, 'ACCOUNT_EXISTS_USE_PASSWORD');
     }
-    const userId = randomUUID();
-    const password_hash = await bcrypt.hash(password, 12);
-    const { error: pErr } = await database().from('profiles').insert({ id: userId, email, name, auth_provider: 'password' });
-    if (pErr) {
-      if (pErr.code === '23505' || String(pErr.message || '').includes('duplicate')) return error(res, 409, 'ACCOUNT_EXISTS_USE_GOOGLE');
-      if (String(pErr.message || '').includes('auth_provider')) return error(res, 503, 'PASSWORD_AUTH_MIGRATION_MISSING');
-      throw pErr;
+    const { data: profRows } = await database().from('profiles').select('id,email,auth_provider').ilike('email', escapeIlike(email)).limit(10);
+    const existingProf = (profRows || []).find(r => String(r.email || '').toLowerCase() === email);
+    if (existingProf) {
+      const code = existingProf.auth_provider === 'google' ? 'ACCOUNT_EXISTS_USE_GOOGLE' : 'ACCOUNT_EXISTS_USE_PASSWORD';
+      return error(res, 409, code);
     }
-    const { error: cErr } = await database().from('credentials').insert({ user_id: userId, email, password_hash });
-    if (cErr) {
-      await database().from('profiles').delete().eq('id', userId);
-      // A duplicate here means a credential row already owns this email, so
-      // it is a password account — direct to Sign In, not Google.
-      if (cErr.code === '23505' || String(cErr.message || '').includes('duplicate')) return error(res, 409, 'ACCOUNT_EXISTS_USE_PASSWORD');
-      if (String(cErr.message || '').includes('credentials')) return error(res, 503, 'PASSWORD_AUTH_MIGRATION_MISSING');
-      throw cErr;
+
+    const code = generateOtp();
+    const otp_hash = hashOtp(email, code);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
+
+    // Reuse an in-progress signup (resend path) or start a new one.
+    const { data: pending } = await database().from('pending_signups').select('*').eq('email', email).maybeSingle();
+    let isNew = !pending;
+    if (pending) {
+      const lastSent = pending.last_sent_at ? new Date(pending.last_sent_at).getTime() : 0;
+      if (Date.now() - lastSent < OTP_RESEND_COOLDOWN_MS) {
+        return error(res, 429, 'OTP_COOLDOWN');
+      }
+      if ((pending.send_count || 0) >= OTP_MAX_SENDS) {
+        return error(res, 429, 'OTP_SEND_LIMIT');
+      }
+      // Security: never let a second requester overwrite the stored password/
+      // name/phone of an in-progress signup. Only the original requester (same
+      // password) may refresh those fields; otherwise keep them untouched so
+      // an attacker cannot hijack a victim's pending signup by re-registering.
+      let sameRequester = false;
+      try { sameRequester = await bcrypt.compare(password, pending.password_hash || ''); } catch { sameRequester = false; }
+      const update = {
+        otp_hash, otp_expires_at: expiresAt, attempts: 0,
+        send_count: (pending.send_count || 0) + 1, last_sent_at: new Date().toISOString(),
+      };
+      if (sameRequester) {
+        update.name = name;
+        update.phone = phone;
+        update.password_hash = await bcrypt.hash(password, 12);
+      }
+      const { error: uErr } = await database().from('pending_signups').update(update).eq('email', email);
+      if (uErr) throw uErr;
+    } else {
+      const password_hash = await bcrypt.hash(password, 12);
+      const { error: iErr } = await database().from('pending_signups').insert({
+        email, name, phone, password_hash, otp_hash, otp_expires_at: expiresAt,
+        attempts: 0, send_count: 1, last_sent_at: new Date().toISOString(),
+      });
+      if (iErr) throw iErr;
     }
-    const { csrf } = await issuePasswordSession(res, userId);
-    const user = await passwordUserResponse(userId, 'customer');
-    await auditLog(req, 'AUTH_PASSWORD_REGISTER', { table: 'profiles', id: userId });
-    res.status(201).json({ success: true, user, csrf });
+
+    // Best-effort cleanup of expired pending rows (keeps the table small).
+    try { await database().from('pending_signups').delete().lt('otp_expires_at', new Date(Date.now() - 60*60*1000).toISOString()); } catch { /* best effort */ }
+
+    const result = await emailService.sendMail({
+      to: email,
+      subject: '[NOEUL] 이메일 인증번호',
+      template: 'signup-otp',
+      data: { code, expires: '10분' },
+    });
+    if (!result || !result.success) {
+      // Roll back so no stale code lingers.
+      if (isNew) await database().from('pending_signups').delete().eq('email', email);
+      return error(res, 503, 'EMAIL_SEND_FAILED');
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[OTP] ${email} code=${code}`);
+    }
+    res.status(202).json({
+      success: true, pending: true, email,
+      expires_in: Math.floor(OTP_TTL_MS / 1000),
+      resend_after: Math.floor(OTP_RESEND_COOLDOWN_MS / 1000),
+      ...(process.env.NODE_ENV !== 'production' ? { dev_code: code } : {}),
+    });
   } catch (e) {
     if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
     console.error('[register] error', e);
     error(res, 503, 'REGISTER_UNAVAILABLE');
   }
 });
+
+// POST /api/v1/auth/register/verify {email, code}
+app.post('/api/v1/auth/register/verify', authLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const code = String(req.body?.code || '').trim();
+    if (rawEmailTooLong(req.body?.email) || !isValidEmail(email)) return error(res, 400, 'INVALID_EMAIL');
+    if (!/^\d{6}$/.test(code)) return error(res, 400, 'INVALID_OTP');
+
+    const otpHash = hashOtp(email, code);
+    // Atomic claim: only one concurrent request can consume this OTP.
+    const { data: claimed, error: claimErr } = await database().from('pending_signups')
+      .delete().eq('email', email).eq('otp_hash', otpHash).gt('otp_expires_at', new Date().toISOString())
+      .select('*').maybeSingle();
+    if (claimErr) throw claimErr;
+
+    if (!claimed) {
+      // Distinguish wrong-code (increment attempts) vs expired/missing.
+      const { data: pending } = await database().from('pending_signups').select('*').eq('email', email).maybeSingle();
+      if (pending && new Date(pending.otp_expires_at).getTime() > Date.now()) {
+        const attempts = (pending.attempts || 0) + 1;
+        if (attempts >= OTP_MAX_ATTEMPTS) {
+          await database().from('pending_signups').delete().eq('email', email);
+          return error(res, 429, 'OTP_TOO_MANY_ATTEMPTS');
+        }
+        await database().from('pending_signups').update({ attempts }).eq('email', email);
+        return error(res, 400, 'OTP_INVALID');
+      }
+      return error(res, 400, 'OTP_EXPIRED');
+    }
+
+    // Race guard: re-check conflicts before creating the account.
+    const { data: credRows } = await database().from('credentials').select('email').ilike('email', escapeIlike(email)).limit(10);
+    if ((credRows || []).some(r => String(r.email || '').toLowerCase() === email)) {
+      return error(res, 409, 'ACCOUNT_EXISTS_USE_PASSWORD');
+    }
+    const { data: profRows } = await database().from('profiles').select('id,email,auth_provider').ilike('email', escapeIlike(email)).limit(10);
+    const existingProf = (profRows || []).find(r => String(r.email || '').toLowerCase() === email);
+    if (existingProf) {
+      const code = existingProf.auth_provider === 'google' ? 'ACCOUNT_EXISTS_USE_GOOGLE' : 'ACCOUNT_EXISTS_USE_PASSWORD';
+      return error(res, 409, code);
+    }
+
+    const userId = randomUUID();
+    const { error: pErr } = await database().from('profiles').insert({
+      id: userId, email, name: claimed.name, auth_provider: 'password', phone: claimed.phone || null,
+    });
+    if (pErr) {
+      if (pErr.code === '23505' || String(pErr.message || '').includes('duplicate')) return error(res, 409, 'ACCOUNT_EXISTS_USE_GOOGLE');
+      if (String(pErr.message || '').includes('auth_provider')) return error(res, 503, 'PASSWORD_AUTH_MIGRATION_MISSING');
+      throw pErr;
+    }
+    const { error: cErr } = await database().from('credentials').insert({
+      user_id: userId, email, password_hash: claimed.password_hash,
+    });
+    if (cErr) {
+      await database().from('profiles').delete().eq('id', userId);
+      if (cErr.code === '23505' || String(cErr.message || '').includes('duplicate')) return error(res, 409, 'ACCOUNT_EXISTS_USE_PASSWORD');
+      if (String(cErr.message || '').includes('credentials')) return error(res, 503, 'PASSWORD_AUTH_MIGRATION_MISSING');
+      throw cErr;
+    }
+
+    const { csrf } = await issuePasswordSession(res, userId);
+    const user = await passwordUserResponse(userId, 'customer');
+    await auditLog(req, 'AUTH_PASSWORD_REGISTER_VERIFIED', { table: 'profiles', id: userId });
+    res.status(201).json({ success: true, user, csrf });
+  } catch (e) {
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[register/verify] error', e);
+    error(res, 503, 'REGISTER_UNAVAILABLE');
+  }
+});
+
+// POST /api/v1/auth/register/resend {email}
+app.post('/api/v1/auth/register/resend', authLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (rawEmailTooLong(req.body?.email) || !isValidEmail(email)) return res.json({ success: true });
+    const { data: pending } = await database().from('pending_signups').select('*').eq('email', email).maybeSingle();
+    if (!pending) return res.json({ success: true });
+    const lastSent = pending.last_sent_at ? new Date(pending.last_sent_at).getTime() : 0;
+    if (Date.now() - lastSent < OTP_RESEND_COOLDOWN_MS) return error(res, 429, 'OTP_COOLDOWN');
+    if ((pending.send_count || 0) >= OTP_MAX_SENDS) return error(res, 429, 'OTP_SEND_LIMIT');
+    const code = generateOtp();
+    const otp_hash = hashOtp(email, code);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
+    const { error: uErr } = await database().from('pending_signups').update({
+      otp_hash, otp_expires_at: expiresAt, attempts: 0,
+      send_count: (pending.send_count || 0) + 1, last_sent_at: new Date().toISOString(),
+    }).eq('email', email);
+    if (uErr) throw uErr;
+    const result = await emailService.sendMail({
+      to: email, subject: '[NOEUL] 이메일 인증번호', template: 'signup-otp',
+      data: { code, expires: '10분' },
+    });
+    if (!result || !result.success) return error(res, 503, 'EMAIL_SEND_FAILED');
+    if (process.env.NODE_ENV !== 'production') console.log(`[OTP] ${email} code=${code}`);
+    res.json({ success: true, resend_after: Math.floor(OTP_RESEND_COOLDOWN_MS / 1000) });
+  } catch (e) {
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[register/resend] error', e);
+    res.json({ success: true });
+  }
+});
+
+// POST /api/v1/auth/register/cancel {email}
+app.post('/api/v1/auth/register/cancel', authLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (isValidEmail(email)) await database().from('pending_signups').delete().eq('email', email);
+  } catch { /* best effort */ }
+  res.json({ success: true });
+});
+
+// POST /api/v1/auth/check-email {email} — drives the instant "use Google" notice.
+app.post('/api/v1/auth/check-email', emailCheckLimiter, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (rawEmailTooLong(req.body?.email) || !isValidEmail(email)) return error(res, 400, 'INVALID_EMAIL');
+    const { data: credRows } = await database().from('credentials').select('email').ilike('email', escapeIlike(email)).limit(10);
+    if ((credRows || []).some(r => String(r.email || '').toLowerCase() === email)) {
+      return res.json({ success: true, available: false, method: 'password' });
+    }
+    const { data: profRows } = await database().from('profiles').select('id,email,auth_provider').ilike('email', escapeIlike(email)).limit(10);
+    const prof = (profRows || []).find(r => String(r.email || '').toLowerCase() === email);
+    if (prof) {
+      return res.json({ success: true, available: false, method: prof.auth_provider === 'google' ? 'google' : 'password' });
+    }
+    const { data: pending } = await database().from('pending_signups').select('email').eq('email', email).maybeSingle();
+    if (pending) return res.json({ success: true, available: false, method: 'pending' });
+    return res.json({ success: true, available: true, method: null });
+  } catch (e) {
+    if (e?.message === 'Supabase is not configured') return error(res, 503, 'AUTH_NOT_CONFIGURED');
+    console.error('[check-email] error', e);
+    error(res, 503, 'CHECK_EMAIL_UNAVAILABLE');
+  }
+});
+
 
 // POST /api/v1/auth/login {email, password}
 app.post('/api/v1/auth/login', authLimiter, async (req, res) => {
@@ -839,11 +1101,11 @@ app.get('/api/v1/products/:id/reviews', async (req, res) => {
 // Coupon pricing shared by quote and order creation. Percentage coupons apply
 // amount% capped by max_discount; flat otherwise. Matches api/admin.js couponDiscount.
 function couponDiscountForSubtotal(subtotal, coupon) { if (!coupon) return 0; if (coupon.discount_type === 'percentage') { const pct = Math.round((subtotal * (coupon.amount || 0)) / 100); const capped = coupon.max_discount ? Math.min(pct, coupon.max_discount) : pct; return Math.min(subtotal, capped); } return Math.min(subtotal, coupon.amount || 0); }
-function couponUsable(coupon, subtotal, today) { if (!coupon) return false; if ((coupon.starts_at || '') > today || (coupon.ends_at || '') < today) return false; if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) return false; if (subtotal < (coupon.minimum || 0)) return false; return true; }
+function couponUsable(coupon, subtotal, today) { if (!coupon) return false; const start = coupon.starts_at ? new Date(coupon.starts_at) : null; const end = coupon.ends_at ? new Date(coupon.ends_at) : null; const now = today ? new Date(today) : new Date(); if (start && start > now) return false; if (end && end < now) return false; if (((coupon.used || 0) + (coupon.reserved || 0)) >= coupon.limit_count) return false; if (subtotal < (coupon.minimum || 0)) return false; return true; }
 // best_rank (P1 H7) is new: DBs without the migration must not 503 the
 // whole catalog, so detect once per process and skip rank ordering there.
 let bestRankColumn = null;
-async function hasBestRank() { if (bestRankColumn !== null) return bestRankColumn; try { const { error } = await database().from('products').select('best_rank').limit(0); bestRankColumn = !error || !String(error.message || '').includes('best_rank'); } catch { bestRankColumn = false; } return bestRankColumn; }
+async function hasBestRank() { if (bestRankColumn === true) return true; if (bestRankColumn === 'missing') return false; try { const { error } = await database().from('products').select('best_rank').limit(0); if (error && /best_rank/.test(String(error.message || ''))) { bestRankColumn = 'missing'; return false; } bestRankColumn = true; return true; } catch { return false; } }
 // A claimed coupon must belong to the buyer: user_coupons(user_id, coupon_code)
 // with status active. Prevents code-guessing discounts (P0).
 async function ownsCoupon(userId, code) { try { const { data } = await database().from('user_coupons').select('id').eq('user_id', userId).eq('coupon_code', code).eq('status', 'active').maybeSingle(); return !!data; } catch { return false; } }
@@ -938,11 +1200,13 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
         }
       }
     } catch (rpcErr) {
+      console.error('[place_order] RPC failed:', rpcErr?.message || rpcErr, rpcErr);
+      const msg = String(rpcErr?.message || rpcErr || '');
       // Production must use the atomic RPC: the JS fallback reserves stock and
       // coupons without row locks, so concurrent checkouts could oversell.
       // Fail closed instead of silently degrading data integrity.
       if (production) throw rpcErr;
-      console.warn('[place_order] RPC failed, using resilient direct placement:', rpcErr?.message || rpcErr);
+      console.warn('[place_order] RPC failed, using resilient direct placement:', msg);
       const { data: ord, error: oErr } = await database().from('orders').insert({
         user_id: s.user_id,
         order_number: number,
@@ -1152,12 +1416,37 @@ async function runMaintenanceBatches() {
   return { outbox, expiry };
 }
 
+// Drain the maintenance queues within the function's time budget. Vercel Hobby
+// caps serverless execution at ~10s, so stop at 8s and let the next daily
+// run pick up the remainder. Counts are aggregated across iterations.
 app.get('/api/v1/cron/workers', async (req, res) => {
   try {
     if (!env.CRON_SECRET && production) return error(res, 503, 'CRON_NOT_CONFIGURED');
     if (env.CRON_SECRET && !secretMatches(req, env.CRON_SECRET)) return error(res, 401, 'CRON_UNAUTHORIZED');
-    const data = await runMaintenanceBatches();
-    res.set('Cache-Control', 'no-store').json({ success: true, data });
+    const deadline = Date.now() + 8000;
+    const totals = { outbox: { processed: 0, failed: 0 }, expiry: { scanned: 0, expired: 0, failed: 0 }, iterations: 0 };
+    let last;
+    while (Date.now() < deadline) {
+      last = await runMaintenanceBatches();
+      totals.iterations += 1;
+      if (last.outbox && !last.outbox.error) {
+        totals.outbox.processed += last.outbox.processed || 0;
+        totals.outbox.failed += last.outbox.failed || 0;
+      } else if (last.outbox?.error) {
+        totals.outbox.error = last.outbox.error;
+      }
+      if (last.expiry && !last.expiry.error) {
+        totals.expiry.scanned += last.expiry.scanned || 0;
+        totals.expiry.expired += last.expiry.expired || 0;
+        totals.expiry.failed += last.expiry.failed || 0;
+      } else if (last.expiry?.error) {
+        totals.expiry.error = last.expiry.error;
+      }
+      const empty = (last.outbox?.empty || last.outbox?.error) && !(last.outbox?.processed) && !(last.outbox?.failed);
+      const noExpiryWork = !(last.expiry?.scanned) && !(last.expiry?.expired) && !(last.expiry?.failed);
+      if (empty && noExpiryWork) break;
+    }
+    res.set('Cache-Control', 'no-store').json({ success: true, data: totals });
   } catch (err) {
     console.error('[cron/workers] error:', err?.message || err);
     error(res, 503, 'WORKERS_UNAVAILABLE');
@@ -1228,10 +1517,11 @@ app.get('/api/v1/admin/audit-logs', authenticate, staff(['super_admin','admin'])
    Fires fb_meta Purchase with event_id=order_number for dedup.
    Sends hashed PII (email) for EMQ improvement.
 */
+const PAID_ORDER_STATUSES = ['paid', 'processing', 'shipped', 'delivered'];
 app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
   try {
     const s = req.locals?.session;
-    const { order_number, currency = 'KRW', order_source, utm_params = {}, fbp, fbc } = req.body || {};
+    const { order_number, order_source, utm_params = {}, fbp, fbc } = req.body || {};
     if (typeof order_number !== 'string' || !order_number.trim()) return error(res, 400, 'MISSING_ORDER_NUMBER');
     if (!s?.user_id) return error(res, 401, 'SIGN_IN_REQUIRED');
 
@@ -1239,11 +1529,12 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
     // on someone else's order (IDOR) or fire events against arbitrary orders.
     const { data: order } = await database()
       .from('orders')
-      .select('id,user_id,amount,order_number')
+      .select('id,user_id,amount,order_number,status')
       .eq('order_number', order_number.trim())
       .eq('user_id', s.user_id)
       .maybeSingle();
     if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
+    if (!PAID_ORDER_STATUSES.includes(order.status)) return error(res, 409, 'ORDER_NOT_PAID');
 
     // The trusted amount comes from the order row, never the request body.
     const amount = Number(order.amount) || 0;
@@ -1257,11 +1548,10 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
         // We'll include fbp/fbc cookies which Meta already matches
         fbp,
         fbc,
-        currency: currency || 'KRW',
       },
       custom_data: {
         value: amount,
-        currency: currency || 'KRW',
+        currency: 'KRW',
         content_name: order.order_number,
         content_ids: [], // could fill with variant SKUs if available
         content_type: 'product',
@@ -1273,8 +1563,10 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
       timestamp: new Date().toISOString(),
     };
 
-    // If we have order_source and utm_params, store them for attribution
-    if (order_source || Object.keys(utm_params).length > 0) {
+    // Attribution is captured once: never overwrite a later-arriving (possibly
+    // attacker-controlled) source/UTM on an already-attributed order.
+    const { data: existing } = await database().from('orders').select('order_source,utm_source').eq('id', order.id).maybeSingle().then(r => r, () => ({ data: null }));
+    if ((order_source || Object.keys(utm_params).length > 0) && !(existing && (existing.order_source || existing.utm_source))) {
       const updateData = {};
       const source = normalizeOrderSource(order_source);
       if (source) updateData.order_source = source;
@@ -1377,8 +1669,8 @@ app.get('/api/v1/cron/ads-sync', async (req, res) => {
       try {
         // Pull Meta Insights at campaign level for yesterday
         const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        const url = `https://graph.facebook.com/v17.0/act_${adAccountId}/insights?level=campaign&fields=campaign_id,campaign_name,spend,impressions,clicks,actions&time_range={"since":"${yesterday}","until":"${yesterday}"}&access_token=${metaToken}`;
-        const response = await fetch(url);
+        const url = `https://graph.facebook.com/v17.0/act_${adAccountId}/insights?level=campaign&fields=campaign_id,campaign_name,spend,impressions,clicks,actions&time_range={"since":"${yesterday}","until":"${yesterday}"}`;
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${metaToken}` } });
         const data = await response.json();
         if (data.error) {
           results.errors.push(`Meta API: ${data.error.message}`);
@@ -1599,9 +1891,20 @@ function escapeXml(str) {
 }
 
 // ERROR HANDLER
-app.use((err, req, res, next) => { /* eslint-disable-line no-unused-vars */ console.error(err); if (!res.headersSent) error(res, 500, 'INTERNAL_ERROR'); });
+app.use((err, req, res, next) => { /* eslint-disable-line no-unused-vars */ console.error(err);
+  if (res.headersSent) return;
+  let status = 500; let code = 'INTERNAL_ERROR';
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) { status = 413; code = 'REQUEST_TOO_LARGE'; }
+  else if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) { status = 400; code = 'INVALID_JSON'; }
+  else if (err && Number.isInteger(err.status) && err.status >= 400 && err.status < 600) { status = err.status; code = err.code || 'REQUEST_FAILED'; }
+  error(res, status, code);
+});
 
 const port = Number(env.PORT || 5001);
 export default app;
 export const router = app;
+if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY)) console.warn('[auth] Supabase not configured — Google login and email signup disabled.');
+if (!process.env.SMTP_PASS && !process.env.GMAIL_PASS && !process.env.EMAIL_PASSWORD) console.warn('[auth] SMTP not configured — OTP emails will use the dev stream transport only.');
+if (!/^[0-9a-f]{64}$/i.test(process.env.SESSION_KEY || '')) console.warn('[auth] SESSION_KEY missing/invalid — sessions invalidate on restart.');
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) { app.listen(port, () => { console.log(`NOEUL production API listening on ${port}`); if (process.env.WORKERS_ENABLED !== '0') { startOutboxWorker().catch(err => console.error('[Outbox] start failed:', err.message)); startPaymentRecoveryWorker({ service: paymentService, store: paymentStore }); startExpiryWorker().catch(err => console.error('[Expiry] start failed:', err.message)); } }); }

@@ -4,6 +4,18 @@ import { api } from '../utils/api.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
+const CALLBACK_ERRORS = {
+  ACCOUNT_EXISTS_USE_PASSWORD: 'This email is registered with email + password — please sign in below.',
+  ACCOUNT_EXISTS_USE_GOOGLE: 'This email uses Google login — please continue with Google.',
+  ACCOUNT_EXISTS: 'This email is already registered. Please sign in.',
+  PENDING_EMAIL_SIGNUP: 'This email has a pending verification. Verify it or cancel to use Google.',
+  GOOGLE_EMAIL_REQUIRED: 'Google did not return an email address.',
+  GOOGLE_EMAIL_UNVERIFIED: 'Your Google email is not verified.',
+  ACCOUNT_DISABLED: 'This account is disabled.',
+  OAUTH_STATE_EXPIRED: 'Your sign-in session expired. Please try again.',
+  GOOGLE_IDENTITY_REQUIRED: 'Google sign-in failed. Please try again.',
+};
+
 export function AuthCallbackPage() {
   const [, setLocation] = useLocation();
   const { showToast } = useToast();
@@ -26,11 +38,11 @@ export function AuthCallbackPage() {
         }
       } catch (err) {
         console.error('OAuth Callback Error:', err);
-        setError(err.message || '로그인 처리 중 오류가 발생했습니다.');
-        showToast(err.message || '로그인 오류', 'error');
-        setTimeout(() => {
-          setLocation('/auth');
-        }, 2500);
+        const code = String(err?.message || '').trim();
+        const friendly = CALLBACK_ERRORS[code] || code || '로그인 처리 중 오류가 발생했습니다.';
+        setError(friendly);
+        showToast(friendly, 'error');
+        setTimeout(() => { setLocation('/auth'); }, 2500);
       }
     }
 

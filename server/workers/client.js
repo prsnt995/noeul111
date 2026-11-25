@@ -7,8 +7,12 @@ import { randomUUID } from 'node:crypto';
 export function getAdminClient() {
   const env = process.env;
   if (!env.SUPABASE_URL) return null;
+  // All tables/RPCs live in the `app` schema. Selecting it here keeps every
+  // worker query on the same profile the API uses; without it PostgREST
+  // resolves against `public` and every read/RPC 404s (PGRST205).
   return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    db: { schema: 'app' },
   });
 }
 

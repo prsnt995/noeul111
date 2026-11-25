@@ -7,6 +7,8 @@ import {
   PRODUCT_IMAGE_MAX,
   UPLOAD_BATCH_SIZE,
   UPLOAD_CONCURRENCY,
+  UPLOAD_MAX_FILE_BYTES,
+  UPLOAD_FAILED_TOO_LARGE,
   UPLOAD_FAILED_GENERIC,
 } from '../../config/upload.js';
 import {
@@ -51,11 +53,16 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
     setProgress({ done: 0, total: files.length });
     try {
       const prepared = [];
+      const failed = [];
       for (const f of files) {
-        prepared.push(await downscaleImage(f));
+        const out = await downscaleImage(f);
+        if (out.size > UPLOAD_MAX_FILE_BYTES) {
+          failed.push({ name: out.name || f.name, code: UPLOAD_FAILED_TOO_LARGE });
+        } else {
+          prepared.push(out);
+        }
       }
       const uploaded = [];
-      const failed = [];
       const batches = [];
       for (let i = 0; i < prepared.length; i += UPLOAD_BATCH_SIZE) {
         batches.push(prepared.slice(i, i + UPLOAD_BATCH_SIZE));
@@ -117,7 +124,8 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
     if (files.length === 0) return;
 
     // 1. Pre-flight: name every bad file before any network traffic.
-    const { accepted, issues } = validateImageFiles(files, { existingCount: images.length, max: maxImages });
+    const existingForValidation = maxImages === 1 ? 0 : images.length;
+    const { accepted, issues } = validateImageFiles(files, { existingCount: existingForValidation, max: maxImages });
     for (const issue of issues) {
       showToast(uploadErrorText(issue.code, lang, issue.name, { max: maxImages }), 'error');
     }
@@ -132,7 +140,8 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
     setDragOver(false);
     const files = Array.from(e.dataTransfer?.files || []);
     if (files.length === 0) return;
-    const { accepted, issues } = validateImageFiles(files, { existingCount: images.length, max: maxImages });
+    const existingForValidation = maxImages === 1 ? 0 : images.length;
+    const { accepted, issues } = validateImageFiles(files, { existingCount: existingForValidation, max: maxImages });
     for (const issue of issues) {
       showToast(uploadErrorText(issue.code, lang, issue.name, { max: maxImages }), 'error');
     }
@@ -259,7 +268,7 @@ export function ImageUploader({ images = [], onChange, maxImages = PRODUCT_IMAGE
                 컴퓨터 / 기기에서 사진 파일 업로드하기
               </p>
               <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
-                클릭하여 JPG, PNG, WEBP, GIF, AVIF 선택 (최대 {maxImages}장 · 장당 8MB · 2MB 초과분은 자동 최적화)
+                클릭하여 JPG, PNG, WEBP, GIF, AVIF 선택 (최대 {maxImages}장 · 장당 12MB · 512KB 초과분은 자동 최적화)
               </span>
             </div>
           </>

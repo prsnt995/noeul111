@@ -6,6 +6,16 @@ import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Save, Building, Truck, CreditCard, Layout } from 'lucide-react';
 
+function normalizeAboutStory(value, fallback) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    return String(value.ko || value.en || value.text || '').trim();
+  }
+  if (typeof fallback === 'string') return fallback;
+  if (fallback && typeof fallback === 'object') return String(fallback.ko || fallback.en || '').trim();
+  return '';
+}
+
 export function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState('payment');
   const [settings, setSettings] = useState({
@@ -39,7 +49,8 @@ export function AdminSettingsPage() {
       announcement_en: 'Spring 2026: Free shipping on all orders for new members',
       announcement_bg: '#121213',
       announcement_color: '#ffffff'
-    }
+    },
+    about_story: ''
   });
 
   const [loading, setLoading] = useState(true);
@@ -59,6 +70,7 @@ export function AdminSettingsPage() {
           business_info: { ...prev.business_info, ...(res.data.business_info || {}) },
           shipping_policy: { ...prev.shipping_policy, ...(res.data.shipping_policy || {}) },
           header_config: { ...prev.header_config, ...(res.data.header_config || {}) },
+          about_story: normalizeAboutStory(res.data.about_story, prev.about_story),
         }));
       }
     } catch (err) {
@@ -448,9 +460,17 @@ export function AdminSettingsPage() {
                   className="form-input"
                 />
               </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">About 스토리 문구 (선택)</label>
+                <textarea
+                  rows={4}
+                  value={settings.about_story || ''}
+                  onChange={(e) => setSettings({ ...settings, about_story: e.target.value })}
+                  className="form-textarea"
+                />
+              </div>
             </div>
           )}
-
           <button
             type="submit"
             className="adm-btn adm-btn-primary"

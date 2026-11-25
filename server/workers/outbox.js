@@ -71,7 +71,7 @@ async function dispatch(supabase, event) {
 export async function runOutboxBatch({ supabase = getAdminClient(), limit = 10 } = {}) {
   if (!supabase) return { processed: 0, failed: 0, empty: true, skipped: true };
   const now = new Date().toISOString();
-  const { data: events } = await supabase
+  const { data: events, error: fetchErr } = await supabase
     .from('outbox')
     .select('*')
     .is('done_at', null)
@@ -80,7 +80,10 @@ export async function runOutboxBatch({ supabase = getAdminClient(), limit = 10 }
     .or(`lease_until.is.null,lease_until.lt.${now}`)
     .order('available_at', { ascending: true })
     .limit(limit);
-
+  if (fetchErr) {
+    console.error('[outbox] fetch failed:', fetchErr.message || fetchErr);
+    throw fetchErr;
+  }
   if (!events || events.length === 0) return { processed: 0, failed: 0, empty: true };
 
   let processed = 0;
@@ -88,7 +91,7 @@ export async function runOutboxBatch({ supabase = getAdminClient(), limit = 10 }
   for (const event of events) {
     const token = newLeaseToken();
     const leaseUntil = new Date(Date.now() + LEASE_MS).toISOString();
-    const { data: claimed } = await supabase
+    const { data: claimed, error: claimErr } = await supabase
       .from('outbox')
       .update({ lease_until: leaseUntil, lease_token: token })
       .eq('id', event.id)
@@ -96,12 +99,16 @@ export async function runOutboxBatch({ supabase = getAdminClient(), limit = 10 }
       .or(`lease_until.is.null,lease_until.lt.${now}`)
       .select('id')
       .maybeSingle();
-
+    if (claimErr) {
+      console.error('[outbox] lease claim failed:', claimErr.message || claimErr);
+      throw claimErr;
+    }
     if (!claimed) continue;
 
      try {
        await dispatch(supabase, event);
-       await supabase.from('outbox').update({ done_at: new Date().toISOString(), last_error: null, lease_until: null, lease_token: null }).eq('id', event.id);
+       const { error: doneErr } = await supabase.from('outbox').update({ done_at: new Date().toISOString(), last_error: null, lease_until: null, lease_token: null }).eq('id', event.id);
+       if (doneErr) console.error('[outbox] done update failed:', doneErr.message || doneErr);
        processed += 1;
      } catch (err) {
       failed += 1;

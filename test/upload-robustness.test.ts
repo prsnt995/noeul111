@@ -63,10 +63,16 @@ describe('Upload robustness — pre-flight validator', () => {
     ]);
   });
 
+  it('accepts large-but-processable files up to the accept cap', () => {
+    const files = [F('big.jpg', 9 * 1024 * 1024, 'image/jpeg')];
+    const { accepted, issues } = validateImageFiles(files, { existingCount: 0, max: 20 });
+    expect(accepted).toHaveLength(1);
+    expect(issues).toHaveLength(0);
+  });
   it('rejects HEIC, oversized, and extension-less files per file', () => {
     const files = [
       F('IMG_0001.HEIC', 3 * 1024 * 1024, 'image/heic'),
-      F('huge.png', 9 * 1024 * 1024, 'image/png'),
+      F('huge.png', 20 * 1024 * 1024, 'image/png'),
       F('noext', 100, ''),
       F('ok.webp', 100, 'image/webp'),
     ];

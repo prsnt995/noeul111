@@ -125,7 +125,8 @@ describe('Password auth — frontend wiring', () => {
     expect(page.includes('GOOGLE_ACCOUNT_USE_GOOGLE')).toBe(true);
     expect(page.includes('ACCOUNT_EXISTS_USE_GOOGLE')).toBe(true);
     expect(page.includes('password.length < 8')).toBe(true);
-    expect(page.includes('6자리')).toBe(false);
+    // OTP signup is now part of the page, so a 6-digit code prompt is expected.
+    expect(page.includes('6자리')).toBe(true);
   });
 
   it('reset page + route exist', () => {

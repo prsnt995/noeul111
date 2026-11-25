@@ -18,6 +18,15 @@ export const UPLOAD_MAX_FILES_PER_REQUEST = 4;
  */
 export const UPLOAD_MAX_FILE_BYTES = 1 * 1024 * 1024;
 
+/**
+ * Hard ceiling for a file we are willing to accept from the browser BEFORE
+ * client-side downscaling. Anything larger is rejected outright (canvas
+ * downscaling cannot be trusted on huge inputs and Vercel would reject the
+ * request if downscaling failed). Downscaled output must still fit
+ * UPLOAD_MAX_FILE_BYTES.
+ */
+export const UPLOAD_ACCEPT_MAX_BYTES = 12 * 1024 * 1024;
+
 /** Files above this size are compressed client-side before upload. */
 export const UPLOAD_DOWNSCALE_ABOVE_BYTES = 512 * 1024;
 
@@ -51,3 +60,5 @@ export const UPLOAD_FAILED_TYPE = 'UNSUPPORTED_TYPE';
 export const UPLOAD_FAILED_STORAGE = 'STORAGE_FULL';
 export const UPLOAD_FAILED_GENERIC = 'UPLOAD_FAILED';
 export const UPLOAD_FAILED_EMPTY = 'NO_FILES';
+export const UPLOAD_FAILED_NOT_CONFIGURED = 'STORAGE_NOT_CONFIGURED';
+export const UPLOAD_FAILED_ACCEPT_TOO_LARGE = 'FILE_TOO_LARGE_TO_PROCESS';

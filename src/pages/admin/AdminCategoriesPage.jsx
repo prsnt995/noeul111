@@ -11,7 +11,8 @@ import { useListParams } from '../../hooks/useListParams.js';
 import { normalizePrefix, suggestPrefix, SKU_PREFIX_RE, prefixErrorText } from '../../utils/sku.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { CardGridSkeleton } from '../../components/admin/AdminSkeleton.jsx';
-import { Plus, Edit2, Trash2, FolderTree, X, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Plus, Edit2, Trash2, FolderTree, X, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, ChevronDown, ChevronUp, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
 
 export function AdminCategoriesPage() {
   // Filter state lives in the URL (?search=&gender=&status=) — client-side
@@ -24,6 +25,7 @@ export function AdminCategoriesPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
@@ -104,6 +106,7 @@ export function AdminCategoriesPage() {
       sort_order: categories.length + 1,
       is_active: true,
       sku_prefix: '',
+      image_url: '',
     });
     setIsModalOpen(true);
   };
@@ -122,6 +125,7 @@ export function AdminCategoriesPage() {
       sort_order: cat.sort_order || 0,
       is_active: Boolean(cat.is_active),
       sku_prefix: cat.sku_prefix || suggestPrefix(cat.slug),
+      image_url: cat.image_url || '',
     });
     setIsModalOpen(true);
   };
@@ -483,6 +487,27 @@ export function AdminCategoriesPage() {
                   <input type="text" value={formData.description_ko} onChange={(e) => setFormData({ ...formData, description_ko: e.target.value, description_en: e.target.value })} placeholder="카테고리 설명" className="form-input" />
                 </div>
 
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">카테고리 이미지 (홈 타일)</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {formData.image_url ? (
+                      <img src={formData.image_url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid #e4e4e7' }} />
+                    ) : (
+                      <div style={{ width: 56, height: 56, borderRadius: 8, border: '1px dashed #d4d4d8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a1a1aa' }}>
+                        <ImageIcon size={18} />
+                      </div>
+                    )}
+                    <button type="button" className="adm-btn adm-btn-secondary" onClick={() => setIsMediaPickerOpen(true)}>
+                      {formData.image_url ? '이미지 변경' : '이미지 선택'}
+                    </button>
+                    {formData.image_url ? (
+                      <button type="button" className="adm-btn adm-btn-secondary" onClick={() => setFormData({ ...formData, image_url: '' })}>
+                        제거
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px', backgroundColor: formData.is_active ? '#f0fdf4' : '#fef2f2', borderRadius: 8, border: `1px solid ${formData.is_active ? '#bbf7d0' : '#fecaca'}` }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, color: formData.is_active ? '#166534' : '#991b1b' }}>
                     <input type="checkbox" checked={formData.is_active} onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })} />
@@ -498,6 +523,7 @@ export function AdminCategoriesPage() {
             </div>
           </>
         )}
+        <MediaPickerModal isOpen={isMediaPickerOpen} onClose={() => setIsMediaPickerOpen(false)} onSelect={(url) => { setFormData((fd) => ({ ...fd, image_url: url })); setIsMediaPickerOpen(false); }} />
     </AdminLayout>
   );
 }

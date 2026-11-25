@@ -74,6 +74,20 @@ export function renderTemplate(template, data = {}) {
           <p>${escapeHtml(d.response || '').replace(/\n/g, '<br/>')}</p>`),
         text: `NOEUL 문의 답변 #${d.inquiry_id || ''}\n\n${d.response || ''}`,
       };
+    case 'signup-otp': {
+      const code = escapeHtml(d.code || '');
+      const expires = escapeHtml(d.expires || '10분');
+      return {
+        html: wrap('이메일 인증번호', `
+          <p>NOEUL 회원가입을 위한 이메일 인증번호입니다.</p>
+          <div style="margin:24px 0;text-align:center;">
+            <span style="display:inline-block;font-family:'Courier New',monospace;font-size:34px;font-weight:800;letter-spacing:8px;color:#e05638;">${code}</span>
+          </div>
+          <p>위 6자리 인증번호를 회원가입 화면에 입력해주세요. 인증번호는 <strong>${expires}</strong> 동안 유효합니다.</p>
+          <p style="font-size:12px;color:#a1a1aa;">본인이 요청하지 않았다면 이 메일을 무시해주세요.</p>`),
+        text: `NOEUL 이메일 인증번호\n\n인증번호: ${d.code || ''}\n\n${expires} 동안 유효합니다. 본인이 요청하지 않았다면 이 메일을 무시해주세요.`,
+      };
+    }
     case 'password-reset': {
       const link = escapeHtml(d.link || '');
       return {
@@ -126,7 +140,7 @@ export const emailService = {
       if (!bodyText) bodyText = rendered.text || undefined;
     }
     const mailOptions = {
-      from: `"NOEUL 고객센터" <${process.env.SMTP_USER || 'noeulenterprises@gmail.com'}>`,
+      from: `"NOEUL 고객센터" <${process.env.EMAIL_FROM || process.env.SMTP_USER || 'noeulenterprises@gmail.com'}>`,
       to,
       subject,
       ...(bodyHtml ? { html: bodyHtml } : {}),

@@ -1,6 +1,7 @@
 import {
   PRODUCT_IMAGE_MAX,
   UPLOAD_MAX_FILE_BYTES,
+  UPLOAD_ACCEPT_MAX_BYTES,
   UPLOAD_ALLOWED_EXTENSIONS,
   UPLOAD_ALLOWED_MIME,
   UPLOAD_FAILED_TOO_MANY,
@@ -48,7 +49,7 @@ export function validateImageFiles(files, { existingCount = 0, max = PRODUCT_IMA
       issues.push({ file: f, name, code: UPLOAD_FAILED_TYPE });
       return;
     }
-    if (!f?.size || f.size > UPLOAD_MAX_FILE_BYTES) {
+    if (!f?.size || f.size > UPLOAD_ACCEPT_MAX_BYTES) {
       issues.push({ file: f, name, code: f?.size ? UPLOAD_FAILED_TOO_LARGE : UPLOAD_FAILED_GENERIC });
       return;
     }
@@ -59,7 +60,7 @@ export function validateImageFiles(files, { existingCount = 0, max = PRODUCT_IMA
 
 const ERROR_TEXT = {
   [UPLOAD_FAILED_TOO_MANY]: { ko: '개수 초과: 상품당 최대 {max}장까지 등록할 수 있습니다.', en: 'Too many files: at most {max} images per product.' },
-  [UPLOAD_FAILED_TOO_LARGE]: { ko: '용량 초과: 파일당 최대 8MB까지 업로드할 수 있습니다.', en: 'File too large: max 8MB per file.' },
+  [UPLOAD_FAILED_TOO_LARGE]: { ko: '용량 초과: 파일당 최대 12MB까지 업로드할 수 있습니다 (업로드 후 1MB 이하로 자동 압축).', en: 'File too large: max 12MB per file (auto-compressed to under 1MB).' },
   [UPLOAD_FAILED_TYPE]: { ko: '지원하지 않는 형식: JPG, PNG, WEBP, GIF, AVIF만 가능합니다.', en: 'Unsupported format: JPG, PNG, WEBP, GIF, AVIF only.' },
   [UPLOAD_FAILED_STORAGE]: { ko: '저장소를 사용할 수 없습니다. 용량이 가득 찼거나 설정 문제일 수 있습니다.', en: 'Storage unavailable — it may be full or misconfigured.' },
   [UPLOAD_FAILED_GENERIC]: { ko: '업로드 실패: 파일을 읽을 수 없습니다.', en: 'Upload failed: could not read the file.' },

@@ -167,7 +167,7 @@ export function CartProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* storage unavailable */ }
   }, [items]);
 
   const openCart = () => setIsCartOpen(true);

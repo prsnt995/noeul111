@@ -233,6 +233,14 @@ function findDocItem(database, key, id) {
 }
 
 async function saveDocItem(database, key, item) {
+  // Prefer the atomic server-side upsert so concurrent writers cannot clobber
+  // each other (see migration 202611240002_atomic_doc_items.sql).
+  try {
+    await database().rpc('doc_item_upsert', { p_key: key, p_id: String(item.id), p_item: item, p_mode: 'upsert' });
+    return item;
+  } catch (e) {
+    if (!/doc_item_upsert|function .* does not exist/i.test(String(e?.message || ''))) throw e;
+  }
   const items = docList(await readDoc(database, key, []));
   const idx = items.findIndex(i => String(i.id) === String(item.id));
   if (idx >= 0) items[idx] = { ...items[idx], ...item };
@@ -242,6 +250,12 @@ async function saveDocItem(database, key, item) {
 }
 
 async function deleteDocItem(database, key, id) {
+  try {
+    await database().rpc('doc_item_upsert', { p_key: key, p_id: String(id), p_item: {}, p_mode: 'delete' });
+    return;
+  } catch (e) {
+    if (!/doc_item_upsert|function .* does not exist/i.test(String(e?.message || ''))) throw e;
+  }
   const items = docList(await readDoc(database, key, []));
   await writeDoc(database, key, items.filter(i => String(i.id) !== String(id)));
 }
@@ -1286,12 +1300,17 @@ export function registerAdminRoutes(app, ctx) {
         await syncVariants(created.id, sku, b);
       } catch (e) {
         console.error('PRODUCT_CREATE variants failed for product', created.id, e?.message);
+        await database().from('product_variants').delete().eq('product_id', created.id).then(r => r, () => null);
+        await database().from('products').delete().eq('id', created.id).then(r => r, () => null);
         return error(res, 503, 'VARIANT_FAILED');
       }
       try {
         await syncMedia(created.id, b.images);
       } catch (e) {
         console.error('PRODUCT_CREATE media failed for product', created.id, e?.message);
+        await database().from('product_media').delete().eq('product_id', created.id).then(r => r, () => null);
+        await database().from('product_variants').delete().eq('product_id', created.id).then(r => r, () => null);
+        await database().from('products').delete().eq('id', created.id).then(r => r, () => null);
         return error(res, 503, 'MEDIA_FAILED');
       }
       if (detailBlocks !== undefined) {
@@ -1299,6 +1318,10 @@ export function registerAdminRoutes(app, ctx) {
           await writeDetailBlocks(created.id, detailBlocks);
         } catch (e) {
           console.error('PRODUCT_CREATE detail blocks failed for product', created.id, e?.message);
+          await database().from('product_detail_blocks').delete().eq('product_id', created.id).then(r => r, () => null);
+          await database().from('product_media').delete().eq('product_id', created.id).then(r => r, () => null);
+          await database().from('product_variants').delete().eq('product_id', created.id).then(r => r, () => null);
+          await database().from('products').delete().eq('id', created.id).then(r => r, () => null);
           return error(res, 503, 'DETAIL_BLOCKS_FAILED');
         }
       }
@@ -1996,7 +2019,7 @@ export function registerAdminRoutes(app, ctx) {
         else return error(res, 400, 'INVALID_SOURCE');
       }
       if (search) {
-        const safe = escapeIlike(search);
+        const safe = escapeIlike(search).replace(/[(),]/g, '');
         // Name/phone live in the address jsonb snapshot — match the UI
         // placeholder (order no, customer name, depositor, phone).
         const namePhone = `,address->>recipient.ilike.%${safe}%,address->>phone.ilike.%${safe}%`;
@@ -2468,35 +2491,55 @@ export function registerAdminRoutes(app, ctx) {
       if (!order) return error(res, 404, 'ORDER_NOT_FOUND');
       if (order.status !== 'pending_payment') return error(res, 409, 'DEPOSIT_NOT_APPLICABLE');
 
+      // Guard: do not let a manual confirmation race a live Toss payment.
+      const { data: payment } = await database().from('payments').select('status,payment_key').eq('order_id', order.id).maybeSingle().then(r => r, () => ({ data: null }));
+      if (payment && (payment.status === 'confirming' || payment.payment_key)) {
+        return error(res, 409, 'DEPOSIT_NOT_APPLICABLE');
+      }
+
       const method = ['card', 'bank_transfer', 'manual'].includes(order.payment_method) ? order.payment_method : 'bank_transfer';
       const isDeposit = method === 'bank_transfer';
       const depositor = String(req.body?.depositor_name || '').trim().slice(0, 40);
-      const paidAt = new Date().toISOString();
-      const patch = { status: 'paid', paid_at: paidAt };
-      if (depositor) patch.depositor_name = depositor;
 
-      // Conditional update: two admins clicking at once can only win once.
-      let claimed;
+      // Prefer the atomic DB function (finalizes stock/reserved/coupon/outbox).
+      let finalized = false;
       try {
-        ({ data: claimed } = await database().from('orders').update(patch)
-          .eq('id', order.id).eq('status', 'pending_payment').select('id').maybeSingle());
-      } catch (colErr) {
-        // Pre-migration DB has no paid_at/depositor_name columns.
-        if (!/paid_at|depositor_name/.test(String(colErr?.message || ''))) throw colErr;
-        ({ data: claimed } = await database().from('orders').update({ status: 'paid' })
-          .eq('id', order.id).eq('status', 'pending_payment').select('id').maybeSingle());
+        const { data: rpcRes, error: rpcErr } = await database().rpc('confirm_manual_payment', {
+          p_order_id: order.id,
+          p_actor: req.locals.session.user_id,
+          p_depositor: depositor || null,
+        });
+        if (rpcErr) throw rpcErr;
+        if (rpcRes && rpcRes.ok) finalized = true;
+        else if (rpcRes && rpcRes.reason === 'NOT_APPLICABLE') return error(res, 409, 'DEPOSIT_NOT_APPLICABLE');
+        else if (rpcRes && rpcRes.reason === 'ORDER_NOT_FOUND') return error(res, 404, 'ORDER_NOT_FOUND');
+      } catch (rpcErr) {
+        // Pre-migration DB lacks the function: fall back to the legacy flip.
+        if (!/confirm_manual_payment|function .* does not exist/i.test(String(rpcErr?.message || ''))) throw rpcErr;
+        const paidAt = new Date().toISOString();
+        const patch = { status: 'paid', paid_at: paidAt };
+        if (depositor) patch.depositor_name = depositor;
+        let claimed;
+        try {
+          ({ data: claimed } = await database().from('orders').update(patch)
+            .eq('id', order.id).eq('status', 'pending_payment').select('id').maybeSingle());
+        } catch (colErr) {
+          if (!/paid_at|depositor_name/.test(String(colErr?.message || ''))) throw colErr;
+          ({ data: claimed } = await database().from('orders').update({ status: 'paid' })
+            .eq('id', order.id).eq('status', 'pending_payment').select('id').maybeSingle());
+        }
+        if (!claimed) return error(res, 409, 'DEPOSIT_NOT_APPLICABLE');
+        await database().from('order_status_history').insert({
+          order_id: order.id, status: 'paid',
+          note: `${isDeposit ? 'Deposit' : 'Manual payment'} confirmed by admin${depositor ? ` (${depositor})` : ''}`,
+          actor_id: req.locals.session.user_id,
+        }).then(r => r, () => null);
       }
-      if (!claimed) return error(res, 409, 'DEPOSIT_NOT_APPLICABLE');
 
-      await database().from('order_status_history').insert({
-        order_id: order.id, status: 'paid',
-        note: `${isDeposit ? 'Deposit' : 'Manual payment'} confirmed by admin${depositor ? ` (${depositor})` : ''}`,
-        actor_id: req.locals.session.user_id,
-      }).then(r => r, () => null);
       await auditLog(req, 'DEPOSIT_CONFIRM', {
         table: 'orders', id: order.id,
         before: { status: 'pending_payment' },
-        after: { status: 'paid', payment_method: method, depositor_name: depositor || null },
+        after: { status: 'paid', payment_method: method, depositor_name: depositor || null, finalized },
       });
       res.json({
         success: true,
@@ -2695,8 +2738,43 @@ export function registerAdminRoutes(app, ctx) {
         } catch {}
       }
       if (!supabaseStorage) {
-        console.error('Supabase storage unavailable for upload');
-        return error(res, 503, UPLOAD_FAILED_STORAGE);
+        // Production requires Supabase Storage. In dev, fall back to the local
+        // filesystem so uploads work without cloud credentials.
+        if (process.env.NODE_ENV === 'production') {
+          console.error('Supabase storage unavailable for upload');
+          return error(res, 503, UPLOAD_FAILED_STORAGE);
+        }
+        const fsMod = await import('node:fs/promises');
+        const pathMod = await import('node:path');
+        const dir = pathMod.join(process.cwd(), 'public', 'uploads');
+        await fsMod.mkdir(dir, { recursive: true });
+        for (const file of req.files) {
+          const problem = uploadFileProblem(file);
+          if (problem) { failed.push(problem); continue; }
+          const ext = pathMod.extname(file.originalname).toLowerCase() || '.jpg';
+          const name = `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+          try {
+            await fsMod.writeFile(pathMod.join(dir, name), file.buffer);
+            const url = `/uploads/${name}`;
+            const item = { id: uid(), name: file.originalname, url, file_type: 'image', size_bytes: file.size, alt_text: file.originalname, tags: 'uploaded,product', created_at: new Date().toISOString() };
+            await saveDocItem(database, 'media', item);
+            uploaded.push({ url: item.url, name: file.originalname, size: file.size });
+          } catch (e) {
+            console.error('Local upload error', e?.message);
+            failed.push({ name: file.originalname, code: UPLOAD_FAILED_GENERIC });
+          }
+        }
+        if (uploaded.length) {
+          await auditLog(req, 'MEDIA_UPLOAD', { table: 'media', after: { count: uploaded.length, urls: uploaded.map(u => u.url).slice(0, 20) } });
+        }
+        res.json({
+          success: true,
+          message: failed.length ? `${uploaded.length}개 성공, ${failed.length}개 실패` : `${uploaded.length}개의 이미지가 업로드되었습니다.`,
+          data: uploaded,
+          uploaded,
+          failed,
+        });
+        return;
       }
       for (const file of req.files) {
         const problem = uploadFileProblem(file);
@@ -2770,7 +2848,7 @@ export function registerAdminRoutes(app, ctx) {
   app.get('/api/v1/admin/content/settings', ...need(R.settings), async (req, res) => {
     try {
       const out = {};
-      for (const key of SETTING_KEYS) out[key] = await readDoc(database, key, {});
+      for (const key of SETTING_KEYS) out[key] = await readDoc(database, key, key === 'about_story' ? '' : {});
       res.json({ success: true, data: out });
     } catch { error(res, 503, 'SETTINGS_UNAVAILABLE'); }
   });
@@ -2961,7 +3039,14 @@ export function registerAdminRoutes(app, ctx) {
       const catSlugMap = new Map((catRows || []).map(c => [c.slug?.toLowerCase(), c]));
 
       const { data: prodRows } = await database().from('products').select('id,sku,category_id').then(r => r, () => ({ data: [] }));
-      const prodCatMap = new Map((prodRows || []).map(p => [p.sku, p.category_id]));
+      const { data: varRows } = await database().from('product_variants').select('sku,product_id').then(r => r, () => ({ data: [] }));
+      const prodCatByProduct = new Map((prodRows || []).map(p => [p.id, p.category_id]));
+      const prodCatMap = new Map();
+      for (const p of (prodRows || [])) if (p.sku) prodCatMap.set(p.sku, p.category_id);
+      for (const v of (varRows || [])) {
+        const cid = prodCatByProduct.get(v.product_id);
+        if (cid != null && v.sku && !prodCatMap.has(v.sku)) prodCatMap.set(v.sku, cid);
+      }
 
       for (const o of orders) {
         for (const it of o.items || []) {
@@ -3013,17 +3098,23 @@ export function registerAdminRoutes(app, ctx) {
       const from = req.query.from || '';
       const to = req.query.to || '';
 
-      const [catRes, orderRows, prodRes] = await Promise.all([
+      const [catRes, orderRows, prodRes, varRes] = await Promise.all([
         database().from('categories').select('*').order('sort_order', { ascending: true }).then(r => r, () => ({ data: [] })),
         fetchAllRows(() => database().from('orders').select('*').order('created_at', { ascending: false }).order('id', { ascending: false })).catch(() => []),
         database().from('products').select('id,sku,name_ko,category_id').then(r => r, () => ({ data: [] })),
+        database().from('product_variants').select('sku,product_id').then(r => r, () => ({ data: [] })),
       ]);
 
       const categories = catRes.data || [];
       const allOrders = await adminOrderList(orderRows || []);
       const products = prodRes.data || [];
-
-      const prodCatMap = new Map((products || []).map(p => [p.sku, p.category_id]));
+      const prodCatByProduct = new Map((products || []).map(p => [p.id, p.category_id]));
+      const prodCatMap = new Map();
+      for (const p of (products || [])) if (p.sku) prodCatMap.set(p.sku, p.category_id);
+      for (const v of (varRes.data || [])) {
+        const cid = prodCatByProduct.get(v.product_id);
+        if (cid != null && v.sku && !prodCatMap.has(v.sku)) prodCatMap.set(v.sku, cid);
+      }
 
       const filteredOrders = allOrders.filter(o => isOrderInPeriod(o.created_at, period, from, to));
 

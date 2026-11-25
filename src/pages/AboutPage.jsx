@@ -1,10 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'wouter';
+import { api } from '../utils/api.js';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { Sparkles, MapPin, Clock, ArrowRight, ExternalLink } from 'lucide-react';
 
 export function AboutPage() {
   const { t } = useLanguage();
+  const [story, setStory] = useState('');
+  useEffect(() => {
+    api.get('/content/about_story').then((res) => {
+      if (res && res.success && typeof res.data === 'string') setStory(res.data);
+      else if (res && res.success && res.data && typeof res.data === 'object') setStory(String(res.data.ko || res.data.en || ''));
+    }).catch(() => {});
+  }, []);
 
   return (
     <div style={{ padding: '40px 0 100px' }}>
@@ -25,7 +33,7 @@ export function AboutPage() {
           서울의 황혼과 일상의 우아함
         </h1>
         <p style={{ fontSize: '1.125rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-          노을(NOEUL)은 서울의 해질녘이 선사하는 차분하면서도 따뜻한 온도감에서 시작되었습니다. 빠르게 변화하는 유행을 좇기보다는, 시간이 흘러도 변치 않는 소재와 정교한 테일러링으로 옷장에 오랜 울림을 남기는 옷을 만듭니다.
+          {story || '노을(NOEUL)은 서울의 해질녘이 선사하는 차분하면서도 따뜻한 온도감에서 시작되었습니다. 빠르게 변화하는 유행을 좇기보다는, 시간이 흘러도 변치 않는 소재와 정교한 테일러링으로 옷장에 오랜 울림을 남기는 옷을 만듭니다.'}
         </p>
 
         {/* Company attribution line */}

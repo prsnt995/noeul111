@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api, adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { Search, Plus, Check, X, Image as ImageIcon, Copy, Upload, Loader2 } from 'lucide-react';
+import { uploadImages, uploadErrorText } from '../../utils/uploadClient.js';
 
 export function MediaPickerModal({ isOpen, onClose, onSelect }) {
   const [mediaList, setMediaList] = useState([]);
@@ -38,35 +39,14 @@ export function MediaPickerModal({ isOpen, onClose, onSelect }) {
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-
     setUploading(true);
-    let uploadedCount = 0;
     try {
-      const batches = [];
-      for (let i = 0; i < files.length; i += 3) batches.push(files.slice(i, i + 3));
-      const queue = [...batches];
-      const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
-        while (queue.length) {
-          const batch = queue.shift();
-          if (!batch) continue;
-          const fd = new FormData();
-          batch.forEach((f) => fd.append('images', f));
-          try {
-            const data = await adminApi.post('/admin/upload-multiple', fd);
-            if (data.success && data.data) {
-              uploadedCount += data.data.length;
-            }
-          } catch (err) {
-            showToast('업로드 중 오류 발생', 'error');
-          }
-        }
-      });
-      await Promise.all(workers);
-      showToast(`${uploadedCount || files.length}개 파일이 업로드되었습니다.`, 'success');
+      const { uploaded, failed } = await uploadImages(files, { max: 20, lang: 'ko' });
+      if (uploaded.length) showToast(`${uploaded.length}개 파일이 업로드되었습니다.`, 'success');
+      for (const f of failed.slice(0, 5)) showToast(uploadErrorText(f.code, 'ko', f.name), 'error');
+      if (failed.length > 5) showToast(`그 외 ${failed.length - 5}건의 실패가 더 있습니다.`, 'error');
+      if (!uploaded.length && failed.length) showToast('업로드에 실패했습니다.', 'error');
       fetchMedia();
-      if (uploadedCount === 1) {
-        // best-effort: leave selection to the user after refresh
-      }
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

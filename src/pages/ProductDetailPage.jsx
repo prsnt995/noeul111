@@ -610,7 +610,7 @@ export function ProductDetailPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setQuantity(quantity + 1)}
+                  onClick={() => setQuantity(Math.min(quantity + 1, Math.max(1, (currentVariant?.stock ?? 1) - (currentVariant?.reserved ?? 0))))}
                   style={{ padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer', color: '#52525b' }}
                 >
                   <Plus size={14} />

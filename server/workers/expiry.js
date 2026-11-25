@@ -5,12 +5,16 @@ const INTERVAL_MS = Number(process.env.EXPIRY_INTERVAL_MS || 60_000);
 
 // 만료는 원자적 RPC로만 처리합니다. 실패 시 상태를 바꾸지 않고 재시도합니다.
 async function sweepExpired(supabase, now) {
-  const { data: candidates } = await supabase
+  const { data: candidates, error: fetchErr } = await supabase
     .from('orders')
     .select('id,coupon_code')
     .eq('status', 'pending_payment')
     .lt('expires_at', now)
     .limit(50);
+  if (fetchErr) {
+    console.error('[expiry] fetch failed:', fetchErr.message || fetchErr);
+    throw fetchErr;
+  }
   let expired = 0;
   let failed = 0;
   for (const row of (candidates || [])) {

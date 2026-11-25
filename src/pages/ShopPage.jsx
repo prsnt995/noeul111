@@ -6,6 +6,7 @@ import { GenderSegmented } from '../components/common/GenderSegmented.jsx';
 import { Dropdown } from '../components/common/Dropdown.jsx';
 import { FilterChips } from '../components/common/FilterChips.jsx';
 import { CATEGORIES_BY_GENDER } from '../data/products.js';
+import { PromoBanner } from '../components/home/PromoBanner.jsx';
 import { api } from '../utils/api.js';
 import { SlidersHorizontal, X } from 'lucide-react';
 
@@ -41,6 +42,7 @@ export function ShopPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [priceDraft, setPriceDraft] = useState({ min: minPrice, max: maxPrice });
   const [liveCategories, setLiveCategories] = useState([]);
+  const [shopTopBanner, setShopTopBanner] = useState(null);
 
   // Keep the price inputs in sync when the URL is changed by nav/back.
   useEffect(() => {
@@ -54,6 +56,17 @@ export function ShopPage() {
   }, [selectedGender, selectedCategory, searchQuery, activeFilter, sortBy, minPrice, maxPrice]);
 
   // Live categories from the DB, with the hardcoded taxonomy as fallback.
+  // Fetch the (optional) shop_top banner from the storefront aggregate.
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/storefront/home').then((res) => {
+      if (!cancelled && res?.success && res.data?.banners?.shop_top) {
+        setShopTopBanner(res.data.banners.shop_top);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     api.get('/catalog/categories').then((res) => {
@@ -340,6 +353,7 @@ export function ShopPage() {
 
   return (
     <div className="shop-page">
+      {shopTopBanner ? <PromoBanner banner={shopTopBanner} /> : null}
       <header className="shop-hero">
         <span className="lux-eyebrow">{pageEyebrow}</span>
         <h1 className="shop-title">{pageTitle}</h1>

@@ -24,10 +24,22 @@ const FRIENDLY_AUTH_ERRORS = {
   ADMIN_USE_GOOGLE: 'Staff accounts must use Continue with Google above.',
   ACCOUNT_EXISTS_USE_GOOGLE: 'This email is already registered with Google — please Sign In, or use Continue with Google.',
   ACCOUNT_EXISTS_USE_PASSWORD: 'This email is registered with email + password — please Sign In below.',
+  ACCOUNT_EXISTS: 'This email is already registered. Please sign in.',
   INVALID_CREDENTIALS: 'Email or password is incorrect. Please try again.',
   PASSWORD_TOO_SHORT: 'Password must be at least 8 characters.',
   INVALID_EMAIL: 'Please enter a valid email address.',
   NAME_REQUIRED: 'Please enter your name.',
+  OTP_INVALID: 'The verification code is incorrect. Please try again.',
+  OTP_EXPIRED: 'The verification code has expired. Please request a new one.',
+  OTP_TOO_MANY_ATTEMPTS: 'Too many incorrect attempts. Please request a new code.',
+  OTP_COOLDOWN: 'Please wait before requesting another code.',
+  OTP_SEND_LIMIT: 'Too many codes requested. Please try again later.',
+  EMAIL_SEND_FAILED: 'We could not send the verification email. Please try again.',
+  PENDING_EMAIL_SIGNUP: 'This email has a pending verification. Verify it or cancel to use Google.',
+  GOOGLE_EMAIL_REQUIRED: 'Google did not return an email address.',
+  GOOGLE_EMAIL_UNVERIFIED: 'Your Google email is not verified.',
+  ACCOUNT_DISABLED: 'This account is disabled.',
+  CHECK_EMAIL_UNAVAILABLE: 'Could not check the email. Please try again.',
 };
 
 function friendlyAuthError(err) {
@@ -37,7 +49,7 @@ function friendlyAuthError(err) {
 }
 
 export function CustomerAuthPage() {
-  const { isLoggedIn, loginWithGoogle, login, register, resetPassword } = useAuth();
+  const { isLoggedIn, loginWithGoogle, login, register, verifyRegister, checkEmail, resendRegisterOtp, cancelRegister, resetPassword } = useAuth();
   const { t } = useLanguage();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
@@ -59,13 +71,27 @@ export function CustomerAuthPage() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
+  // OTP signup step
+  const [registerStep, setRegisterStep] = useState('form'); // 'form' | 'otp'
+  const [otpCode, setOtpCode] = useState('');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const [emailStatus, setEmailStatus] = useState(null); // {available, method}
+
   useEffect(() => {
     if (isLoggedIn) {
       setLocation('/account');
     }
   }, [isLoggedIn, setLocation]);
 
-  // Google-callback conflict redirects here as /auth?error=CODE — surface it.
+  // OTP resend countdown
+  useEffect(() => {
+    if (otpCountdown <= 0) return;
+    const timer = setTimeout(() => setOtpCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [otpCountdown]);
+
   useEffect(() => {
     try {
       const code = new URLSearchParams(window.location.search).get('error');
@@ -120,22 +146,18 @@ export function CustomerAuthPage() {
     }
   };
 
-  // 3. Register New Account
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password.trim() || !name.trim()) {
       setErrorMsg('이름, 이메일, 비밀번호는 필수 입력 항목입니다.');
       return;
     }
-
     if (password.length < 8) {
       setErrorMsg('비밀번호는 8자리 이상이어야 합니다.');
       return;
     }
-
     setErrorMsg('');
     setFormLoading(true);
-
     try {
       await register({
         email: email.trim(),
@@ -143,15 +165,69 @@ export function CustomerAuthPage() {
         name: name.trim(),
         phone: phone.trim(),
       });
-      showToast(
-        '회원가입이 완료되었습니다.',
-        'success'
-      );
+      setOtpEmail(email.trim());
+      setOtpCode('');
+      setOtpCountdown(60);
+      setRegisterStep('otp');
+    } catch (err) {
+      setErrorMsg(friendlyAuthError(err));
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!otpCode.trim() || otpCode.trim().length !== 6) {
+      setErrorMsg('6자리 인증번호를 입력해주세요.');
+      return;
+    }
+    setErrorMsg('');
+    setFormLoading(true);
+    try {
+      await verifyRegister(otpEmail, otpCode.trim());
+      showToast('회원가입이 완료되었습니다.', 'success');
       setLocation('/account');
     } catch (err) {
       setErrorMsg(friendlyAuthError(err));
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (otpCountdown > 0) return;
+    setErrorMsg('');
+    setFormLoading(true);
+    try {
+      await resendRegisterOtp(otpEmail);
+      setOtpCountdown(60);
+      showToast('인증번호가 재발송되었습니다.', 'success');
+    } catch (err) {
+      setErrorMsg(friendlyAuthError(err));
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleCancelOtp = async () => {
+    try { await cancelRegister(otpEmail); } catch { /* best effort */ }
+    setRegisterStep('form');
+    setOtpCode('');
+    setErrorMsg('');
+  };
+
+  const handleEmailBlur = async () => {
+    const v = email.trim();
+    if (!v || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return;
+    setCheckingEmail(true);
+    try {
+      const result = await checkEmail(v);
+      setEmailStatus(result || null);
+    } catch (err) {
+      setEmailStatus(null);
+    } finally {
+      setCheckingEmail(false);
     }
   };
 
@@ -447,6 +523,71 @@ export function CustomerAuthPage() {
             </form>
           ) : (
             /* REGISTER FORM */
+            <>
+              {registerStep === 'otp' && (
+              <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+                  <p style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#18181b', marginBottom: '6px' }}>이메일 인증</p>
+                  <p style={{ fontSize: '0.8125rem', color: '#71717a', lineHeight: 1.5 }}>
+                    <strong>{otpEmail}</strong> 로 6자리 인증번호를 보냈습니다.
+                  </p>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#3f3f46' }}>
+                    인증번호 (6자리)
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <KeyRound size={16} color="#a1a1aa" style={{ position: 'absolute', top: '14px', left: '14px' }} />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      className="form-input"
+                      style={{ paddingLeft: '40px', borderRadius: '10px', height: '44px', letterSpacing: '0.3em', textAlign: 'center', fontWeight: 700 }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={formLoading || googleLoading || otpCode.length !== 6}
+                  className="btn-primary"
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: '10px', fontSize: '0.9375rem', fontWeight: 700,
+                    backgroundColor: 'var(--accent-sunset)', marginTop: '8px', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '8px', opacity: formLoading ? 0.7 : 1,
+                  }}
+                >
+                  {formLoading ? (<><Loader2 size={16} className="animate-spin" /><span>인증 중...</span></>) : (<> <span>인증하고 가입 완료</span> <ArrowRight size={16} /> </>)}
+                </button>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={formLoading || otpCountdown > 0}
+                    style={{ background: 'none', border: 'none', cursor: otpCountdown > 0 ? 'not-allowed' : 'pointer', fontSize: '0.8125rem', color: 'var(--accent-sunset)', fontWeight: 600, opacity: otpCountdown > 0 ? 0.5 : 1 }}
+                  >
+                    {otpCountdown > 0 ? `재발송 (${otpCountdown}s)` : '인증번호 재발송'}
+                  </button>
+                  <span style={{ color: '#d4d4d8' }}>|</span>
+                  <button
+                    type="button"
+                    onClick={handleCancelOtp}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8125rem', color: '#71717a', fontWeight: 600 }}
+                  >
+                    이메일 변경
+                  </button>
+                </div>
+              </form>
+              )}
+              {registerStep !== 'otp' && (
             <form onSubmit={handleRegisterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#3f3f46' }}>
@@ -477,12 +618,34 @@ export function CustomerAuthPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onBlur={handleEmailBlur}
                     placeholder="name@example.com"
                     className="form-input"
                     style={{ paddingLeft: '40px', borderRadius: '10px', height: '44px' }}
                   />
                 </div>
               </div>
+
+              {checkingEmail ? (
+                <p style={{ fontSize: '0.78rem', color: '#a1a1aa', margin: '0' }}>이메일 확인 중...</p>
+              ) : emailStatus && !emailStatus.available ? (
+                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecdd3', borderRadius: '10px', padding: '10px 12px', fontSize: '0.8125rem', color: '#991b1b' }}>
+                  {emailStatus.method === 'google' ? (
+                    <>
+                      이 이메일은 Google 계정으로 가입되어 있습니다.{' '}
+                      <button type="button" onClick={handleGoogleSignIn} style={{ background: 'none', border: 'none', color: 'var(--accent-sunset)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                        Continue with Google
+                      </button>
+                    </>
+                  ) : emailStatus.method === 'password' ? (
+                    <>이 이메일은 이미 가입되어 있습니다.{' '}<button type="button" onClick={() => { setMode('login'); setEmail(email.trim()); setErrorMsg(''); }} style={{ background: 'none', border: 'none', color: 'var(--accent-sunset)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>로그인하기</button></>
+                  ) : emailStatus.method === 'pending' ? (
+                    <>이미 인증번호가 발송되었습니다.{' '}<button type="button" onClick={() => { setOtpEmail(email.trim()); setRegisterStep('otp'); setOtpCountdown(0); }} style={{ background: 'none', border: 'none', color: 'var(--accent-sunset)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>인증 계속하기</button></>
+                  ) : (
+                    '이미 가입된 이메일입니다.'
+                  )}
+                </div>
+              ) : null}
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#3f3f46' }}>
@@ -550,6 +713,8 @@ export function CustomerAuthPage() {
                 )}
               </button>
             </form>
+              )}
+            </>
           )}
 
           {/* Toggle between Sign In and Register */}
@@ -561,6 +726,7 @@ export function CustomerAuthPage() {
                   type="button"
                   onClick={() => {
                     setMode('register');
+                    setRegisterStep('form');
                     setErrorMsg('');
                   }}
                   style={{
@@ -582,6 +748,7 @@ export function CustomerAuthPage() {
                   type="button"
                   onClick={() => {
                     setMode('login');
+                    setRegisterStep('form');
                     setErrorMsg('');
                   }}
                   style={{

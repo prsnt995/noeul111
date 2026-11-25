@@ -36,7 +36,7 @@ export function WishlistProvider({ children }) {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    localStorage.setItem('noeul_wishlist', JSON.stringify(wishlist));
+    try { localStorage.setItem('noeul_wishlist', JSON.stringify(wishlist)); } catch { /* storage unavailable */ }
   }, [wishlist]);
 
   const isWishlisted = (productId) => {
