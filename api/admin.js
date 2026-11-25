@@ -120,6 +120,83 @@ export function kstDateKey(value) {
   return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+export const LOW_STOCK_THRESHOLD = 15;
+export const LOW_STOCK_LIMIT = 10;
+
+/**
+ * Availability-aware low stock computation.
+ *
+ * `stock` is physical units and `reserved` units are already held for unpaid
+ * orders, so the sellable quantity is stock - reserved. Hidden products and
+ * retired variants are ignored because they cannot be sold. Returns the full
+ * matching count (for the KPI card) plus a short list (for the alert panel),
+ * so the headline number is never capped by the display limit.
+ */
+export function computeLowStock(variants, products, { threshold = LOW_STOCK_THRESHOLD, limit = LOW_STOCK_LIMIT } = {}) {
+  const productsById = new Map((products || []).map(p => [p.id, p]));
+  const totals = new Map();
+  for (const v of variants || []) {
+    if (!v || v.active === false) continue;
+    const product = productsById.get(v.product_id);
+    if (!product || product.is_active === false) continue;
+    const available = Math.max(0, (Number(v.stock) || 0) - (Number(v.reserved) || 0));
+    const row = totals.get(v.product_id) || {
+      id: v.product_id,
+      sku: product.sku || '',
+      name_ko: product.name_ko || `Product #${v.product_id}`,
+      stock: 0,
+      images: [],
+    };
+    row.stock += available;
+    totals.set(v.product_id, row);
+  }
+  const all = [...totals.values()]
+    .filter(p => p.stock <= threshold)
+    .sort((a, b) => a.stock - b.stock || String(a.name_ko).localeCompare(String(b.name_ko)));
+  return { count: all.length, items: all.slice(0, limit) };
+}
+
+/** Sum completed refunds per order (order_id -> refunded amount). */
+export function refundsByOrderFrom(rows) {
+  const map = new Map();
+  for (const r of rows || []) {
+    if (!r || !r.order_id) continue;
+    map.set(r.order_id, (map.get(r.order_id) || 0) + (Number(r.amount) || 0));
+  }
+  return map;
+}
+
+/**
+ * Paid revenue trend, net of completed refunds, bucketed by the KST date the
+ * money was captured (`paid_at`, falling back to `created_at`). The KPI cards
+ * use the same basis, so the chart and the headline totals agree.
+ *
+ * @param {Array<{id?: any, status?: string, amount?: number, paid_at?: string | null, created_at?: string | null}>} orders
+ * @param {Map<any, number>} refundsByOrder
+ * @param {{ days?: number, todayStart?: Date, dateKey?: (value: any) => string }} [options]
+ */
+export function buildPaidSalesTrend(orders, refundsByOrder, { days = 14, todayStart, dateKey = kstDateKey } = {}) {
+  const span = Math.max(1, Number(days) || 14);
+  const end = todayStart instanceof Date ? todayStart.getTime() : kstPeriodStart('day').getTime();
+  const from = end - (span - 1) * 24 * 60 * 60 * 1000;
+  const buckets = new Map();
+  for (const o of orders || []) {
+    if (!o || !PAID_ORDER_STATUSES.includes(String(o.status))) continue;
+    const capturedAt = o.paid_at || o.created_at;
+    const ms = new Date(capturedAt).getTime();
+    if (!Number.isFinite(ms) || ms < from) continue;
+    const key = dateKey(capturedAt);
+    if (!key) continue;
+    const refunded = Number(refundsByOrder?.get?.(o.id) || 0) || 0;
+    const net = Math.max(0, (Number(o.amount) || 0) - refunded);
+    buckets.set(key, (buckets.get(key) || 0) + net);
+  }
+  return Array.from({ length: span }, (_, i) => {
+    const key = dateKey(new Date(end - (span - 1 - i) * 24 * 60 * 60 * 1000));
+    return { date: key, revenue: buckets.get(key) || 0 };
+  });
+}
+
 // Wave 3: Supabase-backed /api/v1/admin/* surface. The storefront frontend
 // speaks legacy payload shapes; this module translates them onto the
 // migration-schema tables (variant-first catalog, fixed/percentage coupons,
@@ -378,12 +455,17 @@ export function registerAdminRoutes(app, ctx) {
     try {
       const recentLimit = Math.min(Math.max(Number(req.query.recent) || 8, 1), 50);
       const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const trendStart = new Date(kstPeriodStart('day').getTime() - 13 * 24 * 60 * 60 * 1000);
-      const [ordersRes, productsRes, variantsRes, profilesRes, totals, staleConfirming, recoveryPending, channelRows, trendRows] = await Promise.all([
+      const todayStart = kstPeriodStart('day');
+      const [ordersRes, productsRes, variantsRes, profilesRes, totals, staleConfirming, recoveryPending, channelRows, paymentRows, refundRows] = await Promise.all([
         database().from('orders').select('*').order('created_at', { ascending: false }).limit(Math.max(recentLimit, 100)).then(r => r, e => { console.error('dashboard orders error', e); return { data: [] }; }),
-        database().from('products').select('id,gender,is_active,is_new').then(r => r, e => { console.error('dashboard products error', e); return { data: [] }; }),
-        database().from('product_variants').select('id,product_id,stock').then(r => r, e => { console.error('dashboard variants error', e); return { data: [] }; }),
-        database().from('profiles').select('id').then(r => r, e => { console.error('dashboard profiles error', e); return { data: [] }; }),
+        // Page through instead of relying on PostgREST's 1000-row default:
+        // total counts and low-stock detection must not silently truncate.
+        fetchAllRows(() => database().from('products').select('id,gender,is_active,is_new,sku,name_ko').order('id'))
+          .then(rows => ({ data: rows }), e => { console.error('dashboard products error', e); return { data: [] }; }),
+        fetchAllRows(() => database().from('product_variants').select('product_id,stock,reserved,active').order('id'))
+          .then(rows => ({ data: rows }), e => { console.error('dashboard variants error', e); return { data: [] }; }),
+        fetchAllRows(() => database().from('profiles').select('id').order('id'))
+          .then(rows => ({ data: rows }), e => { console.error('dashboard profiles error', e); return { data: [] }; }),
         loadAdminTotals(),
         database().from('orders').select('id', { count: 'exact', head: true })
           .eq('status', 'confirming').lt('created_at', staleCutoff)
@@ -391,10 +473,21 @@ export function registerAdminRoutes(app, ctx) {
         database().from('payments').select('order_id', { count: 'exact', head: true })
           .eq('recovery_required', true)
           .then(r => r?.count || 0, () => 0),
-        fetchAllRows(() => database().from('orders').select('order_source,status,amount').order('id')).catch(() => []),
-        fetchAllRows(() => database().from('orders').select('created_at,amount').in('status', PAID_ORDER_STATUSES)
-          .gte('created_at', trendStart.toISOString()).order('created_at').order('id')).catch(() => []),
+        // All orders in one pass: builds the channel breakdown, the exact
+        // payment-mismatch count and the paid trend without per-card row caps.
+        (async () => {
+          const make = (cols) => () => database().from('orders').select(cols).order('id');
+          try { return await fetchAllRows(make('id,order_source,status,amount,created_at,paid_at')); }
+          catch {
+            // Pre-migration DBs have no paid_at column.
+            try { return await fetchAllRows(make('id,order_source,status,amount,created_at')); }
+            catch { return []; }
+          }
+        })(),
+        fetchAllRows(() => database().from('payments').select('order_id,status').order('order_id')).catch(() => []),
+        fetchAllRows(() => database().from('payment_refunds').select('order_id,amount').eq('status', 'completed').order('order_id')).catch(() => []),
       ]);
+      const refundsByOrder = refundsByOrderFrom(refundRows);
       const recentRows = ordersRes.data || [];
       const products = productsRes.data || [];
       const variants = variantsRes.data || [];
@@ -408,52 +501,49 @@ export function registerAdminRoutes(app, ctx) {
         shipped: statusCounts.shipped || 0,
         delivered: statusCounts.delivered || 0,
         cancelled: statusCounts.canceled || 0,
+        expired: statusCounts.expired || 0,
         refunded: (statusCounts.refunded || 0) + (statusCounts.refund_pending || 0),
       };
-      const byProduct = new Map();
-      for (const v of (variants || [])) {
-        const g = byProduct.get(v.product_id) || { id: v.product_id, sku: '', name_ko: `Product #${v.product_id}`, stock: 0, images: [] };
-        g.stock += v.stock || 0;
-        byProduct.set(v.product_id, g);
-      }
-      // Enrich low-stock with product names if we have them
-      if (byProduct.size) {
+      const lowStock = computeLowStock(variants, products);
+      const lowStockItems = lowStock.items;
+      // Attach the primary product image for the alert list (variants carry no
+      // media). Best-effort: a missing table or image must not hide the alert.
+      if (lowStockItems.length) {
         try {
-          const ids = [...byProduct.keys()].filter(id => (byProduct.get(id)?.stock || 0) <= 15).slice(0, 10);
-          if (ids.length) {
-            const { data: prodRows } = await database().from('products').select('id,sku,name_ko').in('id', ids).then(r => r, e => ({ data: [] }));
-            for (const p of (prodRows || [])) {
-              const g = byProduct.get(p.id);
-              if (g) { g.sku = p.sku; g.name_ko = p.name_ko; }
-            }
+          const ids = lowStockItems.map(p => p.id);
+          const { data: mediaRows } = await database().from('product_media')
+            .select('product_id,url,sort_order')
+            .in('product_id', ids).eq('published', true).order('sort_order')
+            .then(r => r, () => ({ data: [] }));
+          const first = new Map();
+          for (const m of (mediaRows || [])) {
+            if (m?.url && !first.has(m.product_id)) first.set(m.product_id, m.url);
           }
-        } catch {}
+          for (const item of lowStockItems) item.images = first.has(item.id) ? [first.get(item.id)] : [];
+        } catch { /* images are cosmetic */ }
       }
-      const lowStockItems = [...byProduct.values()].filter(p => p.stock <= 15).sort((a, b) => a.stock - b.stock).slice(0, 10);
 
       // Recent orders go through the same projection as the orders list, so the
       // customer name / amount / order status / payment status are real fields.
       const recentOrders = await adminOrderList(recentRows.slice(0, recentLimit));
-      const recentPayments = await loadPaymentsByOrder(recentRows.map(o => o.id));
-      const paymentMismatch = recentRows.reduce((n, o) => n + (paymentMismatchFor(o, recentPayments.get(o.id)) ? 1 : 0), 0);
+      // Exact across every order, not just the recent page.
+      const paymentByOrder = new Map((paymentRows || []).map(p => [p.order_id, p]));
+      const paymentMismatch = (channelRows || []).reduce((n, o) => n + (paymentMismatchFor(o, paymentByOrder.get(o.id)) ? 1 : 0), 0);
 
-      // 14-day paid revenue trend, bucketed by KST date.
-      const trendMap = new Map();
-      for (const row of (trendRows || [])) {
-        const key = kstDateKey(row.created_at);
-        if (!key) continue;
-        trendMap.set(key, (trendMap.get(key) || 0) + (row.amount || 0));
-      }
-      const salesTrend = Array.from({ length: 14 }, (_, i) => {
-        const key = kstDateKey(new Date(kstPeriodStart('day').getTime() - (13 - i) * 24 * 60 * 60 * 1000));
-        return { date: key, revenue: trendMap.get(key) || 0 };
-      });
+      // 14-day paid revenue trend, bucketed by the KST capture date.
+      const salesTrend = buildPaidSalesTrend(channelRows, refundsByOrder, { days: 14, todayStart });
 
       let staffList = [];
       try { staffList = await staffIds(database); } catch { staffList = []; }
       let salesBySource = [];
       try {
-        salesBySource = buildSalesBySource(channelRows || []);
+        // Channel revenue uses the same net-of-refund basis as the KPI cards.
+        const netChannelRows = (channelRows || []).map(o => (
+          PAID_ORDER_STATUSES.includes(String(o.status))
+            ? { ...o, amount: Math.max(0, (Number(o.amount) || 0) - (refundsByOrder.get(o.id) || 0)) }
+            : o
+        ));
+        salesBySource = buildSalesBySource(netChannelRows);
       } catch { salesBySource = []; }
       res.json({
         success: true,
@@ -474,7 +564,7 @@ export function registerAdminRoutes(app, ctx) {
           confirmingCount: orderStatuses.confirming,
           completedOrdersCount: orderStatuses.delivered + orderStatuses.confirmed,
           orderStatuses,
-          lowStockCount: lowStockItems.length,
+          lowStockCount: lowStock.count,
           alerts: {
             confirmingStale: staleConfirming || 0,
             recoveryRequired: recoveryPending || 0,
@@ -497,7 +587,7 @@ export function registerAdminRoutes(app, ctx) {
           totalProducts: 0, womensProducts: 0, newArrivalsCount: 0,
           totalCustomers: 0, totalOrders: 0,
           pendingOrdersCount: 0, pendingPaymentCount: 0, confirmingCount: 0, completedOrdersCount: 0,
-          orderStatuses: { pending:0, confirming:0, confirmed:0, processing:0, shipped:0, delivered:0, cancelled:0, refunded:0 },
+          orderStatuses: { pending:0, confirming:0, confirmed:0, processing:0, shipped:0, delivered:0, cancelled:0, expired:0, refunded:0 },
           lowStockCount: 0,
           alerts: { confirmingStale: 0, recoveryRequired: 0, paymentMismatch: 0 },
         },
@@ -1965,7 +2055,9 @@ export function registerAdminRoutes(app, ctx) {
     const counts = async (status) => database().from('orders')
       .select('id', { count: 'exact', head: true }).eq('status', status)
       .then(r => r?.count || 0, () => 0);
-    const [statusCounts, all, today, month, paidRows] = await Promise.all([
+    const readPaid = (cols) => fetchAllRows(() => database().from('orders').select(cols)
+      .in('status', PAID_ORDER_STATUSES).order('created_at').order('id'));
+    const [statusCounts, all, today, month] = await Promise.all([
       (async () => {
         const statuses = ['pending_payment', 'confirming', 'paid', 'processing', 'shipped', 'delivered', 'canceled', 'expired', 'refunded', 'refund_pending'];
         const values = await Promise.all(statuses.map(counts));
@@ -1974,17 +2066,28 @@ export function registerAdminRoutes(app, ctx) {
       database().from('orders').select('id', { count: 'exact', head: true }).then(r => r?.count || 0, () => 0),
       database().from('orders').select('id', { count: 'exact', head: true }).gte('created_at', kstPeriodStart('day').toISOString()).then(r => r?.count || 0, () => 0),
       database().from('orders').select('id', { count: 'exact', head: true }).gte('created_at', kstPeriodStart('month').toISOString()).then(r => r?.count || 0, () => 0),
-      fetchAllRows(() => database().from('orders').select('amount,created_at').in('status', PAID_ORDER_STATUSES).order('created_at').order('id')).catch(() => []),
     ]);
+    // Prefer the capture date so the fallback matches app.admin_totals(). A
+    // pre-migration DB has no paid_at, hence the second attempt.
+    let paidRows;
+    try { paidRows = await readPaid('id,amount,created_at,paid_at'); }
+    catch { paidRows = await readPaid('id,amount,created_at').catch(() => []); }
+    let refunds = new Map();
+    try {
+      refunds = refundsByOrderFrom(await fetchAllRows(() => database().from('payment_refunds')
+        .select('order_id,amount').eq('status', 'completed').order('order_id')));
+    } catch { refunds = new Map(); }
     const dayStart = kstPeriodStart('day').getTime();
     const monthStart = kstPeriodStart('month').getTime();
+    const capturedAt = (r) => new Date(r.paid_at || r.created_at).getTime();
+    const netAmount = (r) => Math.max(0, (r.amount || 0) - (refunds.get(r.id) || 0));
     const sumSince = (since) => paidRows
-      .filter(r => new Date(r.created_at).getTime() >= since)
-      .reduce((s, r) => s + (r.amount || 0), 0);
+      .filter(r => capturedAt(r) >= since)
+      .reduce((s, r) => s + netAmount(r), 0);
     return {
       revenue_today: sumSince(dayStart),
       revenue_month: sumSince(monthStart),
-      revenue_all: paidRows.reduce((s, r) => s + (r.amount || 0), 0),
+      revenue_all: paidRows.reduce((s, r) => s + netAmount(r), 0),
       orders_today: today,
       orders_month: month,
       orders_all: all,

@@ -4,7 +4,7 @@ import { PageHeader, ErrorBanner, Empty, ConfirmModal } from '../../components/a
 import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { HomeBlocks } from '../../components/home/HomeBlocks.jsx';
-import { newBlock, normalizeBlocks, blockSummary, groupBannerRows, moveBlock } from '../../utils/homeLayout.js';
+import { newBlock, normalizeBlocks, blockSummary, groupBannerRows, moveBlock, applyPreset, validateLayout } from '../../utils/homeLayout.js';
 import { Plus, Trash2, Copy, ChevronUp, ChevronDown, Eye, EyeOff, GripVertical, Save, Upload, RotateCcw, X, Monitor, Smartphone, Package, ImageIcon } from 'lucide-react';
 import ProductPickerModal from '../../components/admin/home/ProductPickerModal.jsx';
 import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
@@ -32,6 +32,8 @@ export function AdminHomePage() {
   const [banners, setBanners] = useState([]);
   const [storefrontData, setStorefrontData] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [future, setFuture] = useState([]);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
@@ -44,6 +46,12 @@ export function AdminHomePage() {
   const [mediaTarget, setMediaTarget] = useState(null);
 
   const markDirty = useCallback(() => setDirty(true), []);
+  const applyBlocks = useCallback((next) => {
+    setHistory(h => [...h, blocks]);
+    setFuture([]);
+    setBlocks(next);
+    setDirty(true);
+  }, [blocks]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,6 +80,27 @@ export function AdminHomePage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Crash-recovery autosave (local only; never published).
+  useEffect(() => {
+    if (!dirty) return;
+    try { localStorage.setItem('noeul_home_layout_autosave', JSON.stringify({ blocks, savedAt: new Date().toISOString() })); } catch { /* ignore */ }
+  }, [blocks, dirty]);
+
+  // Offer recovery on mount if an autosave exists.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('noeul_home_layout_autosave');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.blocks) && parsed.blocks.length && !dirty) {
+        // Only offer if there is no published layout yet to avoid clobbering.
+        if (!(doc?.published?.blocks?.length)) {
+          showToast('자동 저장된 초안이 있습니다. 복구하려면 콘솔에서 localStorage를 확인하세요.', 'info');
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   const publishedBlocks = doc?.published?.blocks || [];
   const hasChanges = useMemo(() => {
     try { return JSON.stringify(blocks) !== JSON.stringify(publishedBlocks); } catch { return false; }
@@ -84,38 +113,47 @@ export function AdminHomePage() {
   }), [categories, banners]);
 
   const updateBlock = (id, patch) => {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
-    markDirty();
+    applyBlocks(blocks.map(b => b.id === id ? { ...b, ...patch } : b));
   };
   const removeBlock = (id) => {
-    setBlocks(prev => prev.filter(b => b.id !== id));
+    applyBlocks(blocks.filter(b => b.id !== id));
     if (expandedId === id) setExpandedId(null);
-    markDirty();
   };
   const duplicateBlock = (id) => {
-    setBlocks(prev => {
-      const idx = prev.findIndex(b => b.id === id);
-      if (idx < 0) return prev;
-      const nb = cloneBlock(prev[idx]);
-      const next = prev.slice();
-      next.splice(idx + 1, 0, nb);
-      return next;
-    });
-    markDirty();
+    const idx = blocks.findIndex(b => b.id === id);
+    if (idx < 0) return;
+    const nb = cloneBlock(blocks[idx]);
+    const next = blocks.slice();
+    next.splice(idx + 1, 0, nb);
+    applyBlocks(next);
   };
   const toggleEnabled = (id) => {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, enabled: b.enabled === false ? true : false } : b));
-    markDirty();
+    applyBlocks(blocks.map(b => b.id === id ? { ...b, enabled: b.enabled === false ? true : false } : b));
   };
   const addBlock = (type) => {
     const nb = newBlock(type);
-    setBlocks(prev => [...prev, nb]);
+    applyBlocks([...blocks, nb]);
     setExpandedId(nb.id);
-    markDirty();
   };
   const move = (from, to) => {
-    setBlocks(prev => moveBlock(prev, from, to));
-    markDirty();
+    applyBlocks(moveBlock(blocks, from, to));
+  };
+
+  const undo = () => {
+    if (!history.length) return;
+    const prev = history[history.length - 1];
+    setHistory(h => h.slice(0, -1));
+    setFuture(f => [blocks, ...f]);
+    setBlocks(prev);
+    setDirty(true);
+  };
+  const redo = () => {
+    if (!future.length) return;
+    const next = future[0];
+    setFuture(f => f.slice(1));
+    setHistory(h => [...h, blocks]);
+    setBlocks(next);
+    setDirty(true);
   };
 
   const handleDragStart = (e, index) => {
@@ -246,6 +284,8 @@ export function AdminHomePage() {
             </span>
             <button className="btn btn-ghost" onClick={() => setPreviewOpen(true)}><Eye size={14} /> 미리보기</button>
             <button className="btn btn-ghost" disabled={!hasChanges} onClick={() => setConfirmAction('discard')}>초안 버리기</button>
+            <button className="btn btn-ghost" onClick={undo} disabled={!history.length} title="실행 취소">↶ 실행취소</button>
+            <button className="btn btn-ghost" onClick={redo} disabled={!future.length} title="다시 실행">↷ 다시실행</button>
             <button className="btn btn-primary" onClick={saveDraft} disabled={saving || !dirty && !hasChanges}>
               <Save size={14} /> {saving ? '저장 중…' : '초안 저장'}
             </button>
@@ -262,7 +302,16 @@ export function AdminHomePage() {
         <div className="adm-home-editor-pane">
           <div className="adm-home-palette adm-home-palette--compact">
             <strong>블록 추가</strong>
-            <div className="adm-home-palette__chips">
+            <div style={{ marginBottom: 8 }}>
+            <select className="form-select" onChange={(e) => { if (e.target.value) { const nb = applyPreset(e.target.value, ctx); if (nb) applyBlocks(nb); e.target.value = ''; } }} defaultValue="">
+              <option value="">레이아웃 프리셋…</option>
+              <option value="minimal">미니멀</option>
+              <option value="rich">리치 (기본)</option>
+              <option value="sale">세일 집중</option>
+              <option value="landing">랜딩</option>
+            </select>
+          </div>
+          <div className="adm-home-palette__chips">
               {BLOCK_PALETTE.map(p => (
                 <button key={p.type} className="adm-home-palette__chip" onClick={() => addBlock(p.type)} title={p.desc}>
                   <Plus size={12} /> {p.label}
@@ -328,6 +377,25 @@ export function AdminHomePage() {
                           onPickProducts={() => setPickerBlockId(b.id)}
                           onPickImage={(kind) => setMediaTarget({ blockId: b.id, kind })}
                         />
+                        <div className="adm-home-advanced">
+                          <details open>
+                            <summary>고급 (라벨 / 기기 / 게시 일정)</summary>
+                            <div className="adm-home-editor" style={{ marginTop: 8 }}>
+                              <label>라벨 (관리용)</label>
+                              <input className="form-input" value={b.label || ''} onChange={(e) => updateBlock(b.id, { label: e.target.value })} />
+                              <label>노출 기기</label>
+                              <select className="form-select" value={b.device || 'all'} onChange={(e) => updateBlock(b.id, { device: e.target.value })}>
+                                <option value="all">모든 기기</option>
+                                <option value="desktop">데스크톱만</option>
+                                <option value="mobile">모바일만</option>
+                              </select>
+                              <label>게시 시작일</label>
+                              <input type="date" className="form-input" value={b.start_date || ''} onChange={(e) => updateBlock(b.id, { start_date: e.target.value || null })} />
+                              <label>게시 종료일</label>
+                              <input type="date" className="form-input" value={b.end_date || ''} onChange={(e) => updateBlock(b.id, { end_date: e.target.value || null })} />
+                            </div>
+                          </details>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -346,6 +414,18 @@ export function AdminHomePage() {
               <button className="btn btn-ghost btn-sm" onClick={() => setPreviewWidth(1200)}><Monitor size={12} /> 데스크톱</button>
             </div>
           </div>
+          {(() => {
+            const issues = validateLayout(blocks, ctx);
+            if (!issues.length) return null;
+            return (
+              <div style={{ marginBottom: 8, padding: 8, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, fontSize: 11 }}>
+                <strong style={{ color: '#9a3412' }}>검증 경고</strong>
+                <ul style={{ margin: '4px 0 0 16px', padding: 0, color: '#7c2d12' }}>
+                  {issues.map((it, i) => <li key={i}>{it.level === 'error' ? '🔴' : '🟡'} {it.message}</li>)}
+                </ul>
+              </div>
+            );
+          })()}
           <div className="adm-home-preview-pane__body" style={{ maxWidth: previewWidth }}>
             <HomeBlocks blocks={blocks} data={previewData} />
           </div>

@@ -8,7 +8,7 @@ import { CategoryRow } from './CategoryRow.jsx';
 import { PromoBanner } from './PromoBanner.jsx';
 import { EditorialBlock } from './EditorialBlock.jsx';
 import { getOptimizedImageUrl, getPrimaryProductImage, safeHttpUrl } from '../../utils/imageHelper.js';
-import { groupBannerRows } from '../../utils/homeLayout.js';
+import { groupBannerRows, isBlockActive } from '../../utils/homeLayout.js';
 
 function flattenProducts(data) {
   const out = [];
@@ -107,7 +107,22 @@ export function HomeBlocks({ blocks, data }) {
   const { t } = useLanguage();
   const categories = Array.isArray(data?.categories) ? data.categories : [];
   const heroProduct = (data?.best || [])[0] || categories.find((c) => c.products?.length)?.products?.[0];
-  const activeBlocks = (Array.isArray(blocks) ? blocks : []).filter(b => b && b.enabled !== false);
+  const [isMobile, setIsMobile] = React.useState(typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false);
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const activeBlocks = (Array.isArray(blocks) ? blocks : []).filter(b => {
+    if (!b || b.enabled === false) return false;
+    if (!isBlockActive(b)) return false;
+    if (b.device === 'mobile' && !isMobile) return false;
+    if (b.device === 'desktop' && isMobile) return false;
+    return true;
+  });
 
   const out = [];
   let i = 0;

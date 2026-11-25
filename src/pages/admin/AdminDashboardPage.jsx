@@ -310,7 +310,7 @@ export function AdminDashboardPage() {
               {hasError ? '—' : `${stats.lowStockCount ?? 0}개`}
             </h2>
             <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600, marginTop: '4px', display: 'block' }}>
-              상품 재고 관리 →
+              가용 재고 15개 이하 · 상품 재고 관리 →
             </Link>
           </div>
         </div>
@@ -338,7 +338,7 @@ export function AdminDashboardPage() {
               { key: 'processing', label: '상품준비중', count: orderStatuses.processing, color: '#6d28d9', bg: '#ede9fe' },
               { key: 'shipped', label: '배송중', count: orderStatuses.shipped, color: '#047857', bg: '#d1fae5' },
               { key: 'delivered', label: '배송완료', count: orderStatuses.delivered, color: '#15803d', bg: '#dcfce7' },
-              { key: 'cancelled', label: '취소/환불', count: (orderStatuses.cancelled || 0) + (orderStatuses.refunded || 0), color: '#b91c1c', bg: '#fee2e2' },
+              { key: 'cancelled', label: '취소/환불', count: (orderStatuses.cancelled || 0) + (orderStatuses.expired || 0) + (orderStatuses.refunded || 0), color: '#b91c1c', bg: '#fee2e2' },
             ].map((st) => (
               <div
                 key={st.key}
@@ -493,7 +493,7 @@ export function AdminDashboardPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertTriangle size={18} color="#b45309" aria-hidden />
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>재고 부족 알림 ({lowStockItems.length})</h3>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>재고 부족 알림 ({stats.lowStockCount ?? lowStockItems.length})</h3>
               </div>
               <Link href="/admin/products" style={{ fontSize: '0.8125rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
                 재고 관리 →
