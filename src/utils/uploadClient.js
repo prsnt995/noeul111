@@ -2,6 +2,7 @@ import { adminApi } from './api.js';
 import {
   UPLOAD_BATCH_SIZE,
   UPLOAD_CONCURRENCY,
+  UPLOAD_FAILED_COMPRESS,
   UPLOAD_FAILED_GENERIC,
   UPLOAD_MAX_FILE_BYTES,
 } from '../config/upload.js';
@@ -26,7 +27,7 @@ export async function uploadImages(files, { existingCount = 0, max = 20 } = {}) 
   for (const f of accepted) {
     const out = await downscaleImage(f);
     if (out.size > UPLOAD_MAX_FILE_BYTES) {
-      failed.push({ name: out.name || f.name, code: UPLOAD_FAILED_GENERIC });
+      failed.push({ name: out.name || f.name, code: UPLOAD_FAILED_COMPRESS });
     } else {
       prepared.push(out);
     }

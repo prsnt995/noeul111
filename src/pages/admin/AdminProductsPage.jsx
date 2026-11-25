@@ -108,6 +108,7 @@ export function AdminProductsPage() {
   // Form State
   const [formData, setFormData] = useState({
     sku: '',
+    company_name: '',
     category_id: '',
     name_ko: '',
     description_ko: '',
@@ -394,6 +395,7 @@ export function AdminProductsPage() {
       sku: p.sku || '',
       category_id: p.category_id,
       name_ko: p.name_ko || p.name || '',
+      company_name: p.company_name || '',
       description_ko: p.description_ko || p.description || '',
       material_ko: p.material_ko || p.material || '',
       price: p.price || '',
@@ -847,8 +849,13 @@ export function AdminProductsPage() {
           />
           <div>
             <p style={{ fontWeight: 700, color: '#18181b', fontSize: '0.9375rem', margin: 0 }}>#{p.id} {p.name_ko || p.name || p.name_en}</p>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.6875rem', fontFamily: 'monospace', color: '#999' }}>SKU: {p.sku}</span>
+              {p.company_name && (
+                <span style={{ fontSize: '0.6875rem', color: '#1d4ed8', backgroundColor: '#dbeafe', padding: '1px 5px', borderRadius: '3px', fontWeight: 600 }}>
+                  {p.company_name}
+                </span>
+              )}
               {p.material_ko && (
                 <span style={{ fontSize: '0.6875rem', color: '#52525b', backgroundColor: '#f4f4f5', padding: '1px 5px', borderRadius: '3px' }}>
                   {p.material_ko}
@@ -1195,6 +1202,18 @@ export function AdminProductsPage() {
                     value={formData.name_ko}
                     onChange={(e) => setFormData({ ...formData, name_ko: e.target.value })}
                     placeholder="예: 노을 케이블 니트 가디건"
+                    className="form-input"
+                  />
+                </div>
+
+                {/* Company / brand name */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">회사명 / 브랜드</label>
+                  <input
+                    type="text"
+                    value={formData.company_name || ''}
+                    onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                    placeholder="예: Razon"
                     className="form-input"
                   />
                 </div>

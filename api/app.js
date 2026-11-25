@@ -421,10 +421,9 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Dev-only diagnostics for orders/payments: reports whether the DB RPCs that
-// checkout depends on are reachable, without mutating any data.
-if (process.env.NODE_ENV !== 'production') {
-  app.get('/api/v1/orders/diagnostics', async (_req, res) => {
+// Diagnostics for orders/payments: reports whether the DB RPCs that checkout
+// depends on are reachable, without mutating any data.
+app.get('/api/v1/orders/diagnostics', async (_req, res) => {
     const out = { db: false, placeOrderRpc: false, paymentHealthRpc: false, details: {} };
     try {
       const db = database();
@@ -451,7 +450,6 @@ if (process.env.NODE_ENV !== 'production') {
     }
     res.json({ success: true, data: out });
   });
-}
 
 // EMAIL + PASSWORD AUTH (v1, alongside Google OAuth).
 // Passwords live in app.credentials (bcrypt, cost 12), never in profiles.
@@ -1291,7 +1289,11 @@ app.post('/api/v1/orders', authenticate, checkoutLimiter, async (req, res) => {
     res.status(201).json({ success: true, data: placedOrder });
   } catch (err) {
     console.error('[orders] create error:', err);
-    error(res, 503, 'ORDER_UNAVAILABLE');
+    const msg = String(err?.message || err || '');
+    const code = /place_order|function .* does not exist|column .* does not exist|schema cache|permission denied|row-level security/i.test(msg)
+      ? 'DB_MIGRATION_OR_PERMISSION'
+      : 'ORDER_UNAVAILABLE';
+    error(res, 503, code);
   }
 });
 // Customer order history enrichment: order_items carry only variant refs +
@@ -1608,7 +1610,7 @@ app.post('/api/v1/meta/capi/purchase', authenticate, async (req, res) => {
             },
             custom_data: {
               value: amount,
-              currency: currency || 'KRW',
+              currency: 'KRW',
               content_ids: [],
               content_type: 'product',
               num_items: 1,

@@ -16,7 +16,8 @@ export const UPLOAD_MAX_FILES_PER_REQUEST = 4;
  * so a per-request total above that is a silent hard failure. With 4 files at
  * 1 MB the worst case is 4 MB plus multipart overhead — safely under the limit.
  */
-export const UPLOAD_MAX_FILE_BYTES = 1 * 1024 * 1024;
+export const UPLOAD_MAX_FILE_BYTES = 4 * 1024 * 1024;
+export const UPLOAD_TARGET_FILE_BYTES = 1 * 1024 * 1024;
 
 /**
  * Hard ceiling for a file we are willing to accept from the browser BEFORE
@@ -25,7 +26,7 @@ export const UPLOAD_MAX_FILE_BYTES = 1 * 1024 * 1024;
  * request if downscaling failed). Downscaled output must still fit
  * UPLOAD_MAX_FILE_BYTES.
  */
-export const UPLOAD_ACCEPT_MAX_BYTES = 12 * 1024 * 1024;
+export const UPLOAD_ACCEPT_MAX_BYTES = 25 * 1024 * 1024;
 
 /** Files above this size are compressed client-side before upload. */
 export const UPLOAD_DOWNSCALE_ABOVE_BYTES = 512 * 1024;
@@ -56,6 +57,7 @@ export const UPLOAD_ALLOWED_MIME = new Set([
 /** Machine-readable per-file failure codes (API ↔ UI contract). */
 export const UPLOAD_FAILED_TOO_MANY = 'TOO_MANY_FILES';
 export const UPLOAD_FAILED_TOO_LARGE = 'FILE_TOO_LARGE';
+export const UPLOAD_FAILED_COMPRESS = 'COMPRESS_FAILED';
 export const UPLOAD_FAILED_TYPE = 'UNSUPPORTED_TYPE';
 export const UPLOAD_FAILED_STORAGE = 'STORAGE_FULL';
 export const UPLOAD_FAILED_GENERIC = 'UPLOAD_FAILED';

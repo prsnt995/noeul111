@@ -1255,6 +1255,7 @@ export function registerAdminRoutes(app, ctx) {
           slug: slugify(b.sku || b.name_ko), sku,
           category_id: Number(b.category_id),
           name_ko: String(b.name_ko).slice(0, 200), name_en: String(b.name_en || b.name_ko).slice(0, 200),
+          company_name: String(b.company_name || '').trim().slice(0, 120),
           description_ko: String(b.description_ko || ''), description_en: String(b.description_en || b.description_ko || ''),
           material_ko: String(b.material_ko || '').slice(0, 200), material_en: String(b.material_en || b.material_ko || '').slice(0, 200),
           price, discount_price: discount, gender: ['men', 'women', 'unisex'].includes(b.gender) ? b.gender : 'women',
@@ -1349,6 +1350,7 @@ export function registerAdminRoutes(app, ctx) {
         if (b.name_en === undefined) patch.name_en = String(b.name_ko).slice(0, 200);
       }
       if (b.name_en !== undefined) patch.name_en = String(b.name_en).slice(0, 200);
+      if (b.company_name !== undefined) patch.company_name = String(b.company_name || '').trim().slice(0, 120);
       if (b.description_ko !== undefined) {
         patch.description_ko = String(b.description_ko);
         if (b.description_en === undefined) patch.description_en = String(b.description_ko);

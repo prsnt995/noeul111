@@ -106,39 +106,18 @@ export function OrderSuccessPage() {
         <StatusIcon status={status} size={14} color={statusInfo.text} />
         {statusInfo.ko}
       </span>
-      <h1 style={{ marginTop: 12, fontSize: '1.5rem', fontWeight: 700 }}>
-        {status === 'paid' && '결제가 완료되었습니다'}
-        {status === 'confirming' && '결제 확인 중입니다'}
-        {status === 'pending_payment' && '결제가 아직 완료되지 않았습니다'}
-        {!['paid', 'confirming', 'pending_payment'].includes(status) && statusInfo.ko}
-      </h1>
+      {status !== 'confirming' && (
+        <h1 style={{ marginTop: 12, fontSize: '1.5rem', fontWeight: 700 }}>
+          {status === 'paid' && '결제가 완료되었습니다'}
+          {status === 'pending_payment' && '결제가 아직 완료되지 않았습니다'}
+          {!['paid', 'confirming', 'pending_payment'].includes(status) && statusInfo.ko}
+        </h1>
+      )}
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
         주문번호 <strong style={{ fontFamily: 'monospace' }}>{order.order_number}</strong>
         {order.created_at && <> · {formatDate(order.created_at)}</>}
       </p>
     </header>
-
-    {/* Payment state explanation + single clear next action */}
-    {status === 'confirming' && (
-      <section
-        role="status"
-        style={{
-          background: statusInfo.bg, border: `1px solid ${statusInfo.border}`, color: statusInfo.text,
-          borderRadius: 8, padding: '14px 16px', marginBottom: 20, fontSize: '0.875rem', lineHeight: 1.6,
-        }}
-      >
-        <strong>결제는 정상적으로 접수되었습니다.</strong>
-        <p style={{ margin: '4px 0 0' }}>
-          판매자가 결제를 확인하고 있습니다. 보통 1~2분 안에 완료되며, 이 화면은 자동으로 갱신됩니다.
-          중복 결제하지 마세요.
-        </p>
-        {pollCount >= MAX_POLLS && (
-          <p style={{ margin: '8px 0 0', fontWeight: 600 }}>
-            확인이 조금 지연되고 있습니다. <Link href="/account">주문 내역</Link>에서 계속 확인하실 수 있습니다.
-          </p>
-        )}
-      </section>
-    )}
 
     {status === 'pending_payment' && (
       <section
