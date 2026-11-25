@@ -1,4 +1,12 @@
-.adm-home-builder { display: grid; grid-template-columns: 260px 1fr; gap: 16px; margin-top: 12px; }
+.adm-home-workspace { display: grid; grid-template-columns: 400px 1fr; gap: 16px; margin-top: 12px; align-items: start; }
+.adm-home-editor-pane { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 160px); overflow: auto; padding-right: 4px; }
+.adm-home-preview-pane { position: sticky; top: 80px; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 12px; max-height: calc(100vh - 160px); overflow: auto; }
+.adm-home-preview-pane__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.adm-home-preview-pane__body { margin: 0 auto; }
+.adm-home-palette--compact { background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 10px; }
+.adm-home-palette__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.adm-home-palette__chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; cursor: pointer; font-size: 12px; }
+.adm-home-palette__chip:hover { background: #f0f0f5; }
 .adm-home-palette { background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 14px; }
 .adm-home-palette h3 { margin: 0 0 4px; font-size: 14px; }
 .adm-home-palette__hint { font-size: 11px; color: #888; margin: 0 0 10px; }

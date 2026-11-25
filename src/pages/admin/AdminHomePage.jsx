@@ -257,89 +257,99 @@ export function AdminHomePage() {
       />
       {error ? <ErrorBanner message={error} /> : null}
 
-      <div className="adm-home-builder">
-        {/* Palette */}
-        <aside className="adm-home-palette">
-          <h3>블록 추가</h3>
-          <p className="adm-home-palette__hint">클릭하면 목록 맨 아래에 추가됩니다.</p>
-          {BLOCK_PALETTE.map(p => (
-            <button key={p.type} className="adm-home-palette__item" onClick={() => addBlock(p.type)}>
-              <Plus size={14} />
-              <span>
-                <strong>{p.label}</strong>
-                <small>{p.desc}</small>
-              </span>
-            </button>
-          ))}
-          <div className="adm-home-palette__footer">
-            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmAction('reset')}>
+      <div className="adm-home-workspace">
+        {/* LEFT: editor */}
+        <div className="adm-home-editor-pane">
+          <div className="adm-home-palette adm-home-palette--compact">
+            <strong>블록 추가</strong>
+            <div className="adm-home-palette__chips">
+              {BLOCK_PALETTE.map(p => (
+                <button key={p.type} className="adm-home-palette__chip" onClick={() => addBlock(p.type)} title={p.desc}>
+                  <Plus size={12} /> {p.label}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmAction('reset')} style={{ marginTop: 8 }}>
               <RotateCcw size={12} /> 기본값 복원
             </button>
           </div>
-        </aside>
 
-        {/* Block list */}
-        <section className="adm-home-list">
-          {blocks.length === 0 ? (
-            <Empty title="블록이 없습니다" description="왼쪽에서 블록을 추가하세요." />
-          ) : (
-            blocks.map((b, index) => {
-              const isExpanded = expandedId === b.id;
-              const isDragging = dragIndex === index;
-              const isDropTarget = dropIndex === index && dragIndex !== null && dragIndex !== index;
-              return (
-                <div
-                  key={b.id}
-                  className={`adm-home-block ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${b.enabled === false ? 'is-disabled' : ''}`}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDrop={(e) => handleDrop(e, index)}
-                  onDragEnd={handleDragEnd}
-                >
-                  <div className="adm-home-block__head">
-                    <button className="adm-home-block__handle" aria-label="드래그하여 이동" type="button">
-                      <GripVertical size={14} />
-                    </button>
-                    <div className="adm-home-block__title">
-                      <strong>{BLOCK_PALETTE.find(p => p.type === b.type)?.label || b.type}</strong>
-                      <small>{blockSummary(b, ctx)}</small>
+          <div className="adm-home-list">
+            {blocks.length === 0 ? (
+              <Empty title="블록이 없습니다" description="위에서 블록을 추가하세요." />
+            ) : (
+              blocks.map((b, index) => {
+                const isExpanded = expandedId === b.id;
+                const isDragging = dragIndex === index;
+                const isDropTarget = dropIndex === index && dragIndex !== null && dragIndex !== index;
+                return (
+                  <div
+                    key={b.id}
+                    className={`adm-home-block ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${b.enabled === false ? 'is-disabled' : ''}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={(e) => handleDrop(e, index)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <div className="adm-home-block__head">
+                      <button className="adm-home-block__handle" aria-label="드래그하여 이동" type="button">
+                        <GripVertical size={14} />
+                      </button>
+                      <div className="adm-home-block__title">
+                        <strong>{BLOCK_PALETTE.find(p => p.type === b.type)?.label || b.type}</strong>
+                        <small>{blockSummary(b, ctx)}</small>
+                      </div>
+                      {b.banner_id && banners.find(x => x.id === b.banner_id)?.image_url && (
+                        <img src={banners.find(x => x.id === b.banner_id).image_url} alt="" style={{ width: 40, height: 26, objectFit: 'cover', borderRadius: 3, border: '1px solid #ddd' }} />
+                      )}
+                      <div className="adm-home-block__actions">
+                        <button type="button" title="위로" onClick={() => move(index, index - 1)} disabled={index === 0}><ChevronUp size={14} /></button>
+                        <button type="button" title="아래로" onClick={() => move(index, index + 1)} disabled={index === blocks.length - 1}><ChevronDown size={14} /></button>
+                        <button type="button" title={b.enabled === false ? '표시' : '숨기기'} onClick={() => toggleEnabled(b.id)}>
+                          {b.enabled === false ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                        <button type="button" title="복제" onClick={() => duplicateBlock(b.id)}><Copy size={14} /></button>
+                        <button type="button" title="삭제" onClick={() => removeBlock(b.id)}><Trash2 size={14} /></button>
+                        <button type="button" title="편집" onClick={() => setExpandedId(isExpanded ? null : b.id)}>
+                          {isExpanded ? <X size={14} /> : <span style={{ fontSize: 11 }}>편집</span>}
+                        </button>
+                      </div>
                     </div>
-                    {b.banner_id && banners.find(x => x.id === b.banner_id)?.image_url && (
-                      <img src={banners.find(x => x.id === b.banner_id).image_url} alt="" style={{ width: 40, height: 26, objectFit: 'cover', borderRadius: 3, border: '1px solid #ddd' }} />
+                    {isExpanded && (
+                      <div className="adm-home-block__body">
+                        <BlockEditor
+                          block={b}
+                          categories={categories}
+                          banners={banners}
+                          storefrontData={storefrontData}
+                          ctx={ctx}
+                          onChange={(patch) => updateBlock(b.id, patch)}
+                          onPickProducts={() => setPickerBlockId(b.id)}
+                          onPickImage={(kind) => setMediaTarget({ blockId: b.id, kind })}
+                        />
+                      </div>
                     )}
-                    <div className="adm-home-block__actions">
-                      <button type="button" title="위로" onClick={() => move(index, index - 1)} disabled={index === 0}><ChevronUp size={14} /></button>
-                      <button type="button" title="아래로" onClick={() => move(index, index + 1)} disabled={index === blocks.length - 1}><ChevronDown size={14} /></button>
-                      <button type="button" title={b.enabled === false ? '표시' : '숨기기'} onClick={() => toggleEnabled(b.id)}>
-                        {b.enabled === false ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                      <button type="button" title="복제" onClick={() => duplicateBlock(b.id)}><Copy size={14} /></button>
-                      <button type="button" title="삭제" onClick={() => removeBlock(b.id)}><Trash2 size={14} /></button>
-                      <button type="button" title="편집" onClick={() => setExpandedId(isExpanded ? null : b.id)}>
-                        {isExpanded ? <X size={14} /> : <span style={{ fontSize: 11 }}>편집</span>}
-                      </button>
-                    </div>
                   </div>
-                  {isExpanded && (
-                    <div className="adm-home-block__body">
-                      <BlockEditor
-                        block={b}
-                        categories={categories}
-                        banners={banners}
-                        storefrontData={storefrontData}
-                        ctx={ctx}
-                        onChange={(patch) => updateBlock(b.id, patch)}
-                        onPickProducts={() => setPickerBlockId(b.id)}
-                        onPickImage={(kind) => setMediaTarget({ blockId: b.id, kind })}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </section>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT: live preview */}
+        <div className="adm-home-preview-pane">
+          <div className="adm-home-preview-pane__head">
+            <strong>실시간 미리보기 (초안)</strong>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPreviewWidth(390)}><Smartphone size={12} /> 모바일</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPreviewWidth(1200)}><Monitor size={12} /> 데스크톱</button>
+            </div>
+          </div>
+          <div className="adm-home-preview-pane__body" style={{ maxWidth: previewWidth }}>
+            <HomeBlocks blocks={blocks} data={previewData} />
+          </div>
+        </div>
       </div>
 
       {/* Preview modal */}
