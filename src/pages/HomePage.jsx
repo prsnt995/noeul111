@@ -9,21 +9,9 @@ import { CategoryRow } from '../components/home/CategoryRow.jsx';
 import { PromoBanner } from '../components/home/PromoBanner.jsx';
 import { EditorialBlock } from '../components/home/EditorialBlock.jsx';
 import { HomeSkeleton } from '../components/home/HomeSkeleton.jsx';
+import { HomeBlocks } from '../components/home/HomeBlocks.jsx';
 import { getOptimizedImageUrl, getPrimaryProductImage, safeHttpUrl } from '../utils/imageHelper.js';
 
-/**
- * Homepage — curated discovery (Editorial Boutique).
- *
- *   hero → service strip → BEST strip → category tiles → category rows
- *   (with admin banner slots between them) → new arrivals → editorial
- *
- * Layout adapts to inventory via the server-provided `mode`/`maxRows`:
- *   sparse  (<12)   → hero + BEST + tiles + new + editorial
- *   standard (12–30) → adds up to 3 category rows
- *   rich    (>30)   → adds up to 6 category rows
- *
- * Filtering/sorting/pagination live entirely on /shop.
- */
 export function HomePage() {
   const { t } = useLanguage();
   const { data, loading, error } = useStorefrontHome();
@@ -47,6 +35,19 @@ export function HomePage() {
           </p>
           <a href="/shop" className="lux-btn">전체 상품 보기</a>
         </div>
+      </div>
+    );
+  }
+
+  if (Array.isArray(data.layout) && data.layout.length > 0) {
+    return (
+      <div className="lux-home">
+        <HomeBlocks blocks={data.layout} data={data} />
+        {error ? (
+          <p className="lux-container" style={{ paddingTop: 0, paddingBottom: 24, fontSize: 11, color: 'var(--muted)' }}>
+            일부 콘텐츠를 불러오지 못했습니다. ({error})
+          </p>
+        ) : null}
       </div>
     );
   }

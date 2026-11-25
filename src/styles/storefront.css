@@ -1339,3 +1339,19 @@ html, body, #root {
   .lux-mega__feature-link img { transition: none !important; }
   .lux-nav__link::after { transition: none !important; }
 }
+
+/* Homepage builder — half-banner rows + height variants */
+.lux-promo-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+.lux-promo-wrap { display: block; }
+.lux-promo-wrap--half .lux-promo { min-height: 260px; }
+.lux-promo-wrap--sm .lux-promo { min-height: 200px; }
+.lux-promo-wrap--md .lux-promo { min-height: 320px; }
+.lux-promo-wrap--lg .lux-promo { min-height: 440px; }
+@media (max-width: 767px) {
+  .lux-promo-row { grid-template-columns: 1fr; }
+  .lux-promo-wrap--half .lux-promo { min-height: 220px; }
+}

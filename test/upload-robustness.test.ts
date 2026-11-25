@@ -72,7 +72,7 @@ describe('Upload robustness — pre-flight validator', () => {
   it('rejects HEIC, oversized, and extension-less files per file', () => {
     const files = [
       F('IMG_0001.HEIC', 3 * 1024 * 1024, 'image/heic'),
-      F('huge.png', 20 * 1024 * 1024, 'image/png'),
+      F('huge.png', 26 * 1024 * 1024, 'image/png'),
       F('noext', 100, ''),
       F('ok.webp', 100, 'image/webp'),
     ];

@@ -26,6 +26,7 @@ import {
   ScrollText,
   KeyRound,
   FileSpreadsheet,
+  LayoutGrid,
 } from 'lucide-react';
 
 // New IA: 5 ERP sections, bilingual labels kept as 한국어 (English).
@@ -69,6 +70,7 @@ const NAV_SECTIONS = [
     en: 'Content',
     items: [
       { id: 'banners', ko: '배너 매니저', en: 'Banners', href: '/admin/banners', icon: ImageIcon },
+      { id: 'home', ko: '홈 편집', en: 'Home', href: '/admin/home', icon: LayoutGrid },
       { id: 'media', ko: '미디어 라이브러리', en: 'Media', href: '/admin/media', icon: Film },
     ],
   },

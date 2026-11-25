@@ -87,7 +87,7 @@ describe('Feature 1: Automatic Unique SKUs by Category', () => {
 });
 
 describe('Feature 2: Multi-Size Selection including Free Size (F)', () => {
-  it('defines the complete size options including FREE, XS, S, M, L, XL, XXL, XXXL', () => {
+  it('defines the complete size options including FREE, XS, S, M, L, XL, XXL, XXXL, F1, F2', () => {
     expect(COMMON_SIZES).toContain('FREE');
     expect(COMMON_SIZES).toContain('XS');
     expect(COMMON_SIZES).toContain('S');
@@ -98,7 +98,9 @@ describe('Feature 2: Multi-Size Selection including Free Size (F)', () => {
     expect(COMMON_SIZES).toContain('XXXL');
     expect(COMMON_SIZES).toContain('Long');
     expect(COMMON_SIZES).toContain('Short');
-    expect(COMMON_SIZES.length).toBe(10);
+    expect(COMMON_SIZES).toContain('F1');
+    expect(COMMON_SIZES).toContain('F2');
+    expect(COMMON_SIZES.length).toBe(12);
   });
 });
 

@@ -7,7 +7,7 @@
 export const PRODUCT_IMAGE_MAX = 20;
 
 /** Max files the upload endpoint accepts per request (DoS guard). */
-export const UPLOAD_MAX_FILES_PER_REQUEST = 4;
+export const UPLOAD_MAX_FILES_PER_REQUEST = 1;
 
 /**
  * Max bytes per file accepted by the API (mirrors the bucket).
@@ -36,7 +36,7 @@ export const UPLOAD_DOWNSCALE_ABOVE_BYTES = 512 * 1024;
 export const UPLOAD_DOWNSCALE_MAX_DIM = 1600;
 
 /** Frontend upload batch size (sequential requests dodge serverless body caps). */
-export const UPLOAD_BATCH_SIZE = 3;
+export const UPLOAD_BATCH_SIZE = 1;
 
 /** Max concurrent upload batches — makes multi-file uploads feel instant. */
 export const UPLOAD_CONCURRENCY = 3;

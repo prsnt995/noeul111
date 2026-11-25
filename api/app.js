@@ -17,6 +17,7 @@ import { startOutboxWorker, runOutboxBatch } from '../server/workers/outbox.js';
 import { startExpiryWorker, runExpiryBatch } from '../server/workers/expiry.js';
 import { registerAdminRoutes } from './admin.js';
 import { rankRelated, averageRatings } from './related.js';
+import { normalizeHomeDoc } from '../src/utils/homeLayout.js';
 import { createPaymentService } from '../server/payments/toss.js';
 import { runPaymentRecoveryBatch, startPaymentRecoveryWorker } from '../server/payments/recovery.js';
 import { createPaymentStore } from '../server/payments/store.js';
@@ -966,12 +967,13 @@ app.get('/api/v1/catalog/categories', async (req, res) => { try { const { data, 
 app.get('/api/v1/storefront/home', async (req, res) => {
   try {
     const db = database();
-    const [productsRes, catsRes, bannersRes, headerRes, siteRes] = await Promise.all([
+    const [productsRes, catsRes, bannersRes, headerRes, siteRes, homeLayoutRes] = await Promise.all([
       db.from('products').select('*,categories(slug,name_ko,name_en),product_variants(*),product_media(*)').eq('is_active', true).order('created_at', { ascending: false }).limit(500),
       db.from('categories').select('*').eq('is_active', true).order('sort_order').order('id'),
       db.from('content').select('value').eq('key', 'banners').eq('published', true).maybeSingle(),
       db.from('content').select('value').eq('key', 'header_config').eq('published', true).maybeSingle(),
       db.from('content').select('value').eq('key', 'site').eq('published', true).maybeSingle(),
+      db.from('content').select('value').eq('key', 'home_layout').eq('published', true).maybeSingle().then(r => r, () => ({ data: null })),
     ]);
     if (productsRes.error) throw productsRes.error;
     const products = (productsRes.data || []).map(normalizeProduct).filter(Boolean);
@@ -1031,6 +1033,9 @@ app.get('/api/v1/storefront/home', async (req, res) => {
       else if (placement === 'nav_mega_women') banners.mega_women = banners.mega_women || b;
       else if (placement === 'shop_top') banners.shop_top = banners.shop_top || b;
     }
+    banners.by_id = Object.fromEntries(activeBanners.map(b => [b.id, b]));
+    const homeLayoutDoc = normalizeHomeDoc(homeLayoutRes?.data?.value, { categories: (catsRes.data || []).map(c => ({ slug: c.slug })), bannerIds: new Set(activeBanners.map(b => b.id)), maxRows });
+    const homeLayout = Array.isArray(homeLayoutDoc?.published?.blocks) ? homeLayoutDoc.published.blocks : [];
     res.json({
       success: true,
       data: {
@@ -1043,6 +1048,7 @@ app.get('/api/v1/storefront/home', async (req, res) => {
         banners,
         header_config: headerRes.data?.value || {},
         site: siteRes.data?.value || {},
+        layout: homeLayout,
       },
     });
   } catch (e) {

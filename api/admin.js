@@ -20,6 +20,7 @@ import {
   UPLOAD_FAILED_GENERIC,
   UPLOAD_FAILED_EMPTY,
 } from '../src/config/upload.js';
+import { normalizeHomeDoc, normalizeBlocks, defaultHomeLayout, hasUnpublishedChanges } from '../src/utils/homeLayout.js';
 import { notificationService } from '../server/services/notificationService.js';
 import { getCategoryPrefix, generateNextSku } from '../src/utils/product.js';
 import {
@@ -2945,6 +2946,100 @@ export function registerAdminRoutes(app, ctx) {
     try {
       await deleteDocItem(database, 'banners', req.params.id);
       await auditLog(req, 'BANNER_DELETE', { table: 'content', id: req.params.id });
+      res.json({ success: true });
+    } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
+  });
+
+  // ---------- Homepage layout (draft + publish) ----------
+  async function loadHomeContext() {
+    const [catsRes, banners] = await Promise.all([
+      database().from('categories').select('slug,name_ko,name_en').eq('is_active', true).then(r => r, () => ({ data: [] })),
+      readDoc(database, 'banners', []),
+    ]);
+    const categories = (catsRes?.data || []).map(c => ({ slug: c.slug, name_ko: c.name_ko, name_en: c.name_en }));
+    const bannerIds = new Set((Array.isArray(banners) ? banners : []).map(b => b.id));
+    const maxRows = 6;
+    return { categories, bannerIds, maxRows };
+  }
+
+  app.get('/api/v1/admin/content/home', ...need(R.cms), async (req, res) => {
+    try {
+      const ctx = await loadHomeContext();
+      const raw = await readDoc(database, 'home_layout', null);
+      const doc = normalizeHomeDoc(raw, ctx);
+      // Seed draft with default layout when nothing exists yet.
+      if (!doc.draft?.blocks?.length && !doc.published?.blocks?.length) {
+        doc.draft.blocks = defaultHomeLayout(ctx);
+      }
+      res.json({ success: true, data: { ...doc, hasUnpublishedChanges: hasUnpublishedChanges(doc), source: (doc.published?.blocks?.length ? 'custom' : 'default') } });
+    } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
+  });
+
+  app.put('/api/v1/admin/content/home', ...needStep(R.cms), async (req, res) => {
+    try {
+      const ctx = await loadHomeContext();
+      const body = req.body || {};
+      const baseRevision = body.base_revision !== undefined ? Number(body.base_revision) : null;
+      const raw = await readDoc(database, 'home_layout', null);
+      const doc = normalizeHomeDoc(raw, ctx);
+      if (baseRevision !== null && Number.isFinite(baseRevision) && doc.revision !== baseRevision) {
+        return error(res, 409, 'LAYOUT_CONFLICT');
+      }
+      const blocks = normalizeBlocks(body.blocks !== undefined ? body.blocks : (body.draft?.blocks), ctx);
+      const now = new Date().toISOString();
+      doc.draft = { blocks, updated_at: now, updated_by: req.locals?.session?.user_id || null };
+      doc.revision = (Number(doc.revision) || 0) + 1;
+      await writeDoc(database, 'home_layout', doc);
+      await auditLog(req, 'HOME_LAYOUT_DRAFT_SAVE', { table: 'content', id: 'home_layout', revision: doc.revision });
+      res.json({ success: true, data: { ...doc, hasUnpublishedChanges: hasUnpublishedChanges(doc), source: (doc.published?.blocks?.length ? 'custom' : 'default') } });
+    } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
+  });
+
+  app.post('/api/v1/admin/content/home/publish', ...needStep(R.cms), async (req, res) => {
+    try {
+      const ctx = await loadHomeContext();
+      const body = req.body || {};
+      const baseRevision = body.base_revision !== undefined ? Number(body.base_revision) : null;
+      const raw = await readDoc(database, 'home_layout', null);
+      const doc = normalizeHomeDoc(raw, ctx);
+      if (baseRevision !== null && Number.isFinite(baseRevision) && doc.revision !== baseRevision) {
+        return error(res, 409, 'LAYOUT_CONFLICT');
+      }
+      const draftBlocks = doc.draft?.blocks || [];
+      if (!draftBlocks.length) return error(res, 400, 'LAYOUT_EMPTY');
+      const now = new Date().toISOString();
+      doc.published = { blocks: draftBlocks, published_at: now, published_by: req.locals?.session?.user_id || null };
+      doc.revision = (Number(doc.revision) || 0) + 1;
+      await writeDoc(database, 'home_layout', doc);
+      await auditLog(req, 'HOME_LAYOUT_PUBLISH', { table: 'content', id: 'home_layout', revision: doc.revision });
+      res.json({ success: true, data: { ...doc, hasUnpublishedChanges: hasUnpublishedChanges(doc), source: 'custom' } });
+    } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
+  });
+
+  app.post('/api/v1/admin/content/home/discard', ...needStep(R.cms), async (req, res) => {
+    try {
+      const ctx = await loadHomeContext();
+      const body = req.body || {};
+      const baseRevision = body.base_revision !== undefined ? Number(body.base_revision) : null;
+      const raw = await readDoc(database, 'home_layout', null);
+      const doc = normalizeHomeDoc(raw, ctx);
+      if (baseRevision !== null && Number.isFinite(baseRevision) && doc.revision !== baseRevision) {
+        return error(res, 409, 'LAYOUT_CONFLICT');
+      }
+      const pubBlocks = doc.published?.blocks || [];
+      doc.draft = { blocks: pubBlocks, updated_at: new Date().toISOString(), updated_by: req.locals?.session?.user_id || null };
+      doc.revision = (Number(doc.revision) || 0) + 1;
+      await writeDoc(database, 'home_layout', doc);
+      await auditLog(req, 'HOME_LAYOUT_DISCARD', { table: 'content', id: 'home_layout', revision: doc.revision });
+      res.json({ success: true, data: { ...doc, hasUnpublishedChanges: hasUnpublishedChanges(doc), source: (doc.published?.blocks?.length ? 'custom' : 'default') } });
+    } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
+  });
+
+  app.delete('/api/v1/admin/content/home', ...needStep(R.cms), async (req, res) => {
+    try {
+      const db = getDb(database);
+      await db.from('content').delete().eq('key', 'home_layout');
+      await auditLog(req, 'HOME_LAYOUT_RESET', { table: 'content', id: 'home_layout' });
       res.json({ success: true });
     } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); }
   });
