@@ -143,8 +143,10 @@ export function AdminLayout({ children, activePage, crumbs }) {
   }, [crumbs, activeItem]);
 
   const paletteItems = useMemo(
-    () => ALL_ITEMS.map((i) => ({ id: i.id, ko: i.ko, en: i.en, hint: i.href, href: i.href })),
-    []
+    () => ALL_ITEMS
+      .filter((i) => i.id !== 'staff' || adminUser?.role === 'super_admin')
+      .map((i) => ({ id: i.id, ko: i.ko, en: i.en, hint: i.href, href: i.href })),
+    [adminUser?.role]
   );
 
   if (loading) {
@@ -215,11 +217,14 @@ export function AdminLayout({ children, activePage, crumbs }) {
             <div className="adm-brand-sub">통합 브랜딩 &amp; 쇼핑몰 관리</div>
           </div>
           <nav className="adm-nav">
-            {NAV_SECTIONS.map((section) => (
+            {NAV_SECTIONS.map((section) => {
+              const visibleItems = section.items.filter((item) => item.id !== 'staff' || adminUser?.role === 'super_admin');
+              if (visibleItems.length === 0) return null;
+              return (
               <div key={section.id}>
                 <div className="adm-nav-section">{section.ko} · {section.en}</div>
                 <div className="adm-nav-list">
-                  {section.items.map((item) => {
+                  {visibleItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeId === item.id || location === item.href;
                     return (
@@ -237,7 +242,8 @@ export function AdminLayout({ children, activePage, crumbs }) {
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </nav>
           <div className="adm-user">
             <div className="adm-user-avatar" aria-hidden>{initial}</div>

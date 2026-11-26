@@ -86,6 +86,14 @@ export function AdminHomePage() {
     try { localStorage.setItem('noeul_home_layout_autosave', JSON.stringify({ blocks, savedAt: new Date().toISOString() })); } catch { /* ignore */ }
   }, [blocks, dirty]);
 
+  // Prevent accidental tab close while there are unsaved edits.
+  useEffect(() => {
+    if (!dirty && !hasChanges) return undefined;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty, hasChanges]);
+
   // Offer recovery on mount if an autosave exists.
   useEffect(() => {
     try {
@@ -183,7 +191,7 @@ export function AdminHomePage() {
       setDirty(false);
       showToast('초안이 저장되었습니다.', 'success');
     } catch (e) {
-      if (e?.status === 409) showToast('다른 곳에서 먼저 수정되었습니다 — 새로고침 후 다시 시도하세요.', 'error');
+      if (e?.status === 409 || e?.code === 'LAYOUT_CONFLICT') showToast('다른 곳에서 먼저 수정되었습니다 — 새로고침 후 다시 시도하세요.', 'error');
       else showToast(e?.message || '저장 실패', 'error');
     } finally {
       setSaving(false);
@@ -193,13 +201,29 @@ export function AdminHomePage() {
   const doPublish = async () => {
     setPublishing(true);
     try {
-      const res = await adminApi.post('/admin/content/home/publish', { base_revision: doc?.revision });
-      setDoc(res?.data || doc);
+      // Publish operates on the server-side draft, so any unsaved edits on
+      // screen must be saved first — otherwise we'd publish stale content.
+      let currentDoc = doc;
+      if (dirty || hasChanges) {
+        const normalized = normalizeBlocks(blocks, ctx);
+        const saveRes = await adminApi.put('/admin/content/home', { blocks: normalized, base_revision: doc?.revision });
+        currentDoc = saveRes?.data || doc;
+        setDoc(currentDoc);
+        setBlocks((currentDoc?.draft?.blocks) || normalized);
+        setDirty(false);
+        showToast('초안을 먼저 저장한 뒤 게시합니다.', 'info');
+      }
+      const res = await adminApi.post('/admin/content/home/publish', { base_revision: currentDoc?.revision ?? doc?.revision });
+      setDoc(res?.data || currentDoc);
       setBlocks((res?.data?.draft?.blocks) || blocks);
       setDirty(false);
       showToast('홈페이지가 게시되었습니다.', 'success');
     } catch (e) {
-      showToast(e?.message || '게시 실패', 'error');
+      if (e?.status === 409 || e?.code === 'LAYOUT_CONFLICT') {
+        showToast('다른 곳에서 먼저 수정되었습니다 — 새로고침 후 다시 시도하세요.', 'error');
+      } else {
+        showToast(e?.message || '게시 실패', 'error');
+      }
     } finally {
       setPublishing(false);
       setConfirmAction(null);

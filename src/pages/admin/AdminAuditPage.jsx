@@ -26,17 +26,25 @@ export function AdminAuditPage() {
   const search = pv.search || '';
   const actionFilter = pv.action || 'all';
   const [logs, setLogs] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [selected, setSelected] = useState(null);
+  const [allActions, setAllActions] = useState([]);
   const { showToast } = useToast();
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
       setErrorMsg('');
-      const res = await adminApi.get('/admin/audit-logs');
+      const params = new URLSearchParams();
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', String((page - 1) * PAGE_SIZE));
+      if (search.trim()) params.set('search', search.trim());
+      if (actionFilter !== 'all') params.set('action', actionFilter);
+      const res = await adminApi.get(`/admin/audit-logs?${params.toString()}`);
       setLogs(res.data || []);
+      setTotal(Number(res.total) || (res.data || []).length);
     } catch (err) {
       console.error('Fetch audit logs error:', err);
       setErrorMsg(err?.message || '감사 로그를 불러오지 못했습니다.');
@@ -48,26 +56,22 @@ export function AdminAuditPage() {
 
   useEffect(() => {
     fetchLogs();
+  }, [pv]);
+
+  // Populate action filter options once.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await adminApi.get('/admin/audit-logs?limit=1000&offset=0');
+        const set = new Set((res.data || []).map((l) => l.action).filter(Boolean));
+        setAllActions([...set].sort());
+      } catch { /* ignore */ }
+    })();
   }, []);
 
-  const actions = useMemo(() => {
-    const set = new Set((logs || []).map((l) => l.action).filter(Boolean));
-    return [...set].sort();
-  }, [logs]);
-
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return (logs || []).filter((l) => {
-      if (actionFilter !== 'all' && l.action !== actionFilter) return false;
-      if (!term) return true;
-      return `${l.action || ''} ${l.target || ''} ${l.actor || ''}`.toLowerCase().includes(term);
-    });
-  }, [logs, search, actionFilter]);
-
-  const pageRows = useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page]
-  );
+  const actions = allActions;
+  const filtered = logs;
+  const pageRows = logs;
 
   const columns = [
     {
@@ -93,8 +97,8 @@ export function AdminAuditPage() {
       key: 'actor',
       label: '수행자 Actor',
       render: (l) => (
-        <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#71717a' }}>
-          {l.actor ? String(l.actor).slice(0, 8) : 'system'}
+        <span style={{ fontSize: '0.78rem', color: '#71717a' }}>
+          {l.actor_name || (l.actor ? String(l.actor).slice(0, 8) : 'system')}
         </span>
       ),
     },
@@ -116,7 +120,7 @@ export function AdminAuditPage() {
       <PageHeader
         ko="감사 로그"
         en="Audit Logs"
-        desc="관리자 작업 이력 (읽기 전용, 최신 200건) — 상품·주문·쿠폰·설정 변경 추적"
+        desc="관리자 작업 이력 (읽기 전용, 서버 페이징) — 상품·주문·쿠폰·설정 변경 추적"
       />
 
       <ErrorBanner message={errorMsg ? `감사 로그 로드 실패: ${errorMsg}` : ''} onRetry={fetchLogs} />
@@ -140,7 +144,7 @@ export function AdminAuditPage() {
 
       <DataTable
         columns={columns}
-        rows={pageRows}
+        rows={logs}
         loading={loading}
         emptyTitle="감사 로그가 없습니다 No audit logs found"
         emptyDesc="관리자 작업이 기록되면 여기에 표시됩니다."
@@ -148,7 +152,7 @@ export function AdminAuditPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={(p) => listParams.set({ page: p })} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <Drawer

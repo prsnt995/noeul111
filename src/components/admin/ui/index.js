@@ -4,6 +4,7 @@ export { DataTable } from './DataTable.jsx';
 export { Pagination } from './Pagination.jsx';
 export { Empty, ErrorBanner } from './Empty.jsx';
 export { ConfirmModal, Drawer } from './Overlays.jsx';
+export { Modal } from './Modal.jsx';
 export { StatusPill } from './StatusPill.jsx';
 export { CommandPalette } from './CommandPalette.jsx';
 

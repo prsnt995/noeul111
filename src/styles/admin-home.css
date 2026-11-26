@@ -1,4 +1,5 @@
 .adm-home-workspace { display: grid; grid-template-columns: 400px 1fr; gap: 16px; margin-top: 12px; align-items: start; }
+@media (max-width: 1023px) { .adm-home-workspace { grid-template-columns: 1fr; } }
 .adm-home-editor-pane { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 160px); overflow: auto; padding-right: 4px; }
 .adm-home-preview-pane { position: sticky; top: 80px; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 12px; max-height: calc(100vh - 160px); overflow: auto; }
 .adm-home-preview-pane__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }

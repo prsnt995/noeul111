@@ -41,6 +41,7 @@ export function AdminPrivacyPage() {
   const search = pv.search || '';
   const statusFilter = pv.status || 'all';
   const [requests, setRequests] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [selected, setSelected] = useState(null);
@@ -52,8 +53,14 @@ export function AdminPrivacyPage() {
     setLoading(true);
     try {
       setErrorMsg('');
-      const res = await adminApi.get('/admin/privacy-requests');
+      const params = new URLSearchParams();
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', String((page - 1) * PAGE_SIZE));
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (search.trim()) params.set('search', search.trim());
+      const res = await adminApi.get(`/admin/privacy-requests?${params.toString()}`);
       setRequests(res.data || []);
+      setTotal(Number(res.total) || (res.data || []).length);
     } catch (err) {
       console.error('Fetch privacy requests error:', err);
       setErrorMsg(err?.message || '개인정보 요청을 불러오지 못했습니다.');
@@ -65,7 +72,7 @@ export function AdminPrivacyPage() {
 
   useEffect(() => {
     fetchRequests();
-  }, []);
+  }, [pv]);
 
   const isPending = (r) => !['done', 'completed', 'rejected'].includes(String(r?.status || '').toLowerCase());
 
@@ -87,19 +94,8 @@ export function AdminPrivacyPage() {
     }
   };
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return (requests || []).filter((r) => {
-      if (statusFilter !== 'all' && String(r.status || '').toLowerCase() !== statusFilter) return false;
-      if (!term) return true;
-      return `${r.user_id || ''} ${r.kind || r.type || ''} ${r.customer_email || ''}`.toLowerCase().includes(term);
-    });
-  }, [requests, search, statusFilter]);
-
-  const pageRows = useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page]
-  );
+  const filtered = requests;
+  const pageRows = requests;
 
   const columns = [
     {
@@ -121,7 +117,7 @@ export function AdminPrivacyPage() {
       label: '요청자 Requester',
       render: (r) => (
         <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: '#52525b' }}>
-          {r.customer_email || (r.user_id ? String(r.user_id).slice(0, 8) : '—')}
+          {r.requester_email || r.customer_email || (r.user_id ? String(r.user_id).slice(0, 8) : '—')}
         </span>
       ),
     },
@@ -175,7 +171,7 @@ export function AdminPrivacyPage() {
         ]}
       >
         <span style={{ fontSize: '0.8125rem', color: '#71717a', marginLeft: 'auto' }}>
-          총 <strong>{filtered.length}</strong>건
+          총 <strong>{total}</strong>건
         </span>
       </Filters>
 
@@ -189,7 +185,7 @@ export function AdminPrivacyPage() {
       />
 
       <div style={{ marginTop: 12 }}>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={(p) => listParams.set({ page: p })} />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={(p) => listParams.set({ page: p })} />
       </div>
 
       <Drawer

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout.jsx';
-import { PageHeader, DataTable, ErrorBanner, ConfirmModal } from '../../components/admin/ui/index.js';
+import { PageHeader, DataTable, ErrorBanner, ConfirmModal, Pagination } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -62,9 +62,11 @@ export function AdminBusinessPage() {
   const [summaryData, setSummaryData] = useState(null);
   const [orders, setOrders] = useState([]);
   const [ordersTotal, setOrdersTotal] = useState(0);
+  const [ordersPage, setOrdersPage] = useState(1);
   const [categoryReports, setCategoryReports] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [expensesTotal, setExpensesTotal] = useState(0);
+  const [expensesPage, setExpensesPage] = useState(1);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
 
@@ -109,11 +111,22 @@ export function AdminBusinessPage() {
       if (customFrom) qParams.set('from', customFrom);
       if (customTo) qParams.set('to', customTo);
 
+      const ordParams = new URLSearchParams(qParams.toString());
+      ordParams.set('page', String(ordersPage));
+      ordParams.set('pageSize', '50');
+      if (searchQuery.trim()) ordParams.set('search', searchQuery.trim());
+      if (selectedCategorySlug && selectedCategorySlug !== 'all') ordParams.set('category', selectedCategorySlug);
+      const expParams = new URLSearchParams(qParams.toString());
+      expParams.set('page', String(expensesPage));
+      expParams.set('pageSize', '50');
+      if (selectedExpenseCategory && selectedExpenseCategory !== 'all') expParams.set('category', selectedExpenseCategory);
+      if (searchQuery.trim()) expParams.set('search', searchQuery.trim());
+
       const [sumRes, ordRes, catRes, expRes, prodRes] = await Promise.all([
         adminApi.get(`/admin/business/summary?${qParams.toString()}`),
-        adminApi.get(`/admin/business/orders?${qParams.toString()}&pageSize=100`),
+        adminApi.get(`/admin/business/orders?${ordParams.toString()}`),
         adminApi.get(`/admin/business/category-reports?${qParams.toString()}`),
-        adminApi.get(`/admin/expenses?${qParams.toString()}&pageSize=100`),
+        adminApi.get(`/admin/expenses?${expParams.toString()}`),
         adminApi.get('/admin/products?limit=100').catch(() => ({ data: [] })),
       ]);
 
@@ -153,8 +166,13 @@ export function AdminBusinessPage() {
   };
 
   useEffect(() => {
+    setOrdersPage(1);
+    setExpensesPage(1);
+  }, [period, customFrom, customTo, searchQuery, selectedCategorySlug, selectedExpenseCategory]);
+
+  useEffect(() => {
     loadAllBusinessData();
-  }, [period, customFrom, customTo]);
+  }, [period, customFrom, customTo, searchQuery, selectedCategorySlug, selectedExpenseCategory, ordersPage, expensesPage]);
 
   // Excel Export Handler — SheetJS is loaded on demand.
   const handleExportExcel = async () => {
@@ -810,6 +828,14 @@ export function AdminBusinessPage() {
                 )}
               </tbody>
             </table>
+            <div style={{ marginTop: 12 }}>
+              <Pagination
+                page={ordersPage}
+                pageSize={50}
+                total={ordersTotal}
+                onPage={(p) => setOrdersPage(p)}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -1078,6 +1104,14 @@ export function AdminBusinessPage() {
                 )}
               </tbody>
             </table>
+            <div style={{ marginTop: 12 }}>
+              <Pagination
+                page={expensesPage}
+                pageSize={50}
+                total={expensesTotal}
+                onPage={(p) => setExpensesPage(p)}
+              />
+            </div>
           </div>
         </div>
       )}

@@ -488,12 +488,15 @@ export function ManualOrderModal({ onClose, onCreated }) {
                 <span>쿠폰 할인 ({appliedCoupon.code})</span><span>−{formatKRW(couponDiscount)}</span>
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-              <span>배송비</span><span>{formatKRW(shipping)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#71717a' }}>
+              <span>배송비</span><span>저장 시 자동 계산</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-              <span>총 결제 금액</span><span>{formatKRW(total)}</span>
+              <span>예상 합계 (배송비 별도)</span><span>{formatKRW(total)}</span>
             </div>
+            <p style={{ fontSize: '0.75rem', color: '#71717a', margin: '4px 0 0' }}>
+              * 배송비는 저장 시 자동 계산되어 최종 결제 금액에 반영됩니다.
+            </p>
             <div style={{ marginTop: '8px' }}>
               <label className="adm-label" htmlFor="manual-coupon">쿠폰 코드 (선택)</label>
               {appliedCoupon ? (

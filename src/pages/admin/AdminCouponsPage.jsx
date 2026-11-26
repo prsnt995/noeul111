@@ -8,6 +8,7 @@ import {
   ErrorBanner,
   ConfirmModal,
   StatusPill,
+  Modal,
   normalizeListResponse,
   buildListParams,
 } from '../../components/admin/ui/index.js';
@@ -15,7 +16,7 @@ import { adminApi } from '../../utils/api.js';
 import { useListParams } from '../../hooks/useListParams.js';
 import { formatKRW } from '../../utils/formatters.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Plus, Edit2, Trash2, X } from 'lucide-react';
+import { Plus, Edit2, Trash2 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
@@ -135,6 +136,14 @@ export function AdminCouponsPage() {
       }
       if (payload.discount_type === 'fixed' && (!Number.isInteger(payload.discount_value) || payload.discount_value <= 0)) {
         showToast('고정 금액 할인은 1원 이상의 정수로 입력하세요.', 'error');
+        return;
+      }
+      if (payload.start_date && payload.end_date && new Date(payload.start_date) > new Date(payload.end_date)) {
+        showToast('종료일은 시작일 이후여야 합니다.', 'error');
+        return;
+      }
+      if (!Number.isInteger(payload.usage_limit) || payload.usage_limit < 1) {
+        showToast('사용 횟수 제한은 1 이상의 정수여야 합니다.', 'error');
         return;
       }
       if (isEditMode) {
@@ -295,18 +304,12 @@ export function AdminCouponsPage() {
       />
 
         {/* Create / Edit Modal */}
-        {isModalOpen && (
-          <>
-            <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
-            <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '쿠폰 정보 수정 Edit coupon' : '새 쿠폰 발행 New coupon'} style={{ maxWidth: 560 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <h2>
-                  {isEditMode ? '쿠폰 정보 수정 Edit coupon' : '새 쿠폰 발행 New coupon'}
-                </h2>
-                <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog">
-                  <X size={16} />
-                </button>
-              </div>
+        <Modal
+          open={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          title={isEditMode ? '쿠폰 정보 수정 Edit coupon' : '새 쿠폰 발행 New coupon'}
+          maxWidth={560}
+        >
 
               <form onSubmit={handleSaveCoupon} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -441,9 +444,7 @@ export function AdminCouponsPage() {
                   </button>
                 </div>
               </form>
-            </div>
-          </>
-        )}
+        </Modal>
     </AdminLayout>
   );
 }

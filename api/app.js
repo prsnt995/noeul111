@@ -1577,7 +1577,28 @@ app.post('/api/v1/reviews/:id/moderate', authenticate, staff(['super_admin','adm
 
 // PRIVACY REQUESTS
 app.post('/api/v1/me/privacy-request', authenticate, privacyLimiter, async (req, res) => { try { const s = req.locals.session; const validTypes = ['export','delete','correct']; if (!validTypes.includes(req.body.type)) return error(res, 400, 'INVALID_PRIVACY_TYPE'); const kind = req.body.type; const { data: privacy } = await database().from('privacy_requests').insert({ user_id: s.user_id, kind, status: 'pending' }).select().maybeSingle(); await notificationService.sendInquiryResponse({ id: privacy.id, customer_email: s.profiles.email, category: 'privacy', response: 'Your request has been received and is being processed.' }); res.json({ success: true, data: privacy }); } catch { error(res, 503, 'PRIVACY_UNAVAILABLE'); } });
-app.get('/api/v1/admin/privacy-requests', authenticate, staff(['super_admin','admin']), async (req, res) => { try { const { data } = await database().from('privacy_requests').select('*').order('created_at', { ascending: false }).limit(100); res.json({ success: true, data: data || [] }); } catch { error(res, 503, 'PRIVACY_UNAVAILABLE'); } });
+app.get('/api/v1/admin/privacy-requests', authenticate, staff(['super_admin','admin']), async (req, res) => { try {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+  const status = req.query.status;
+  let q = database().from('privacy_requests').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+  if (status && status !== 'all') q = q.eq('status', status);
+  const { data, count } = await q.range(offset, offset + limit - 1);
+  const rows = data || [];
+  const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+  let profMap = new Map();
+  if (userIds.length) {
+    try {
+      const { data: profs } = await database().from('profiles').select('id,name,email').in('id', userIds);
+      for (const p of (profs || [])) profMap.set(p.id, { name: p.name || null, email: p.email || null });
+    } catch { /* ignore */ }
+  }
+  const enriched = rows.map(r => {
+    const p = profMap.get(r.user_id) || {};
+    return { ...r, requester_name: p.name || null, requester_email: p.email || r.customer_email || null };
+  });
+  res.json({ success: true, data: enriched, total: count ?? enriched.length, limit, offset });
+} catch { error(res, 503, 'PRIVACY_UNAVAILABLE'); } });
 // Privacy resolution: pending → done/completed/rejected only. Terminal states
 // are immutable; every transition is audit-logged with before/after.
 app.patch('/api/v1/admin/privacy-requests/:id', authenticate, staff(['super_admin','admin']), stepUp, async (req, res) => { try {
@@ -1593,7 +1614,28 @@ app.patch('/api/v1/admin/privacy-requests/:id', authenticate, staff(['super_admi
 } catch { error(res, 503, 'PRIVACY_UNAVAILABLE'); } });
 
 // AUDIT LOGS
-app.get('/api/v1/admin/audit-logs', authenticate, staff(['super_admin','admin']), async (req, res) => { try { const { data } = await database().from('audit_logs').select('*').order('created_at', { ascending: false }).limit(200); res.json({ success: true, data: data || [] }); } catch { error(res, 503, 'AUDIT_UNAVAILABLE'); } });
+app.get('/api/v1/admin/audit-logs', authenticate, staff(['super_admin','admin']), async (req, res) => { try {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+  const action = req.query.action;
+  const search = String(req.query.search || '').trim();
+  let q = database().from('audit_logs').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+  if (action && action !== 'all') q = q.eq('action', action);
+  if (search) q = q.or(`action.ilike.%${search}%,target.ilike.%${search}%`);
+  const { data, count } = await q.range(offset, offset + limit - 1);
+  const rows = data || [];
+  // Resolve actor names without depending on FK naming.
+  const actorIds = [...new Set(rows.map(r => r.actor).filter(Boolean))];
+  let nameMap = new Map();
+  if (actorIds.length) {
+    try {
+      const { data: profs } = await database().from('profiles').select('id,name,email').in('id', actorIds);
+      for (const p of (profs || [])) nameMap.set(p.id, p.name || p.email || null);
+    } catch { /* ignore */ }
+  }
+  const enriched = rows.map(r => ({ ...r, actor_name: nameMap.get(r.actor) || null }));
+  res.json({ success: true, data: enriched, total: count ?? enriched.length, limit, offset });
+} catch { error(res, 503, 'AUDIT_UNAVAILABLE'); } });
 
 /* ================== Meta CAPI Purchase ==================
    Server-side Purchase event for reliable dedup + attribution.

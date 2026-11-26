@@ -1,12 +1,13 @@
 import React from 'react';
 import { Inbox } from 'lucide-react';
 
-export function Empty({ title = 'No results 결과가 없습니다', desc = 'Try adjusting filters or create a new item.', action }) {
+export function Empty({ title = 'No results 결과가 없습니다', desc, description, action }) {
+  const text = desc || description || 'Try adjusting filters or create a new item.';
   return (
     <div className="adm-empty">
       <Inbox size={28} aria-hidden style={{ color: '#a1a1aa', margin: '0 auto' }} />
       <h3>{title}</h3>
-      {desc ? <p>{desc}</p> : null}
+      {text ? <p>{text}</p> : null}
       {action}
     </div>
   );

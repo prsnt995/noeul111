@@ -96,7 +96,7 @@ function confirmLabel(order) {
 export function AdminOrdersPage() {
   // List state lives in the URL (?page=&search=&sort=&order=&status=&…):
   // back-nav, reload, and shared links restore the exact view.
-  const listParams = useListParams({ keys: ['page', 'search', 'sort', 'order', 'status', 'payment_status', 'source'] });
+  const listParams = useListParams({ keys: ['page', 'search', 'sort', 'order', 'status', 'payment_status', 'source', 'from', 'to'] });
   const pv = listParams.values;
   const page = Number(pv.page) || 1;
   const search = pv.search || '';
@@ -104,6 +104,8 @@ export function AdminOrdersPage() {
   const selectedStatus = pv.status || 'all';
   const selectedPaymentStatus = pv.payment_status || 'all';
   const selectedSource = pv.source || 'all';
+  const dateFrom = pv.from || '';
+  const dateTo = pv.to || '';
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -150,6 +152,8 @@ export function AdminOrdersPage() {
         status: selectedStatus,
         payment_status: selectedPaymentStatus,
         source: selectedSource,
+        from: dateFrom,
+        to: dateTo,
       });
       const res = await adminApi.get(`/admin/orders${qs}`);
       if (seq !== requestSeq.current) return; // a newer request already landed
@@ -334,6 +338,8 @@ export function AdminOrdersPage() {
         status: selectedStatus,
         payment_status: selectedPaymentStatus,
         source: selectedSource,
+        from: dateFrom,
+        to: dateTo,
       };
       const all = [];
       let pageNum = 1;
@@ -659,7 +665,14 @@ export function AdminOrdersPage() {
             ],
           },
         ]}
-      />
+      >
+        <label style={{ fontSize: '0.75rem', color: '#71717a', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          기간
+          <input type="date" value={dateFrom} onChange={(e) => listParams.set({ from: e.target.value })} className="adm-input" style={{ width: 130 }} aria-label="시작일" />
+          <span>~</span>
+          <input type="date" value={dateTo} onChange={(e) => listParams.set({ to: e.target.value })} className="adm-input" style={{ width: 130 }} aria-label="종료일" />
+        </label>
+      </Filters>
 
       {selectedIds.size > 0 && (
         <div className="adm-card adm-filter-bar" role="toolbar" aria-label="Bulk actions">

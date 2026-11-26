@@ -11,6 +11,7 @@ export function CommandPalette({ open, onClose, items = [], onNavigate }) {
   useEffect(() => {
     const h = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); onClose?.(); }
+      if (e.key === 'Escape') { e.preventDefault(); onClose?.(); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);

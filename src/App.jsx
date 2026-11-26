@@ -17,6 +17,7 @@ import { QuickSearch } from './components/common/QuickSearch.jsx';
 import { ToastContainer } from './components/common/ToastContainer.jsx';
 import { RightFloatingBar } from './components/common/RightFloatingBar.jsx';
 import { CookieConsentBanner } from './components/common/CookieConsentBanner.jsx';
+import { ErrorBoundary } from './components/common/ErrorBoundary.jsx';
 
 // Customer Pages
 import { HomePage } from './pages/HomePage.jsx';
@@ -63,6 +64,12 @@ const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage.jsx
 const AdminAuditPage = lazy(() => import('./pages/admin/AdminAuditPage.jsx').then(m => ({ default: m.AdminAuditPage })));
 const AdminPrivacyPage = lazy(() => import('./pages/admin/AdminPrivacyPage.jsx').then(m => ({ default: m.AdminPrivacyPage })));
 const AdminBusinessPage = lazy(() => import('./pages/admin/AdminBusinessPage.jsx').then(m => ({ default: m.AdminBusinessPage })));
+
+const withBoundary = (Comp) => (props) => (
+  <ErrorBoundary>
+    <Comp {...props} />
+  </ErrorBoundary>
+);
 
 const SITE_ORIGIN = 'https://www.noeul.me';
 const BASE_TITLE = 'NOEUL | 노을 - Contemporary Korean Fashion';
@@ -177,24 +184,24 @@ function AppContent() {
           <Route path="/p/:slug" component={CustomPageView} />
 
           {/* Admin Control Center — lean cloth store (10 routes, builder/menus/pages/languages/inventory/content removed) */}
-          <Route path="/admin/login" component={AdminLoginPage} />
-          <Route path="/admin" component={AdminDashboardPage} />
-          <Route path="/admin/banners" component={AdminBannersPage} />
-          <Route path="/admin/home" component={AdminHomePage} />
-          <Route path="/admin/products" component={AdminProductsPage} />
-          <Route path="/admin/categories" component={AdminCategoriesPage} />
-          <Route path="/admin/orders" component={AdminOrdersPage} />
-          <Route path="/admin/reports" component={AdminReportsPage} />
-<Route path="/admin/ads" component={AdminAdsPage} />
-          <Route path="/admin/coupons" component={AdminCouponsPage} />
-          <Route path="/admin/reviews" component={AdminReviewsPage} />
-          <Route path="/admin/customers" component={AdminCustomersPage} />
-          <Route path="/admin/media" component={AdminMediaPage} />
-          <Route path="/admin/staff" component={AdminStaffPage} />
-          <Route path="/admin/settings" component={AdminSettingsPage} />
-          <Route path="/admin/audit" component={AdminAuditPage} />
-          <Route path="/admin/privacy" component={AdminPrivacyPage} />
-          <Route path="/admin/business" component={AdminBusinessPage} />
+          <Route path="/admin/login" component={withBoundary(AdminLoginPage)} />
+          <Route path="/admin" component={withBoundary(AdminDashboardPage)} />
+          <Route path="/admin/banners" component={withBoundary(AdminBannersPage)} />
+          <Route path="/admin/home" component={withBoundary(AdminHomePage)} />
+          <Route path="/admin/products" component={withBoundary(AdminProductsPage)} />
+          <Route path="/admin/categories" component={withBoundary(AdminCategoriesPage)} />
+          <Route path="/admin/orders" component={withBoundary(AdminOrdersPage)} />
+          <Route path="/admin/reports" component={withBoundary(AdminReportsPage)} />
+<Route path="/admin/ads" component={withBoundary(AdminAdsPage)} />
+          <Route path="/admin/coupons" component={withBoundary(AdminCouponsPage)} />
+          <Route path="/admin/reviews" component={withBoundary(AdminReviewsPage)} />
+          <Route path="/admin/customers" component={withBoundary(AdminCustomersPage)} />
+          <Route path="/admin/media" component={withBoundary(AdminMediaPage)} />
+          <Route path="/admin/staff" component={withBoundary(AdminStaffPage)} />
+          <Route path="/admin/settings" component={withBoundary(AdminSettingsPage)} />
+          <Route path="/admin/audit" component={withBoundary(AdminAuditPage)} />
+          <Route path="/admin/privacy" component={withBoundary(AdminPrivacyPage)} />
+          <Route path="/admin/business" component={withBoundary(AdminBusinessPage)} />
 
           {/* 404 Fallback */}
           <Route>

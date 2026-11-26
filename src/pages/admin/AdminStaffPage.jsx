@@ -6,10 +6,11 @@ import {
   ErrorBanner,
   ConfirmModal,
   StatusPill,
+  Modal,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Plus, Edit2, Trash2, X } from 'lucide-react';
+import { Plus, Edit2, Trash2 } from 'lucide-react';
 
 export function AdminStaffPage() {
   const [staff, setStaff] = useState([]);
@@ -211,19 +212,13 @@ export function AdminStaffPage() {
       />
 
       {/* Modal */}
-      {isModalOpen && (
-        <>
-          <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
-          <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '관리자 정보 및 권한 수정 Edit staff' : '새 관리자 계정 생성 New staff'} style={{ maxWidth: 520 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <h2>
-                {isEditMode ? '관리자 정보 및 권한 수정 Edit staff' : '새 관리자 계정 생성 New staff'}
-              </h2>
-              <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog">
-                <X size={16} />
-              </button>
-            </div>
-            <p className="adm-modal-sub">Google 로그인 후 이메일 allowlist에 등록되는 방식입니다. 비밀번호 필드는 무시됩니다.</p>
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={isEditMode ? '관리자 정보 및 권한 수정 Edit staff' : '새 관리자 계정 생성 New staff'}
+        maxWidth={520}
+      >
+        <p className="adm-modal-sub">Google 로그인 후 이메일 allowlist에 등록되는 방식입니다. 비밀번호 필드는 무시됩니다.</p>
 
               <form onSubmit={handleSaveStaff} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -283,9 +278,7 @@ export function AdminStaffPage() {
                   </button>
                 </div>
               </form>
-            </div>
-          </>
-        )}
+      </Modal>
     </AdminLayout>
   );
 }

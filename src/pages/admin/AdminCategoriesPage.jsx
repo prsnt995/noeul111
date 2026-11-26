@@ -5,13 +5,14 @@ import {
   Filters,
   ErrorBanner,
   ConfirmModal,
+  Modal,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useListParams } from '../../hooks/useListParams.js';
 import { normalizePrefix, suggestPrefix, SKU_PREFIX_RE, prefixErrorText } from '../../utils/sku.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { CardGridSkeleton } from '../../components/admin/AdminSkeleton.jsx';
-import { Plus, Edit2, Trash2, FolderTree, X, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, ChevronDown, ChevronUp, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { Plus, Edit2, Trash2, FolderTree, Eye, EyeOff, ArrowUp, ArrowDown, Package, Users, ChevronDown, ChevronUp, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { MediaPickerModal } from '../../components/common/MediaPickerModal.jsx';
 
 export function AdminCategoriesPage() {
@@ -408,14 +409,12 @@ export function AdminCategoriesPage() {
         />
 
         {/* Add/Edit Modal */}
-        {isModalOpen && (
-          <>
-            <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
-            <div className="adm-modal" role="dialog" aria-modal="true" aria-label={isEditMode ? '카테고리 수정' : '새 카테고리 추가'} style={{ maxWidth: 560 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <h2>{isEditMode ? '카테고리 수정' : '새 카테고리 추가'}</h2>
-                <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="닫기"><X size={16} /></button>
-              </div>
+        <Modal
+          open={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          title={isEditMode ? '카테고리 수정' : '새 카테고리 추가'}
+          maxWidth={560}
+        >
 
               <form onSubmit={handleSave} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -520,9 +519,7 @@ export function AdminCategoriesPage() {
                   <button type="submit" className="adm-btn adm-btn-primary">저장하기</button>
                 </div>
               </form>
-            </div>
-          </>
-        )}
+        </Modal>
         <MediaPickerModal isOpen={isMediaPickerOpen} onClose={() => setIsMediaPickerOpen(false)} onSelect={(url) => { setFormData((fd) => ({ ...fd, image_url: url })); setIsMediaPickerOpen(false); }} />
     </AdminLayout>
   );

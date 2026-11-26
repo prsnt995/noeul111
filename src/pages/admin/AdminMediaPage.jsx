@@ -7,13 +7,14 @@ import {
   ErrorBanner,
   Empty,
   ConfirmModal,
+  Modal,
   normalizeListResponse,
   buildListParams,
 } from '../../components/admin/ui/index.js';
 import { adminApi } from '../../utils/api.js';
 import { useListParams } from '../../hooks/useListParams.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Plus, Copy, Trash2, X, Upload, Loader2 } from 'lucide-react';
+import { Plus, Copy, Trash2, Upload, Loader2 } from 'lucide-react';
 import { uploadImages, uploadErrorText } from '../../utils/uploadClient.js';
 
 const PAGE_SIZE = 24;
@@ -246,16 +247,12 @@ export function AdminMediaPage() {
       />
 
       {/* Add Media Modal */}
-      {isModalOpen && (
-        <>
-          <div className="adm-backdrop" onClick={() => setIsModalOpen(false)} />
-          <div className="adm-modal" role="dialog" aria-modal="true" aria-label="새 미디어 자산 등록 New media" style={{ maxWidth: 520 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <h2>새 미디어 자산 등록 New media</h2>
-              <button type="button" className="adm-icon-btn" onClick={() => setIsModalOpen(false)} aria-label="Close dialog">
-                <X size={16} />
-              </button>
-            </div>
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="새 미디어 자산 등록 New media"
+        maxWidth={520}
+      >
 
               <form onSubmit={handleAddMedia} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -302,9 +299,7 @@ export function AdminMediaPage() {
                   </button>
                 </div>
               </form>
-            </div>
-          </>
-        )}
+      </Modal>
     </AdminLayout>
   );
 }

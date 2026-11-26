@@ -2143,7 +2143,7 @@ export function registerAdminRoutes(app, ctx) {
 
   app.get('/api/v1/admin/orders', ...need(R.orders), async (req, res) => {
     try {
-      const { status, payment_status, source } = req.query;
+      const { status, payment_status, source, from, to } = req.query;
       const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
         pageSize: 100, maxPageSize: 200, sort: 'created_at', order: 'desc',
       });
@@ -2178,6 +2178,9 @@ export function registerAdminRoutes(app, ctx) {
         if (isValidOrderSource(source)) q = q.eq('order_source', String(source).toLowerCase());
         else return error(res, 400, 'INVALID_SOURCE');
       }
+      // Date range (admin-facing, KST date strings; matches reports behavior).
+      if (from) q = q.gte('created_at', String(from));
+      if (to) q = q.lte('created_at', String(to));
       if (search) {
         const safe = escapeIlike(search).replace(/[(),]/g, '');
         // Name/phone live in the address jsonb snapshot — match the UI
@@ -2185,9 +2188,18 @@ export function registerAdminRoutes(app, ctx) {
         const namePhone = `,address->>recipient.ilike.%${safe}%,address->>phone.ilike.%${safe}%`;
         // orders.id is a uuid: only attempt the equality arm for uuid-shaped
         // input, otherwise a raw string 400s the whole listing.
-        const orClause = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search.trim())
+        let orClause = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search.trim())
           ? `order_number.ilike.%${safe}%,id.eq.${search.trim()}${namePhone}`
           : `order_number.ilike.%${safe}%${namePhone}`;
+        // B2B: also match orders containing a product whose company_name matches.
+        try {
+          const { data: itemRows } = await database().from('order_items')
+            .select('order_id, product_variants!inner(products!inner(company_name))')
+            .ilike('product_variants.products.company_name', `%${safe}%`)
+            .limit(500);
+          const ids = [...new Set((itemRows || []).map(r => r.order_id).filter(Boolean))];
+          if (ids.length) orClause += `,id.in.(${ids.join(',')})`;
+        } catch { /* ignore — keep base search */ }
         if (safe) q = q.or(orClause);
       }
       const { data, error: e, count: total } = await q;
@@ -2210,6 +2222,8 @@ export function registerAdminRoutes(app, ctx) {
             if (!reviewIds.length) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize }));
             fallback = fallback.in('id', reviewIds);
           }
+          if (from) fallback = fallback.gte('created_at', String(from));
+          if (to) fallback = fallback.lte('created_at', String(to));
           const { data: fb, error: fbErr } = await fallback;
           if (fbErr) throw fbErr;
           const out = await adminOrderList((fb || []).filter(o => normalizeOrderSource(o.order_source) === String(source).toLowerCase()));
@@ -2881,7 +2895,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/media', ...need(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/media', ...needStep(R.catalog), async (req, res) => {
     try {
       const { name, url, tags } = req.body || {};
       if (!name || !url || !isHttpUrl(url)) return error(res, 400, 'NAME_URL_REQUIRED');
@@ -2909,7 +2923,7 @@ export function registerAdminRoutes(app, ctx) {
   // Per-file results: one bad file never fails the batch. Responds with
   // { uploaded: [...], failed: [{ name, code }] }; `data` mirrors `uploaded`
   // for older clients.
-  app.post('/api/v1/admin/upload-multiple', authenticate, staff(R.catalog), adminUpload.array('images', UPLOAD_MAX_FILES_PER_REQUEST), async (req, res) => {
+  app.post('/api/v1/admin/upload-multiple', authenticate, staff(R.catalog), stepUp, adminUpload.array('images', UPLOAD_MAX_FILES_PER_REQUEST), async (req, res) => {
     try {
       if (!req.files || !req.files.length) return error(res, 400, UPLOAD_FAILED_EMPTY);
       const uploaded = [];
@@ -3659,7 +3673,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.patch('/api/v1/admin/orders/:id/customer-details', ...need(R.orders), async (req, res) => {
+  app.patch('/api/v1/admin/orders/:id/customer-details', ...needStep(R.orders), async (req, res) => {
     try {
       const id = req.params.id;
       const { data: order } = await database().from('orders').select('*').eq('id', id).maybeSingle();

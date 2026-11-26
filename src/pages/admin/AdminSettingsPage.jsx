@@ -27,7 +27,9 @@ export function AdminSettingsPage() {
   });
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [initialSettings, setInitialSettings] = useState(null);
   const { showToast } = useToast();
 
   const fetchSettings = async () => {
@@ -36,15 +38,19 @@ export function AdminSettingsPage() {
       setErrorMsg('');
       const res = await adminApi.get('/admin/content/settings');
       if (res.success && res.data) {
-        setSettings((prev) => ({
-          ...prev,
-          ...res.data,
-          payment_info: { ...prev.payment_info, ...(res.data.payment_info || {}) },
-          business_info: { ...prev.business_info, ...(res.data.business_info || {}) },
-          shipping_policy: { ...prev.shipping_policy, ...(res.data.shipping_policy || {}) },
-          header_config: { ...prev.header_config, ...(res.data.header_config || {}) },
-          about_story: normalizeAboutStory(res.data.about_story, prev.about_story),
-        }));
+        setSettings((prev) => {
+          const next = {
+            ...prev,
+            ...res.data,
+            payment_info: { ...prev.payment_info, ...(res.data.payment_info || {}) },
+            business_info: { ...prev.business_info, ...(res.data.business_info || {}) },
+            shipping_policy: { ...prev.shipping_policy, ...(res.data.shipping_policy || {}) },
+            header_config: { ...prev.header_config, ...(res.data.header_config || {}) },
+            about_story: normalizeAboutStory(res.data.about_story, prev.about_story),
+          };
+          setInitialSettings(JSON.parse(JSON.stringify(next)));
+          return next;
+        });
       }
     } catch (err) {
       console.error('Fetch settings error:', err);
@@ -59,8 +65,28 @@ export function AdminSettingsPage() {
     fetchSettings();
   }, []);
 
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  const dirty = initialSettings ? JSON.stringify(settings) !== JSON.stringify(initialSettings) : false;
+
   const handleSave = async (e) => {
     e.preventDefault();
+    if (saving) return;
+    // Validate shipping policy.
+    const sp = settings.shipping_policy || {};
+    for (const k of ['threshold', 'fee', 'socks_fee', 'socks_free_pairs']) {
+      const v = Number(sp[k]);
+      if (!Number.isFinite(v) || v < 0) {
+        showToast(`배송 정책 값이 올바르지 않습니다: ${k}`, 'error');
+        return;
+      }
+    }
+    setSaving(true);
     try {
       const payload = {
         ...settings,
@@ -68,9 +94,12 @@ export function AdminSettingsPage() {
         header_config: { ...settings.header_config },
       };
       await adminApi.put('/admin/content/settings', { settings: payload });
+      setInitialSettings(JSON.parse(JSON.stringify(settings)));
       showToast('쇼핑몰 설정이 성공적으로 저장되었습니다.', 'success');
     } catch (err) {
-      showToast('설정 저장 실패', 'error');
+      showToast(err?.message || err?.code || '설정 저장 실패', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -441,15 +470,18 @@ export function AdminSettingsPage() {
           <button
             type="submit"
             className="adm-btn adm-btn-primary"
+            disabled={saving}
             style={{
               padding: '14px 28px',
               alignSelf: 'flex-start',
               fontSize: '0.9375rem',
               fontWeight: 700,
+              opacity: saving ? 0.6 : 1,
+              cursor: saving ? 'not-allowed' : 'pointer',
             }}
           >
             <Save size={16} aria-hidden />
-            <span>설정 저장하기</span>
+            <span>{saving ? '저장 중…' : '설정 저장하기'}</span>
           </button>
         </form>
     </AdminLayout>

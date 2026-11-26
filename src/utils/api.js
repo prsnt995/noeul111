@@ -13,7 +13,7 @@ function cacheKey(endpoint, scope) {
 export function setCsrfToken(value) { csrfToken = value || ''; }
 export async function apiRequest(endpoint, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
-  const { scope = 'customer', cache = 'default', ...fetchOptions } = options;
+  const { scope = 'customer', cache = 'default', __stepUp, ...fetchOptions } = options;
   const headers = { ...(options.headers || {}) };
   // Admin data is volatile and polled; never serve stale cached payloads there.
   const noStore = cache === 'no-store' || (scope === 'admin' && cache !== 'force-cache');
