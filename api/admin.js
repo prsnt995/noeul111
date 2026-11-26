@@ -2923,7 +2923,7 @@ export function registerAdminRoutes(app, ctx) {
   // Per-file results: one bad file never fails the batch. Responds with
   // { uploaded: [...], failed: [{ name, code }] }; `data` mirrors `uploaded`
   // for older clients.
-  app.post('/api/v1/admin/upload-multiple', authenticate, staff(R.catalog), stepUp, adminUpload.array('images', UPLOAD_MAX_FILES_PER_REQUEST), async (req, res) => {
+  app.post('/api/v1/admin/upload-multiple', authenticate, staff(R.catalog), adminUpload.array('images', UPLOAD_MAX_FILES_PER_REQUEST), async (req, res) => {
     try {
       if (!req.files || !req.files.length) return error(res, 400, UPLOAD_FAILED_EMPTY);
       const uploaded = [];
