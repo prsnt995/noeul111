@@ -1117,7 +1117,7 @@ export function registerAdminRoutes(app, ctx) {
   // Read-only schema self-diagnosis for the product surface: probes the
   // columns recent migrations add, one at a time, so the admin UI can name
   // exactly which migration the live DB is missing. Never writes.
-  app.get('/api/v1/admin/health/schema', ...need(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/health/schema', ...needStep(R.catalog), async (req, res) => {
     try {
       const probes = [
         { column: 'material_ko', migration: '202610050002_product_material.sql' },
@@ -1326,7 +1326,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.post('/api/v1/admin/products', ...needStep(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/products', ...need(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       if (!b.name_ko || !b.category_id || b.price === undefined) return error(res, 400, 'NAME_CATEGORY_PRICE_REQUIRED');
@@ -1463,7 +1463,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.put('/api/v1/admin/products/:id', ...needStep(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/products/:id', ...need(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const { data: p } = await database().from('products').select('*').eq('id', req.params.id).maybeSingle();
@@ -1539,7 +1539,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.patch('/api/v1/admin/products/:id/status', ...needStep(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/products/:id/status', ...need(R.catalog), async (req, res) => {
     try {
       if (!['active', 'hidden'].includes(req.body?.status)) return error(res, 400, 'INVALID_STATUS');
       await database().from('products').update({ is_active: req.body.status === 'active' }).eq('id', req.params.id);
@@ -1553,7 +1553,7 @@ export function registerAdminRoutes(app, ctx) {
 
   // Stock is product-total across variants; the delta is applied to the
   // fullest variant so the displayed total stays exact.
-  app.patch('/api/v1/admin/products/:id/stock', ...needStep(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/products/:id/stock', ...need(R.catalog), async (req, res) => {
     try {
       const { data: variants } = await database().from('product_variants').select('id,stock').eq('product_id', req.params.id);
       if (!(variants || []).length) return error(res, 404, 'NO_VARIANTS');
@@ -1572,7 +1572,7 @@ export function registerAdminRoutes(app, ctx) {
     }
   });
 
-  app.delete('/api/v1/admin/products/:id', ...needStep(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/products/:id', ...need(R.catalog), async (req, res) => {
     try {
       const { data: variants } = await database().from('product_variants').select('id').eq('product_id', req.params.id);
       const ids = (variants || []).map(v => v.id);
@@ -1605,7 +1605,7 @@ export function registerAdminRoutes(app, ctx) {
   });
 
   // ---------- Categories ----------
-  app.get('/api/v1/admin/categories', ...need(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/categories', ...needStep(R.catalog), async (req, res) => {
     try {
       const { data: cats } = await database().from('categories').select('*').order('sort_order').order('id');
       const { data: counts } = await database().from('products').select('category_id');
@@ -1740,7 +1740,7 @@ export function registerAdminRoutes(app, ctx) {
   });
 
   // ---------- Colors (reusable product color palette) ----------
-  app.get('/api/v1/admin/colors', ...need(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/colors', ...needStep(R.catalog), async (req, res) => {
     try {
       const { data, error: e } = await database().from('colors').select('*').eq('is_active', true).order('sort_order').order('id');
       if (e) throw e;
@@ -1873,7 +1873,7 @@ export function registerAdminRoutes(app, ctx) {
     return { row };
   }
 
-  app.get('/api/v1/admin/coupons', ...need(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/coupons', ...needStep(R.catalog), async (req, res) => {
     try {
       const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
         pageSize: 100, maxPageSize: 200, sort: 'code', order: 'asc',
@@ -2771,7 +2771,7 @@ export function registerAdminRoutes(app, ctx) {
   });
 
   // ---------- Reviews ----------
-  app.get('/api/v1/admin/reviews', ...need(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/reviews', ...needStep(R.catalog), async (req, res) => {
     try {
       const { status } = req.query;
       const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
@@ -2883,7 +2883,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { return false; }
   }
 
-  app.get('/api/v1/admin/media', ...need(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/media', ...needStep(R.catalog), async (req, res) => {
     try {
       const { page, pageSize, offset } = parseListQuery(req.query, { pageSize: 200, maxPageSize: 200 });
       const search = String(req.query.search || '').toLowerCase();
