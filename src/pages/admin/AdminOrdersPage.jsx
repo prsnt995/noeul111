@@ -29,6 +29,8 @@ import {
   Download,
   RefreshCw,
   BadgeCheck,
+  ShieldAlert,
+  Wrench,
 } from 'lucide-react';
 
 const ORDER_STATUS_KO = {
@@ -58,6 +60,17 @@ const NEXT_STATUSES = {
 };
 
 const PAGE_SIZE = 20;
+
+const PAYMENT_REVIEW_REASON_KO = {
+  INVENTORY_MISMATCH: '재고 부족',
+  COUPON_MISMATCH: '쿠폰 수량 불일치',
+  INVENTORY_AND_COUPON_MISMATCH: '재고·쿠폰 불일치',
+  RECOVERY_ATTEMPTS_EXCEEDED: 'PG 상태 확인 반복 실패',
+};
+
+function reviewReasonLabel(reason) {
+  return PAYMENT_REVIEW_REASON_KO[reason] || reason || '사유 미확인';
+}
 
 const updateFirestoreOrderStatus = async () => {};
 
@@ -107,6 +120,10 @@ export function AdminOrdersPage() {
   const [depositOrder, setDepositOrder] = useState(null);
   const [depositorName, setDepositorName] = useState('');
   const [depositBusy, setDepositBusy] = useState(false);
+
+  // Payment reconciliation / review completion.
+  const [reconcilingId, setReconcilingId] = useState(null);
+  const [reviewBusyId, setReviewBusyId] = useState(null);
 
   // Stale-response guard: a slow poll must never overwrite a newer page state.
   const requestSeq = useRef(0);
@@ -214,6 +231,48 @@ export function AdminOrdersPage() {
       showToast(err?.message || '입금 확인에 실패했습니다.', 'error');
     } finally {
       setDepositBusy(false);
+    }
+  };
+
+  // Re-query the PG for a stuck confirming/recovery row. Never charges or
+  // refunds; it only asks Toss what actually happened.
+  const handleReconcilePayment = async (ord) => {
+    if (reconcilingId) return;
+    setReconcilingId(ord.id);
+    try {
+      const res = await adminApi.post(`/admin/payments/${encodeURIComponent(ord.id)}/recover`, {});
+      const data = res?.data;
+      showToast(
+        data?.recoveryRequired
+          ? 'PG 상태를 다시 조회했습니다. 복구가 계속 필요합니다.'
+          : 'PG 결제 상태를 확인했습니다.',
+        data?.recoveryRequired ? 'error' : 'success',
+      );
+      await fetchOrders({ silent: true });
+    } catch (err) {
+      showToast(err?.message || 'PG 결제 상태 확인에 실패했습니다.', 'error');
+    } finally {
+      setReconcilingId(null);
+    }
+  };
+
+  // Complete a captured payment whose stock/coupon finalization was deferred.
+  const handleResolveReview = async (ord) => {
+    if (reviewBusyId) return;
+    setReviewBusyId(ord.id);
+    try {
+      const res = await adminApi.post(`/admin/payments/${encodeURIComponent(ord.id)}/resolve-review`, {});
+      showToast(res?.message || '결제 확인 대기 항목을 정리했습니다.', 'success');
+      await fetchOrders({ silent: true });
+    } catch (err) {
+      const code = String(err?.message || '');
+      const label = PAYMENT_REVIEW_REASON_KO[code];
+      showToast(
+        label ? `${label}: 재고/쿠폰을 먼저 정리한 뒤 다시 시도하세요.` : (err?.message || '재고/쿠폰을 먼저 정리해야 합니다.'),
+        'error',
+      );
+    } finally {
+      setReviewBusyId(null);
     }
   };
 
@@ -422,6 +481,37 @@ export function AdminOrdersPage() {
             {ord.payment_recovery_required && (
               <span style={{ fontSize: '0.6875rem', color: '#b45309', fontWeight: 700 }}>⚠ 복구 필요</span>
             )}
+            {(ord.payment_status === 'confirming' || ord.payment_recovery_required) && (
+              <button
+                type="button"
+                className="adm-btn"
+                style={{ padding: '3px 8px', fontSize: '0.6875rem' }}
+                onClick={() => handleReconcilePayment(ord)}
+                disabled={reconcilingId === ord.id}
+              >
+                <RefreshCw size={11} aria-hidden />
+                <span>{reconcilingId === ord.id ? '조회 중…' : 'PG 결제 상태 확인'}</span>
+              </button>
+            )}
+            {ord.payment_needs_review && (
+              <>
+                <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 700 }}>
+                  ⚠ 수동 확인 필요 · {reviewReasonLabel(ord.payment_review_reason)}
+                </span>
+                {ord.payment_status === 'paid' && (
+                  <button
+                    type="button"
+                    className="adm-btn"
+                    style={{ padding: '3px 8px', fontSize: '0.6875rem' }}
+                    onClick={() => handleResolveReview(ord)}
+                    disabled={reviewBusyId === ord.id}
+                  >
+                    <Wrench size={11} aria-hidden />
+                    <span>{reviewBusyId === ord.id ? '정리 중…' : '확인 완료 처리'}</span>
+                  </button>
+                )}
+              </>
+            )}
             {ord.payment_mismatch && (
               <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 700 }}>⚠ 결제-주문 불일치</span>
             )}
@@ -442,20 +532,36 @@ export function AdminOrdersPage() {
     {
       key: 'order_status',
       label: '주문 상태 Status',
-      render: (ord) => (
-        <select
-          value={ord.order_status}
-          onChange={(e) => handleUpdateStatus(ord.id, e.target.value)}
-          className="adm-select"
-          style={{ fontSize: '0.8125rem', fontWeight: 700, padding: '5px 8px' }}
-          aria-label={`${ord.order_number} 상태 변경`}
-        >
-          <option value={ord.order_status}>{ORDER_STATUS_KO[ord.order_status] || ord.order_status}</option>
-          {(NEXT_STATUSES[ord.order_status] || []).map((status) => (
-            <option key={status} value={status}>{ORDER_STATUS_KO[status] || status}</option>
-          ))}
-        </select>
-      ),
+      render: (ord) => {
+        const nextStatuses = NEXT_STATUSES[ord.order_status] || [];
+        const locked = nextStatuses.length === 0;
+        const lockedNote = ord.order_status === 'confirming'
+          ? 'PG 결제 확인 중에는 상태를 바꿀 수 없습니다. 먼저 PG 결제 상태를 확인하세요.'
+          : ord.order_status === 'refund_pending'
+            ? 'PG 환불 처리 중에는 상태를 바꿀 수 없습니다.'
+            : '';
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+            <select
+              value={ord.order_status}
+              onChange={(e) => handleUpdateStatus(ord.id, e.target.value)}
+              className="adm-select"
+              style={{ fontSize: '0.8125rem', fontWeight: 700, padding: '5px 8px' }}
+              aria-label={`${ord.order_number} 상태 변경`}
+              disabled={locked}
+              title={lockedNote || undefined}
+            >
+              <option value={ord.order_status}>{ORDER_STATUS_KO[ord.order_status] || ord.order_status}</option>
+              {nextStatuses.map((status) => (
+                <option key={status} value={status}>{ORDER_STATUS_KO[status] || status}</option>
+              ))}
+            </select>
+            {lockedNote && (
+              <span style={{ fontSize: '0.625rem', color: '#b45309', maxWidth: 150, lineHeight: 1.35 }}>{lockedNote}</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'tracking',
@@ -532,6 +638,7 @@ export function AdminOrdersPage() {
               { value: 'all', label: '전체 결제 상태' },
               { value: 'paid', label: '결제 완료 (배송중 포함)' },
               { value: 'confirming', label: '결제 확인 중' },
+              { value: 'needs_review', label: '수동 확인 필요' },
               { value: 'pending_payment', label: '결제/입금 대기' },
               { value: 'deposit_pending', label: '무통장 입금 대기' },
               { value: 'failed', label: '결제 실패/만료' },
@@ -623,7 +730,24 @@ export function AdminOrdersPage() {
               {selectedOrder.payment_key_masked && <p style={{ margin: 0 }}><strong>Payment Key:</strong> {selectedOrder.payment_key_masked}</p>}
               {selectedOrder.payment_balance_amount != null && <p style={{ margin: 0 }}><strong>취소 가능 잔액:</strong> {formatKRW(selectedOrder.payment_balance_amount)}</p>}
               {selectedOrder.payment_recovery_required && <p style={{ margin: 0, color: '#b45309', fontWeight: 700 }}>⚠ PG 상태 복구가 필요합니다.</p>}
+              {selectedOrder.payment_needs_review && (
+                <p style={{ margin: 0, color: '#b91c1c', fontWeight: 700 }}>
+                  ⚠ 수동 확인 필요 · {reviewReasonLabel(selectedOrder.payment_review_reason)}
+                </p>
+              )}
               {selectedOrder.payment_mismatch && <p style={{ margin: 0, color: '#b91c1c', fontWeight: 700 }}>⚠ 결제 원장과 주문 상태가 일치하지 않습니다.</p>}
+              {(selectedOrder.payment_status === 'confirming' || selectedOrder.payment_recovery_required) && (
+                <button
+                  type="button"
+                  className="adm-btn"
+                  style={{ marginTop: 10 }}
+                  onClick={() => handleReconcilePayment(selectedOrder)}
+                  disabled={reconcilingId === selectedOrder.id}
+                >
+                  <RefreshCw size={14} aria-hidden />
+                  <span>{reconcilingId === selectedOrder.id ? '조회 중…' : 'PG 결제 상태 확인'}</span>
+                </button>
+              )}
               {canConfirmPayment(selectedOrder) && (
                 <button
                   type="button"
@@ -640,6 +764,38 @@ export function AdminOrdersPage() {
               )}
             </div>
 
+            {selectedOrder.payment_needs_review && (
+              <div
+                className="adm-card"
+                style={{ padding: 16, fontSize: '0.875rem', lineHeight: 1.7, borderLeft: '4px solid #b91c1c' }}
+              >
+                <strong style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b91c1c' }}>
+                  <ShieldAlert size={16} aria-hidden />
+                  수동 확인이 필요한 결제
+                </strong>
+                <p style={{ margin: '8px 0 0' }}>
+                  사유: <strong>{reviewReasonLabel(selectedOrder.payment_review_reason)}</strong>
+                </p>
+                <p style={{ margin: '6px 0 0', color: '#52525b' }}>
+                  {selectedOrder.payment_status === 'paid'
+                    ? 'PG 결제는 승인되었지만 재고/쿠폰 반영이 보류되었습니다. 상품 재고를 보정한 뒤 아래 버튼으로 마무리하거나, 위의 토스 결제 · 전체/부분 취소에서 환불하세요.'
+                    : 'PG 상태 확인이 반복 실패했습니다. 위의 PG 결제 상태 확인을 다시 실행하고, 계속 실패하면 토스 콘솔에서 결제 상태를 확인하세요.'}
+                </p>
+                {selectedOrder.payment_status === 'paid' && (
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn-primary"
+                    style={{ marginTop: 10 }}
+                    onClick={() => handleResolveReview(selectedOrder)}
+                    disabled={reviewBusyId === selectedOrder.id}
+                  >
+                    <Wrench size={14} aria-hidden />
+                    <span>{reviewBusyId === selectedOrder.id ? '정리 중…' : '재고/쿠폰 정리 후 확인 완료'}</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="adm-card" style={{ padding: 16, fontSize: '0.875rem', lineHeight: 1.7 }}>
               <p style={{ margin: 0 }}><strong>수령인:</strong> {selectedOrder.customer_name} ({selectedOrder.customer_phone})</p>
               <p style={{ margin: 0 }}><strong>이메일:</strong> {selectedOrder.customer_email || '미입력'}</p>
@@ -655,6 +811,7 @@ export function AdminOrdersPage() {
                     {item.image_url && <img src={item.image_url} alt="" style={{ width: '48px', height: '60px', objectFit: 'cover', borderRadius: '4px' }} />}
                     <div style={{ flex: 1 }}>
                       <p style={{ fontWeight: 600, fontSize: '0.875rem', margin: 0 }}>{item.product_name_ko}</p>
+                      {item.company_name && <p style={{ fontSize: '0.7rem', color: '#a16207', margin: 0, fontWeight: 600 }}>{item.company_name}</p>}
                       <p style={{ fontSize: '0.75rem', color: '#71717a', margin: 0 }}>{item.size} / {item.color} • {item.quantity}개</p>
                     </div>
                     <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>{formatKRW(item.price * item.quantity)}</span>

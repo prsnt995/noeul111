@@ -456,7 +456,7 @@ export function registerAdminRoutes(app, ctx) {
       const recentLimit = Math.min(Math.max(Number(req.query.recent) || 8, 1), 50);
       const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const todayStart = kstPeriodStart('day');
-      const [ordersRes, productsRes, variantsRes, profilesRes, totals, staleConfirming, recoveryPending, channelRows, paymentRows, refundRows] = await Promise.all([
+      const [ordersRes, productsRes, variantsRes, profilesRes, totals, staleConfirming, recoveryPending, needsReview, channelRows, paymentRows, refundRows] = await Promise.all([
         database().from('orders').select('*').order('created_at', { ascending: false }).limit(Math.max(recentLimit, 100)).then(r => r, e => { console.error('dashboard orders error', e); return { data: [] }; }),
         // Page through instead of relying on PostgREST's 1000-row default:
         // total counts and low-stock detection must not silently truncate.
@@ -472,6 +472,9 @@ export function registerAdminRoutes(app, ctx) {
           .then(r => r?.count || 0, () => 0),
         database().from('payments').select('order_id', { count: 'exact', head: true })
           .eq('recovery_required', true)
+          .then(r => r?.count || 0, () => 0),
+        database().from('payments').select('order_id', { count: 'exact', head: true })
+          .eq('needs_review', true)
           .then(r => r?.count || 0, () => 0),
         // All orders in one pass: builds the channel breakdown, the exact
         // payment-mismatch count and the paid trend without per-card row caps.
@@ -545,6 +548,12 @@ export function registerAdminRoutes(app, ctx) {
         ));
         salesBySource = buildSalesBySource(netChannelRows);
       } catch { salesBySource = []; }
+      const paymentConfig = {
+        production: process.env.NODE_ENV === 'production',
+        tossConfigured: Boolean(process.env.TOSS_CLIENT_KEY && process.env.TOSS_SECRET_KEY),
+        webhookConfigured: Boolean(process.env.TOSS_WEBHOOK_SECRET),
+        cronConfigured: Boolean(process.env.PAYMENTS_CRON_SECRET || process.env.CRON_SECRET),
+      };
       res.json({
         success: true,
         stats: {
@@ -568,8 +577,10 @@ export function registerAdminRoutes(app, ctx) {
           alerts: {
             confirmingStale: staleConfirming || 0,
             recoveryRequired: recoveryPending || 0,
+            needsReview: needsReview || 0,
             paymentMismatch,
           },
+          paymentConfig,
         },
         lowStockItems,
         recentOrders,
@@ -589,7 +600,13 @@ export function registerAdminRoutes(app, ctx) {
           pendingOrdersCount: 0, pendingPaymentCount: 0, confirmingCount: 0, completedOrdersCount: 0,
           orderStatuses: { pending:0, confirming:0, confirmed:0, processing:0, shipped:0, delivered:0, cancelled:0, expired:0, refunded:0 },
           lowStockCount: 0,
-          alerts: { confirmingStale: 0, recoveryRequired: 0, paymentMismatch: 0 },
+          alerts: { confirmingStale: 0, recoveryRequired: 0, needsReview: 0, paymentMismatch: 0 },
+          paymentConfig: {
+            production: process.env.NODE_ENV === 'production',
+            tossConfigured: Boolean(process.env.TOSS_CLIENT_KEY && process.env.TOSS_SECRET_KEY),
+            webhookConfigured: Boolean(process.env.TOSS_WEBHOOK_SECRET),
+            cronConfigured: Boolean(process.env.PAYMENTS_CRON_SECRET || process.env.CRON_SECRET),
+          },
         },
         lowStockItems: [], recentOrders: [], salesTrend: [], salesBySource: [],
         lastUpdated: new Date().toISOString(),
@@ -1062,8 +1079,9 @@ export function registerAdminRoutes(app, ctx) {
   }
 
   async function syncMedia(productId, images) {
-    const { data: previous } = await database().from('product_media').select('url').eq('product_id', productId);
-    await database().from('product_media').delete().eq('product_id', productId);
+    const { data: previous } = await database().from('product_media').select('id,url').eq('product_id', productId);
+    const prevUrls = (previous || []).map(p => p.url);
+    const prevById = new Map((previous || []).map(p => [p.url, p.id]));
     const rows = (images || []).filter(Boolean).map((item, i) => {
       const url = typeof item === 'string' ? item : item.url;
       const color = typeof item === 'object' ? (item.color || null) : null;
@@ -1072,12 +1090,27 @@ export function registerAdminRoutes(app, ctx) {
         product_id: productId, url: String(url).slice(0, 500), color, variant_id, alt: typeof item === 'object' ? String(item.alt || '').slice(0, 200) : '', sort_order: i, published: true,
       };
     }).filter(r => r.url);
-    if (rows.length) {
-      const { error } = await database().from('product_media').insert(rows);
+    const desiredUrls = new Set(rows.map(r => r.url));
+    // Insert new rows FIRST so a failure leaves the original images intact.
+    const toInsert = rows.filter(r => !prevById.has(r.url));
+    if (toInsert.length) {
+      const { error } = await database().from('product_media').insert(toInsert);
       if (error) throw error;
     }
-    const keep = new Set(rows.map(r => r.url));
-    const orphans = (previous || []).map(p => p.url).filter(u => u && !keep.has(u));
+    // Update sort_order/color/alt for retained rows.
+    for (const r of rows) {
+      if (prevById.has(r.url)) {
+        await database().from('product_media').update({ color: r.color, variant_id: r.variant_id, alt: r.alt, sort_order: r.sort_order, published: r.published }).eq('id', prevById.get(r.url)).then(x => x, () => null);
+      }
+    }
+    // Delete rows no longer desired only after successful insert.
+    const toDelete = (previous || []).filter(p => !desiredUrls.has(p.url));
+    if (toDelete.length) {
+      const ids = toDelete.map(p => p.id).filter(Boolean);
+      if (ids.length) await database().from('product_media').delete().in('id', ids);
+    }
+    const keep = desiredUrls;
+    const orphans = prevUrls.filter(u => u && !keep.has(u));
     if (orphans.length) await removeStorageObjects(orphans);
   }
 
@@ -1468,7 +1501,14 @@ export function registerAdminRoutes(app, ctx) {
       if (b.is_new !== undefined) patch.is_new = !!b.is_new;
       if (b.is_best !== undefined) patch.is_best = !!b.is_best;
       if (b.best_rank !== undefined) patch.best_rank = (b.best_rank === null || b.best_rank === '') ? null : (Number.isInteger(Number(b.best_rank)) && Number(b.best_rank) >= 0 ? Number(b.best_rank) : null);
-      if (b.sku !== undefined) patch.sku = String(b.sku).toUpperCase().slice(0, 60);
+      if (b.sku !== undefined) {
+      const newSku = String(b.sku).toUpperCase().slice(0, 60);
+      if (newSku && newSku !== p.sku) {
+        const { data: dup } = await database().from('products').select('id').eq('sku', newSku).neq('id', p.id).limit(1).maybeSingle();
+        if (dup) return error(res, 409, 'SKU_EXISTS');
+      }
+      patch.sku = newSku;
+    }
       if (b.detail_blocks !== undefined) {
         const blocks = sanitizeDetailBlocks(b.detail_blocks);
         if (blocks === null) return error(res, 400, 'INVALID_DETAIL_BLOCKS');
@@ -1495,7 +1535,7 @@ export function registerAdminRoutes(app, ctx) {
       res.json({ success: true, data: await composeAdminProduct(updated) });
     } catch (err) {
       console.error('[PUT /api/v1/admin/products/:id failed]:', err);
-      error(res, err?.status === 409 ? 409 : 503, 'PRODUCT_UPDATE_FAILED');
+      error(res, (err?.status === 409 || err?.code === '23505' || /duplicate|unique/i.test(String(err?.message || ''))) ? 409 : 503, (err?.code === '23505' || /duplicate|unique/i.test(String(err?.message || ''))) ? 'SKU_EXISTS' : 'PRODUCT_UPDATE_FAILED');
     }
   });
 
@@ -1924,12 +1964,15 @@ export function registerAdminRoutes(app, ctx) {
   async function loadPaymentsByOrder(orderIds) {
     const ids = [...new Set((orderIds || []).filter(Boolean))];
     if (!ids.length) return new Map();
-    const data = await fetchInChunks(
-      chunk => database().from('payments')
-        .select('order_id,status,provider_status,amount,balance_amount,recovery_required,payment_key,updated_at')
+    const base = 'order_id,status,provider_status,amount,balance_amount,recovery_required,needs_review,payment_key,updated_at';
+    const read = cols => fetchInChunks(
+      chunk => database().from('payments').select(cols)
         .in('order_id', chunk).order('order_id'),
       ids,
-    ).catch(() => []);
+    );
+    let data = await read(`${base},review_reason`).catch(() => null);
+    // Pre-review-migration databases have no review_reason column.
+    if (data === null) data = await read(base).catch(() => []);
     return new Map((data || []).map(p => [p.order_id, p]));
   }
 
@@ -1943,6 +1986,7 @@ export function registerAdminRoutes(app, ctx) {
     const lines = (items || []).map(i => ({
       product_name_ko: names?.[i.variant_id]?.name_ko || i.snapshot?.sku || '',
       product_name_en: names?.[i.variant_id]?.name_en || '',
+      company_name: names?.[i.variant_id]?.company_name || i.snapshot?.company_name || '',
       product_sku: i.snapshot?.sku || '',
       image_url: media[i.variant_id] || '', price: i.unit_price, quantity: i.quantity,
       size: i.snapshot?.size || '', color: i.snapshot?.color || '',
@@ -1964,6 +2008,8 @@ export function registerAdminRoutes(app, ctx) {
       payment_key_masked: maskPaymentKey(pay?.payment_key),
       payment_balance_amount: pay?.balance_amount ?? null,
       payment_recovery_required: !!pay?.recovery_required,
+      payment_needs_review: !!pay?.needs_review,
+      payment_review_reason: pay?.review_reason || null,
       payment_mismatch: paymentMismatchFor(o, pay),
       payment_updated_at: pay?.updated_at || null,
       order_status: o.status,
@@ -1997,7 +2043,7 @@ export function registerAdminRoutes(app, ctx) {
     let names = {};
     let media = {};
     if (vids.length) {
-      const vars = await fetchInChunks(chunk => database().from('product_variants').select('id,product_id,products(name_ko,name_en)').in('id', chunk).order('id'), vids).catch(() => []);
+      const vars = await fetchInChunks(chunk => database().from('product_variants').select('id,product_id,products(name_ko,name_en,company_name)').in('id', chunk).order('id'), vids).catch(() => []);
       const pidByVid = {};
       for (const v of (vars || [])) { names[v.id] = v.products || {}; if (v.product_id) pidByVid[v.id] = v.product_id; }
       const pids = [...new Set(Object.values(pidByVid))];
@@ -2035,7 +2081,7 @@ export function registerAdminRoutes(app, ctx) {
     const vids = [...new Set((items || []).map(i => i.variant_id))];
     let names = {};
     if (vids.length) {
-      const { data: vars } = await database().from('product_variants').select('id,product_id,products(name_ko,name_en)').in('id', vids);
+      const { data: vars } = await database().from('product_variants').select('id,product_id,products(name_ko,name_en,company_name)').in('id', vids);
       for (const v of (vars || [])) names[v.id] = v.products || {};
     }
     const payments = await loadPaymentsByOrder([orderId]);
@@ -2119,6 +2165,14 @@ export function registerAdminRoutes(app, ctx) {
         else if (payment_status === 'deposit_pending') q = q.eq('status', 'pending_payment').neq('order_source', 'website');
         else if (payment_status === 'failed') q = q.in('status', ['canceled', 'expired']);
         else if (payment_status === 'refunded') q = q.in('status', ['refunded', 'refund_pending']);
+        else if (payment_status === 'needs_review') {
+          const { data: reviewRows } = await database().from('payments')
+            .select('order_id').eq('needs_review', true).limit(1000)
+            .then(r => r, () => ({ data: [] }));
+          const reviewIds = [...new Set((reviewRows || []).map(r => r.order_id).filter(Boolean))];
+          if (!reviewIds.length) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize }));
+          q = q.in('id', reviewIds);
+        }
       }
       if (source && source !== 'all') {
         if (isValidOrderSource(source)) q = q.eq('order_source', String(source).toLowerCase());
@@ -2146,6 +2200,16 @@ export function registerAdminRoutes(app, ctx) {
           if (payment_status === 'paid') fallback = fallback.in('status', PAID_ORDER_STATUSES);
           else if (payment_status === 'confirming' || payment_status === 'under_review') fallback = fallback.eq('status', 'confirming');
           else if (payment_status === 'pending_payment') fallback = fallback.eq('status', 'pending_payment');
+          else if (payment_status === 'failed') fallback = fallback.in('status', ['canceled', 'expired']);
+          else if (payment_status === 'refunded') fallback = fallback.in('status', ['refunded', 'refund_pending']);
+          else if (payment_status === 'needs_review') {
+            const { data: reviewRows } = await database().from('payments')
+              .select('order_id').eq('needs_review', true).limit(1000)
+              .then(r => r, () => ({ data: [] }));
+            const reviewIds = [...new Set((reviewRows || []).map(r => r.order_id).filter(Boolean))];
+            if (!reviewIds.length) return res.json(pageEnvelope({ data: [], total: 0, page, pageSize }));
+            fallback = fallback.in('id', reviewIds);
+          }
           const { data: fb, error: fbErr } = await fallback;
           if (fbErr) throw fbErr;
           const out = await adminOrderList((fb || []).filter(o => normalizeOrderSource(o.order_source) === String(source).toLowerCase()));
@@ -2763,11 +2827,29 @@ export function registerAdminRoutes(app, ctx) {
     limits: { fileSize: UPLOAD_MAX_FILE_BYTES, files: UPLOAD_MAX_FILES_PER_REQUEST },
   });
 
+  function sniffImageType(buffer) {
+    if (!buffer || buffer.length < 12) return null;
+    const b = buffer;
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+    if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+    if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+    if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+      const brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
+      if (brand === 'avif' || brand === 'avis') return 'image/avif';
+    }
+    return null;
+  }
   function uploadFileProblem(file) {
     const name = file?.originalname || 'file';
     const ext = path.extname(name).toLowerCase().replace(/^\./, '');
     const mime = String(file?.mimetype || '').toLowerCase();
     if (!UPLOAD_ALLOWED_EXTENSIONS.includes(ext) || (mime && !UPLOAD_ALLOWED_MIME.has(mime))) {
+      return { name, code: UPLOAD_FAILED_TYPE };
+    }
+    // Magic-byte sniff: declared type must match actual content (no SVG/HTML).
+    const sniffed = sniffImageType(file?.buffer);
+    if (!sniffed || (mime && sniffed !== mime)) {
       return { name, code: UPLOAD_FAILED_TYPE };
     }
     if (!file?.size || file.size > UPLOAD_MAX_FILE_BYTES) {
@@ -3154,9 +3236,21 @@ export function registerAdminRoutes(app, ctx) {
       const from = req.query.from || '';
       const to = req.query.to || '';
 
+      const orderQ = () => {
+        let q = database().from('orders').select('*').order('created_at', { ascending: false }).order('id', { ascending: false });
+        if (from) q = q.gte('created_at', String(from));
+        if (to) q = q.lte('created_at', String(to));
+        return q;
+      };
+      const expenseQ = () => {
+        let q = database().from('business_expenses').select('*').order('expense_date', { ascending: false }).order('id');
+        if (from) q = q.gte('expense_date', String(from));
+        if (to) q = q.lte('expense_date', String(to));
+        return q;
+      };
       const [allOrders, allExpenses, productsRes, variantsRes] = await Promise.all([
-        fetchAllRows(() => database().from('orders').select('*').order('created_at', { ascending: false }).order('id', { ascending: false })).catch(() => []),
-        fetchAllRows(() => database().from('business_expenses').select('*').order('expense_date', { ascending: false }).order('id')).catch(() => []),
+        fetchAllRows(orderQ).catch(() => []),
+        fetchAllRows(expenseQ).catch(() => []),
         database().from('products').select('id,sku,name_ko,name_en,price,discount_price,category_id').then(r => r, () => ({ data: [] })),
         database().from('product_variants').select('id,product_id,sku,color,size,stock,reserved').then(r => r, () => ({ data: [] })),
       ]);
@@ -3394,6 +3488,7 @@ export function registerAdminRoutes(app, ctx) {
       const sortCol = pickSort(sort, ['expense_date', 'amount', 'created_at'], 'expense_date');
       const ascending = order === 'asc';
 
+      const isAllPeriod = !period || period === 'all';
       let q = database().from('business_expenses').select('*', { count: 'exact' }).order(sortCol, { ascending });
       if (category && category !== 'all') {
         q = q.eq('category', category);
@@ -3402,18 +3497,22 @@ export function registerAdminRoutes(app, ctx) {
         const safe = escapeIlike(search);
         if (safe) q = q.or(`description.ilike.%${safe}%,notes.ilike.%${safe}%,order_id.ilike.%${safe}%`);
       }
+      if (isAllPeriod) {
+        q = q.range(offset, offset + pageSize - 1);
+      }
 
       const { data, count, error: expErr } = await q;
       if (expErr) throw expErr;
 
       let list = data || [];
-      if (period && period !== 'all') {
+      if (!isAllPeriod) {
         list = list.filter(e => isOrderInPeriod(e.expense_date, period, from, to));
+        const total = list.length;
+        const paginated = list.slice(offset, offset + pageSize);
+        return res.json(pageEnvelope({ data: paginated, total, page, pageSize }));
       }
 
-      const total = list.length;
-      const paginated = list.slice(offset, offset + pageSize);
-      res.json(pageEnvelope({ data: paginated, total, page, pageSize }));
+      res.json(pageEnvelope({ data: list, total: count ?? list.length, page, pageSize }));
     } catch (err) {
       console.error('expenses error', err);
       error(res, 503, 'EXPENSES_UNAVAILABLE');

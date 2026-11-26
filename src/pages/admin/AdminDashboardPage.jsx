@@ -29,6 +29,7 @@ export function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [reconcilingPayments, setReconcilingPayments] = useState(false);
   const { showToast } = useToast();
   const requestSeq = useRef(0);
   const errorRef = useRef('');
@@ -74,6 +75,26 @@ export function AdminDashboardPage() {
   // 15s refresh: a customer paying should show up without a manual reload.
   const { refresh, lastUpdated } = useAdminPolling({ load: () => fetchStats({ silent: true }) });
 
+  const handleReconcilePayments = async () => {
+    if (reconcilingPayments) return;
+    setReconcilingPayments(true);
+    try {
+      const res = await adminApi.post('/admin/payments/reconcile-stale', { limit: 10, olderThanMinutes: 5 });
+      const result = res?.data || {};
+      showToast(
+        result.scanned
+          ? `${result.scanned}건 점검 · ${result.recovered}건 복구 · ${result.pending}건 확인 필요`
+          : '점검할 결제가 없습니다.',
+        result.pending ? 'error' : 'success',
+      );
+      fetchStats({ silent: true });
+    } catch (err) {
+      showToast(err?.message || '결제 상태 점검에 실패했습니다.', 'error');
+    } finally {
+      setReconcilingPayments(false);
+    }
+  };
+
   const handleQuickStock = async (productId, delta) => {
     const prev = data;
     setData((d) => d ? {
@@ -108,7 +129,11 @@ export function AdminDashboardPage() {
   const salesTrend = data?.salesTrend || [];
   const salesBySource = data?.salesBySource || [];
   const alerts = stats.alerts || {};
-  const alertCount = (alerts.confirmingStale || 0) + (alerts.recoveryRequired || 0) + (alerts.paymentMismatch || 0);
+  const paymentConfig = stats.paymentConfig || {};
+  const alertCount = (alerts.confirmingStale || 0) + (alerts.recoveryRequired || 0)
+    + (alerts.needsReview || 0) + (alerts.paymentMismatch || 0);
+  const paymentConfigWarning = paymentConfig.production
+    && (!paymentConfig.tossConfigured || !paymentConfig.webhookConfigured || !paymentConfig.cronConfigured);
 
   return (
     <AdminLayout activePage="dashboard">
@@ -169,7 +194,36 @@ export function AdminDashboardPage() {
             <Link href="/admin/orders?payment_status=confirming">결제 확인 지연 {alerts.confirmingStale}건</Link>
           )}
           {alerts.recoveryRequired > 0 && <span>PG 복구 필요 {alerts.recoveryRequired}건</span>}
+          {alerts.needsReview > 0 && (
+            <Link href="/admin/orders?payment_status=needs_review">수동 확인 필요 {alerts.needsReview}건</Link>
+          )}
           {alerts.paymentMismatch > 0 && <span>결제-주문 불일치 {alerts.paymentMismatch}건</span>}
+          <button
+            type="button"
+            className="adm-btn"
+            style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: '0.75rem' }}
+            onClick={handleReconcilePayments}
+            disabled={reconcilingPayments}
+          >
+            <RefreshCw size={12} aria-hidden />
+            <span>{reconcilingPayments ? '점검 중…' : 'PG 결제 상태 일괄 점검'}</span>
+          </button>
+        </div>
+      )}
+
+      {paymentConfigWarning && (
+        <div
+          className="adm-card"
+          style={{
+            padding: '12px 16px', marginBottom: '16px',
+            borderLeft: '4px solid #b91c1c', fontSize: '0.8125rem', color: '#7f1d1d',
+          }}
+        >
+          <strong>운영 결제 자동화 설정이 누락되었습니다.</strong>{' '}
+          {!paymentConfig.tossConfigured && 'TOSS_CLIENT_KEY/TOSS_SECRET_KEY, '}
+          {!paymentConfig.webhookConfigured && 'TOSS_WEBHOOK_SECRET, '}
+          {!paymentConfig.cronConfigured && 'PAYMENTS_CRON_SECRET(또는 CRON_SECRET), '}
+          값을 Vercel 환경 변수에 설정해야 결제 복구·웹훅이 자동으로 동작합니다.
         </div>
       )}
 

@@ -165,6 +165,8 @@ Toss Payments integration with:
 - **Refund:** Partial/full refunds with idempotency keys
 - **Webhook:** Reconciliation-only (re-verifies against Toss, never trusts payload)
 - **Recovery Worker:** Durable payment recovery with lease protocol and exponential backoff
+- **Review flow:** A captured payment is always recorded as paid first. If stock/coupon finalization fails it is flagged `needs_review` instead of rolling back; an admin can finish it with `resolve-review` after fixing stock, or refund it.
+- **Admin repair:** `POST /api/v1/admin/payments/reconcile-stale` re-queries stale `confirming` rows, and `GET /api/v1/admin/payments/health` exposes queue counts plus missing Toss/webhook/cron secrets.
 
 ## Testing
 

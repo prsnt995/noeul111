@@ -77,6 +77,54 @@ export function ProductDetailPage() {
     window.scrollTo(0, 0);
   }, [params?.id]);
 
+  // SEO: inject Product JSON-LD + fix canonical to the slug URL (audit P1-8).
+  useEffect(() => {
+    if (!product) return;
+    const origin = 'https://www.noeul.me';
+    const slug = product.slug || params?.id;
+    const url = `${origin}/product/${encodeURIComponent(slug)}`;
+    // Canonical
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) { canonical = document.createElement('link'); canonical.rel = 'canonical'; document.head.appendChild(canonical); }
+    canonical.href = url;
+    // OG/Twitter URL
+    const setMeta = (sel, content) => {
+      const el = document.querySelector(sel);
+      if (el) el.setAttribute('content', content);
+    };
+    setMeta('meta[property="og:title"]', product.name_ko || product.name || 'NOEUL');
+    setMeta('meta[property="og:description"]', (product.description_ko || '').slice(0, 160));
+    setMeta('meta[property="og:url"]', url);
+    setMeta('meta[property="og:image"]', product.images?.[0] || `${origin}/images/og-default.jpg`);
+    setMeta('meta[name="twitter:title"]', product.name_ko || product.name || 'NOEUL');
+    setMeta('meta[name="twitter:description"]', (product.description_ko || '').slice(0, 160));
+    // JSON-LD
+    const id = 'jsonld-product';
+    let script = document.getElementById(id);
+    if (!script) { script = document.createElement('script'); script.id = id; script.type = 'application/ld+json'; document.head.appendChild(script); }
+    script.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name_ko || product.name,
+      description: product.description_ko || '',
+      image: Array.isArray(product.images) ? product.images : [],
+      sku: product.sku,
+      brand: { '@type': 'Brand', name: 'NOEUL' },
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'KRW',
+        price: product.discount_price || product.price,
+        availability: (product.variants || []).some(v => (v.stock || 0) - (v.reserved || 0) > 0)
+          ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        url,
+      },
+    });
+    return () => {
+      const s = document.getElementById(id);
+      if (s) s.remove();
+    };
+  }, [product]);
+
   // Normalized product images array (all 5, e.g., 2 blue + 3 green)
   const images = (() => {
     if (!product) return [];
@@ -123,15 +171,17 @@ export function ProductDetailPage() {
   const getVariant = (colorObj, sizeVal, lengthVal = selectedLength) => {
     const cName = colorObj?.name_ko || colorObj?.name || colorObj?.name_en || colorObj;
     const len = lengthVal || null;
-    return variants.find(v => v.color === cName && v.size === sizeVal && (v.length_type || null) === len)
-      || variants.find(v => v.color === cName && v.size === sizeVal)
-      || variants.find(v => v.color === cName && (v.length_type || null) === len)
-      || variants.find(v => v.size === sizeVal && (v.length_type || null) === len)
-      || variants.find(v => v.color === cName)
-      || variants.find(v => v.size === sizeVal)
-      || null;
+    // Strict match only: never fall back to a different color/size/length variant,
+// otherwise price/stock would be shown for an option the customer did not pick.
+const exact = variants.find(v => v.color === cName && v.size === sizeVal && (v.length_type || null) === len);
+if (exact) return exact;
+// Only relax length when the product has no length options at all.
+if (!len && !variants.some(v => v.length_type)) {
+  return variants.find(v => v.color === cName && v.size === sizeVal) || null;
+}
+return null;
   };
-  const currentVariant = getVariant(selectedColor, selectedSize) || variants[0] || null;
+  const currentVariant = getVariant(selectedColor, selectedSize);
   const lengthOptions = [...new Set(variants.map((v) => v.length_type).filter(Boolean))];
   useEffect(() => {
     if (lengthOptions.length > 0 && !lengthOptions.includes(selectedLength)) {
@@ -524,6 +574,7 @@ export function ProductDetailPage() {
                         disabled={!available}
                         onClick={() => { if(available) setSelectedSize(sz); }}
                         aria-disabled={!available}
+                        aria-pressed={isSelected}
                         title={!available ? '품절' : ''}
                         style={{
                           minWidth: '54px',

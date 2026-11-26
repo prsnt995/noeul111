@@ -27,6 +27,9 @@ export function createPaymentStore({ database }) {
     };
   }
 
+  const count = query => query.then(result => result?.count || 0, () => 0);
+  const STALE_CONFIRMING_MINUTES = 5;
+
   return {
     async checkReady() {
       try { return unwrap(await db().rpc('pg_payment_health')) === true; }
@@ -39,6 +42,44 @@ export function createPaymentStore({ database }) {
     completeConfirmation: (input, payment) => action('complete_confirm', { ...input, payment }),
     claimRefund: input => action('claim_refund', input),
     completeRefund: (input, payment) => action('complete_refund', { ...input, payment }),
+    resolveReview: orderId => action('resolve_review', { orderId }),
+    // Bounded read used by the admin "stale payment" repair. A payment can be
+    // stuck in `confirming` (capture response lost) or due for recovery; both
+    // are returned once and de-duplicated by order id.
+    async listStalePayments({ limit = 10, olderThanMinutes = STALE_CONFIRMING_MINUTES } = {}) {
+      const capped = Math.min(Math.max(Number(limit) || 1, 1), 20);
+      const minutes = Math.min(Math.max(Number(olderThanMinutes) || STALE_CONFIRMING_MINUTES, 1), 1440);
+      const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+      const due = new Date().toISOString();
+      const [stale, recovery, unscheduled] = await Promise.all([
+        db().from('payments').select('order_id,updated_at')
+          .eq('status', 'confirming').lt('updated_at', cutoff)
+          .order('updated_at').limit(capped).then(r => r, () => ({ data: [] })),
+        db().from('payments').select('order_id,updated_at')
+          .eq('recovery_required', true).lte('next_recovery_at', due)
+          .order('next_recovery_at').limit(capped).then(r => r, () => ({ data: [] })),
+        db().from('payments').select('order_id,updated_at')
+          .eq('recovery_required', true).is('next_recovery_at', null)
+          .order('updated_at').limit(capped).then(r => r, () => ({ data: [] })),
+      ]);
+      const seen = new Map();
+      for (const row of [...(stale.data || []), ...(recovery.data || []), ...(unscheduled.data || [])]) {
+        if (row?.order_id) seen.set(row.order_id, row);
+      }
+      return [...seen.values()].slice(0, capped);
+    },
+    async paymentHealth() {
+      const cutoff = new Date(Date.now() - STALE_CONFIRMING_MINUTES * 60 * 1000).toISOString();
+      const [confirmingStale, recoveryRequired, needsReview] = await Promise.all([
+        count(db().from('payments').select('order_id', { count: 'exact', head: true })
+          .eq('status', 'confirming').lt('updated_at', cutoff)),
+        count(db().from('payments').select('order_id', { count: 'exact', head: true })
+          .eq('recovery_required', true)),
+        count(db().from('payments').select('order_id', { count: 'exact', head: true })
+          .eq('needs_review', true)),
+      ]);
+      return { confirmingStale, recoveryRequired, needsReview };
+    },
     async readPayment(paymentKey) {
       const payment = unwrap(await db().from('payments').select('payment_key,order_id').eq('payment_key', paymentKey).maybeSingle());
       if (!payment) return null;

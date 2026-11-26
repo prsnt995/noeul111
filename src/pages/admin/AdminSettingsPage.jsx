@@ -19,37 +19,10 @@ function normalizeAboutStory(value, fallback) {
 export function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState('payment');
   const [settings, setSettings] = useState({
-    payment_info: {
-      bank_name: '우리은행 (Woori Bank)',
-      account_holder: '박기성',
-      account_number: '1002340390276',
-      currency: 'KRW',
-      payment_instructions_ko: '주문 접수 후 위 계좌로 주문 금액을 정확히 입금하신 후, 결제 영수증(이체 확인증 또는 모바일 뱅킹 스크린샷)을 업로드해주세요. 관리자 입금 확인 후 즉시 배송이 준비됩니다.',
-      payment_instructions_en: 'Please transfer the exact order amount to the bank account above, then upload your transfer screenshot / receipt. Once verified by our team, your order will be prepared for delivery.'
-    },
-    business_info: {
-      company_name: '주식회사 로제나',
-      ceo: '김종성',
-      business_number: '548-87-03441',
-      ecommerce_number: '제2026-인천남동구-1275호',
-      address: '인천 남동구 논고개로 123번길, 45, 609호',
-      cs_phone: '032-422-7131',
-      cs_email: 'noeulenterprises@gmail.com',
-      bank_account: '우리은행 1002340390276 박기성'
-    },
-    shipping_policy: {
-      threshold: 0,
-      fee: 0,
-      socks_fee: 3000,
-      socks_free_pairs: 3
-    },
-    header_config: {
-      announcement_enabled: true,
-      announcement_ko: '2026 S/S 신규 회원 전 상품 무료배송',
-      announcement_en: 'Spring 2026: Free shipping on all orders for new members',
-      announcement_bg: '#121213',
-      announcement_color: '#ffffff'
-    },
+    payment_info: { bank_name: '', account_holder: '', account_number: '', currency: 'KRW', payment_instructions_ko: '' },
+    business_info: { company_name: '', ceo: '', business_number: '', ecommerce_number: '', address: '', cs_phone: '', cs_email: '' },
+    shipping_policy: { threshold: 0, fee: 0, socks_fee: 3000, socks_free_pairs: 3 },
+    header_config: { announcement_enabled: false, announcement_ko: '', announcement_bg: '#121213', announcement_color: '#ffffff' },
     about_story: ''
   });
 
@@ -91,14 +64,8 @@ export function AdminSettingsPage() {
     try {
       const payload = {
         ...settings,
-        payment_info: {
-          ...settings.payment_info,
-          payment_instructions_en: settings.payment_info?.payment_instructions_ko || '',
-        },
-        header_config: {
-          ...settings.header_config,
-          announcement_en: settings.header_config?.announcement_ko || '',
-        },
+        payment_info: { ...settings.payment_info },
+        header_config: { ...settings.header_config },
       };
       await adminApi.put('/admin/content/settings', { settings: payload });
       showToast('쇼핑몰 설정이 성공적으로 저장되었습니다.', 'success');

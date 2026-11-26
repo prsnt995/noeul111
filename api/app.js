@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import bcrypt from 'bcryptjs';
 import { emailService } from '../server/services/emailService.js';
 import { notificationService } from '../server/services/notificationService.js';
-import { encryptSessionTokens } from '../server/lib/sessionCrypto.js';
+import { encryptSessionTokens, decryptSessionTokens } from '../server/lib/sessionCrypto.js';
 import { generateOtp, hashOtp, verifyOtpHash } from '../server/lib/otp.js';
 import { startOutboxWorker, runOutboxBatch } from '../server/workers/outbox.js';
 import { startExpiryWorker, runExpiryBatch } from '../server/workers/expiry.js';
@@ -49,7 +49,22 @@ function secretMatches(req, expected) {
   const b = Buffer.from(String(expected));
   return a.length === b.length && timingSafeEqual(a, b);
 }
-const stepUp = async (req, res, next) => { const s = req.locals?.session; if (!s) return next(); if (MFA_ENFORCEMENT && (!s.aal || s.aal !== 'aal2')) return error(res, 403, 'MFA_REQUIRED'); next(); };
+const STEP_UP_TTL_MS = 10 * 60 * 1000;
+const stepUpEnforced = () => process.env.STEP_UP_ENFORCEMENT === 'true' || process.env.MFA_ENFORCEMENT === 'true' || process.env.NODE_ENV === 'production';
+function stepUpValid(s) {
+  try {
+    const tok = decryptSessionTokens(s?.encrypted_tokens);
+    const until = tok?.step_up_until ? new Date(tok.step_up_until).getTime() : 0;
+    return until > Date.now();
+  } catch { return false; }
+}
+const stepUp = async (req, res, next) => {
+  const s = req.locals?.session;
+  if (!s) return next();
+  if (!stepUpEnforced()) return next();
+  if (stepUpValid(s)) return next();
+  return error(res, 403, 'STEP_UP_REQUIRED');
+};
 const privacyLimiter = rateLimit({ windowMs: 15*60*1000, limit: 5, standardHeaders: true, legacyHeaders: false });
 const normalizeOrigin = val => (val || '').trim().replace(/\/+$/, '');
 const origin = normalizeOrigin(env.APP_ORIGIN || 'http://localhost:5173');
@@ -424,7 +439,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Diagnostics for orders/payments: reports whether the DB RPCs that checkout
 // depends on are reachable, without mutating any data.
-app.get('/api/v1/orders/diagnostics', async (_req, res) => {
+app.get('/api/v1/orders/diagnostics', authenticate, staff(['super_admin', 'admin']), async (_req, res) => {
     const out = { db: false, placeOrderRpc: false, paymentHealthRpc: false, details: {} };
     try {
       const db = database();
@@ -725,7 +740,11 @@ app.post('/api/v1/auth/register/resend', authLimiter, async (req, res) => {
 app.post('/api/v1/auth/register/cancel', authLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
-    if (isValidEmail(email)) await database().from('pending_signups').delete().eq('email', email);
+    const otp = String(req.body?.otp || '').trim();
+    if (isValidEmail(email) && /^\d{6}$/.test(otp)) {
+      const otpHash = hashOtp(otp);
+      await database().from('pending_signups').delete().eq('email', email).eq('otp_hash', otpHash);
+    }
   } catch { /* best effort */ }
   res.json({ success: true });
 });
@@ -898,6 +917,54 @@ app.post('/api/v1/auth/reset-password', passwordResetLimiter, async (req, res) =
   }
 });
 
+app.post('/api/v1/auth/step-up/request', authenticate, authLimiter, async (req, res) => {
+  try {
+    const s = req.locals.session;
+    const email = s.profiles?.email;
+    if (!email) return error(res, 400, 'EMAIL_REQUIRED');
+    const otp = generateOtp();
+    const otpHash = hashOtp(otp);
+    const expires = new Date(Date.now() + OTP_TTL_MS).toISOString();
+    let tokens = {};
+    try { tokens = decryptSessionTokens(s.encrypted_tokens) || {}; } catch { tokens = {}; }
+    tokens.step_up_otp_hash = otpHash;
+    tokens.step_up_otp_expires = expires;
+    delete tokens.step_up_until;
+    const encrypted = encryptSessionTokens(tokens);
+    await database().from('sessions').update({ encrypted_tokens: encrypted, refreshed_at: new Date().toISOString() }).eq('id_hash', s.id_hash);
+    try {
+      await emailService.sendMail({ to: email, subject: '[NOEUL] 관리자 인증 코드', template: 'otp', data: { code: otp } });
+    } catch (mailErr) {
+      console.error('[step-up] mail failed', mailErr?.message || mailErr);
+      return error(res, 503, 'EMAIL_SEND_FAILED');
+    }
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[step-up request] error', e);
+    error(res, 503, 'STEP_UP_UNAVAILABLE');
+  }
+});
+app.post('/api/v1/auth/step-up/verify', authenticate, authLimiter, async (req, res) => {
+  try {
+    const s = req.locals.session;
+    const code = String(req.body?.code || '').trim();
+    if (!/^\d{6}$/.test(code)) return error(res, 400, 'INVALID_CODE');
+    let tokens = {};
+    try { tokens = decryptSessionTokens(s.encrypted_tokens) || {}; } catch { return error(res, 403, 'STEP_UP_INVALID'); }
+    if (!tokens.step_up_otp_hash || !tokens.step_up_otp_expires) return error(res, 403, 'STEP_UP_INVALID');
+    if (new Date(tokens.step_up_otp_expires).getTime() < Date.now()) return error(res, 403, 'STEP_UP_EXPIRED');
+    if (!verifyOtpHash(code, tokens.step_up_otp_hash)) return error(res, 403, 'STEP_UP_INVALID');
+    tokens.step_up_until = new Date(Date.now() + STEP_UP_TTL_MS).toISOString();
+    delete tokens.step_up_otp_hash;
+    delete tokens.step_up_otp_expires;
+    const encrypted = encryptSessionTokens(tokens);
+    await database().from('sessions').update({ encrypted_tokens: encrypted, refreshed_at: new Date().toISOString() }).eq('id_hash', s.id_hash);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[step-up verify] error', e);
+    error(res, 503, 'STEP_UP_UNAVAILABLE');
+  }
+});
 app.get('/api/v1/me', authenticate, async (req, res) => { const s = req.locals.session; res.set('Cache-Control', 'no-store'); res.json({ success: true, user: { id: s.user_id, uid: s.user_id, name: s.profiles.name, email: s.profiles.email, role: s.role }, csrf: s.csrf }); });
 app.post('/api/v1/auth/logout', authenticate, async (req, res) => { const s = req.locals.session; if (s) await database().from('sessions').delete().eq('id_hash', s.id_hash); clearCookie(res); res.json({ success: true }); });
 app.post('/api/v1/auth/logout-all', authenticate, async (req, res) => { const s = req.locals.session; if (s) await database().from('sessions').delete().eq('user_id', s.user_id); clearCookie(res); res.json({ success: true }); });
@@ -1057,7 +1124,8 @@ app.get('/api/v1/storefront/home', async (req, res) => {
   }
 });
 
-app.get('/api/v1/content/:key', async (req, res) => { try { const key = req.params.key === 'public' ? 'shipping' : req.params.key; const { data, error: e } = await database().from('content').select('value').eq('key', key).eq('published', true).maybeSingle(); if (e || !data) return error(res, 404, 'CONTENT_NOT_FOUND'); res.json({ success: true, data: data.value }); } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); } });
+const PUBLIC_CONTENT_KEYS = new Set(['home', 'menu', 'shipping', 'site', 'about_story', 'about', 'privacy', 'terms', 'refund-exchange', 'business-info', 'contact', 'business_info', 'payment_info', 'header_config']);
+app.get('/api/v1/content/:key', async (req, res) => { try { const key = req.params.key === 'public' ? 'shipping' : req.params.key; if (!PUBLIC_CONTENT_KEYS.has(key)) return error(res, 404, 'CONTENT_NOT_FOUND'); const { data, error: e } = await database().from('content').select('value').eq('key', key).eq('published', true).maybeSingle(); if (e || !data) return error(res, 404, 'CONTENT_NOT_FOUND'); res.json({ success: true, data: data.value }); } catch { error(res, 503, 'CONTENT_UNAVAILABLE'); } });
 // Custom storefront pages (route /p/:slug) backed by the content table.
 // Authors publish key `page:<slug>` with {title_ko,title_en,content_ko,
 // content_en,banner_image}; unpublished/missing slugs 404 like before.
@@ -1093,8 +1161,14 @@ app.get('/api/v1/products/:id/reviews', async (req, res) => {
     const total = count ?? all.length;
     const averageRating = all.length ? (all.reduce((s, r) => s + (Number(r.rating) || 0), 0) / all.length).toFixed(1) : '5.0';
     const satisfaction = all.length ? Math.round((all.filter(r => Number(r.rating) >= 4).length / all.length) * 100) : 0;
+    let verifiedUsers = new Set();
+    try {
+      const { data: bought } = await database().from('order_items').select('orders!inner(user_id), product_variants!inner(product_id)').eq('product_variants.product_id', req.params.id).in('orders.status', ['paid','confirmed','shipped','delivered','completed']);
+      (bought || []).forEach(b => { const u = b?.orders?.user_id; if (u) verifiedUsers.add(String(u)); });
+    } catch { verifiedUsers = new Set(); }
+    const pageWithVerified = (page || []).map(r => ({ ...r, verified_purchase: verifiedUsers.has(String(r.user_id)) }));
     const summary = { averageRating, totalReviews: total, satisfaction, limit, offset, hasMore: offset + (page || []).length < total };
-    res.json({ success: true, data: page || [], summary });
+    res.json({ success: true, data: pageWithVerified, summary });
   } catch (e) {
     if (isBadInput(e)) return error(res, 400, 'INVALID_PRODUCT');
     error(res, 503, 'REVIEWS_UNAVAILABLE');
@@ -1379,7 +1453,7 @@ const paymentStore = createPaymentStore({ database });
 const paymentService = createPaymentService({ env, store: paymentStore });
 registerPaymentRoutes(app, {
   service: paymentService,
-  authenticate, staff, stepUp, limiter: paymentLimiter, webhookLimiter,
+  authenticate, staff, stepUp, limiter: paymentLimiter, webhookLimiter, auditLog,
 });
 
 // Vercel/serverless does not run the in-process recovery worker (it is only
@@ -1398,9 +1472,11 @@ app.get('/api/v1/cron/payments-recover', async (req, res) => {
       return error(res, 401, 'CRON_UNAUTHORIZED');
     }
     const results = { recovered: 0, pending: 0, skipped: false };
-    // One request may resolve a few jobs; stop when the queue is empty.
-    for (let i = 0; i < 5; i += 1) {
-      const batch = await runPaymentRecoveryBatch({ service: paymentService, store: paymentStore });
+    // Drain as many jobs as the function budget allows. Each job only re-queries
+    // the PG, so a larger batch is safe; stop early when the queue is empty.
+    const deadline = Date.now() + 8000;
+    for (let i = 0; i < 10 && Date.now() < deadline; i += 1) {
+      const batch = await runPaymentRecoveryBatch({ service: paymentService, store: paymentStore, limit: 10 });
       if (batch.skipped) { results.skipped = true; break; }
       results.recovered += batch.recovered || 0;
       results.pending += batch.pending || 0;
@@ -1494,7 +1570,7 @@ app.post('/api/v1/orders/:publicId/shipments', authenticate, staff(['super_admin
 app.get('/api/v1/orders/:publicId/tracking', authenticate, async (req, res) => { try { const { data: order } = await database().from('orders').select('*').eq('order_number', req.params.publicId).eq('user_id', req.locals.session.user_id).maybeSingle(); if (!order) return error(res, 404, 'ORDER_NOT_FOUND'); const { data: events } = await database().from('order_status_history').select('*').eq('order_id', order.id).order('created_at', { ascending: false }); res.json({ success: true, data: { order, events } }); } catch { error(res, 503, 'TRACKING_UNAVAILABLE'); } });
 
 // REVIEW WRITE
-app.post('/api/v1/products/:id/reviews', reviewLimiter, authenticate, async (req, res) => { try { const s = req.locals.session; const { rating, comment, author_name, title, image_url } = req.body || {}; if (!rating || rating < 1 || rating > 5) return error(res, 400, 'INVALID_RATING'); const text = String(comment || '').trim().slice(0, 500); if (!text) return error(res, 400, 'COMMENT_REQUIRED'); const { data: prod } = await database().from('products').select('id').eq('id', req.params.id).maybeSingle(); if (!prod) return error(res, 404, 'PRODUCT_NOT_FOUND'); const { data, error: e } = await database().from('reviews').insert({ product_id: req.params.id, user_id: s.user_id, author_name: String(author_name || s.profiles?.name || '').slice(0, 60), rating: Number(rating), title: String(title || '').slice(0, 120), comment: text, image_url: String(image_url || '').slice(0, 500), is_approved: false }).select().maybeSingle(); if (e || !data) throw e || new Error('REVIEW_CREATE_FAILED'); res.status(201).json({ success: true, data }); } catch (e) { if (isBadInput(e)) return error(res, 400, 'INVALID_PRODUCT'); error(res, 503, 'REVIEWS_UNAVAILABLE'); } });
+app.post('/api/v1/products/:id/reviews', reviewLimiter, authenticate, async (req, res) => { try { const s = req.locals.session; const { rating, comment, title, image_url } = req.body || {}; if (!rating || rating < 1 || rating > 5) return error(res, 400, 'INVALID_RATING'); const text = String(comment || '').trim().slice(0, 500); if (!text) return error(res, 400, 'COMMENT_REQUIRED'); const { data: prod } = await database().from('products').select('id').eq('id', req.params.id).maybeSingle(); if (!prod) return error(res, 404, 'PRODUCT_NOT_FOUND'); const { data: existing } = await database().from('reviews').select('id').eq('product_id', req.params.id).eq('user_id', s.user_id).limit(1).maybeSingle(); if (existing) return error(res, 409, 'REVIEW_EXISTS'); let verified = false; try { const { data: bought } = await database().from('order_items').select('id, orders!inner(user_id,status), product_variants!inner(product_id)').eq('orders.user_id', s.user_id).eq('product_variants.product_id', req.params.id).in('orders.status', ['paid','confirmed','shipped','delivered','completed']).limit(1); verified = Array.isArray(bought) && bought.length > 0; } catch { verified = false; } const authorName = String(s.profiles?.name || s.user?.name || '고객').slice(0, 60); const { data, error: e } = await database().from('reviews').insert({ product_id: req.params.id, user_id: s.user_id, author_name: authorName, rating: Number(rating), title: String(title || '').slice(0, 120), comment: text, image_url: String(image_url || '').slice(0, 500), is_approved: false }).select().maybeSingle(); if (e || !data) throw e || new Error('REVIEW_CREATE_FAILED'); res.status(201).json({ success: true, data: { ...data, verified_purchase: verified } }); } catch (e) { if (isBadInput(e)) return error(res, 400, 'INVALID_PRODUCT'); error(res, 503, 'REVIEWS_UNAVAILABLE'); } });
 
 // REVIEW MODERATION
 app.post('/api/v1/reviews/:id/moderate', authenticate, staff(['super_admin','admin']), async (req, res) => { try { const { data: review } = await database().from('reviews').select('*').eq('id', req.params.id).maybeSingle(); if (!review) return error(res, 404, 'REVIEW_NOT_FOUND'); const { is_approved } = req.body; await database().from('reviews').update({ is_approved, moderated_by: req.locals.session.user_id, moderated_at: new Date().toISOString() }).eq('id', req.params.id); await auditLog(req, 'REVIEW_MODERATE', { table: 'reviews', id: req.params.id }); res.json({ success: true }); } catch { error(res, 503, 'MODERATION_UNAVAILABLE'); } });

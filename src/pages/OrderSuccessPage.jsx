@@ -29,7 +29,7 @@ export function OrderSuccessPage() {
   useEffect(() => {
     if (!orderNumber) { setLoading(false); return; }
     let active = true;
-    api.get(`/orders/${encodeURIComponent(orderNumber)}`)
+    api.get(`/orders/${encodeURIComponent(orderNumber)}`, { cache: 'no-store' })
       .then(r => { if (active) setOrder(r.data); })
       .catch(e => { if (active) showToast(e.message, 'error'); })
       .finally(() => { if (active) setLoading(false); });
@@ -42,7 +42,7 @@ export function OrderSuccessPage() {
     if (order?.status !== 'confirming' || pollCount >= MAX_POLLS) return;
     const timer = setTimeout(async () => {
       try {
-        const r = await api.get(`/orders/${encodeURIComponent(orderNumber)}`);
+        const r = await api.get(`/orders/${encodeURIComponent(orderNumber)}`, { cache: 'no-store' });
         if (r.data) setOrder(r.data);
       } catch { /* transient — next poll will retry */ }
       setPollCount(c => c + 1);

@@ -59,6 +59,14 @@ async function dispatch(supabase, event) {
       if (!order) throw new Error('ORDER_NOT_FOUND');
       await sendOrThrow(notificationService.sendPaymentNotification(order));
       break;
+    // A captured payment whose stock/coupon finalization was deferred. The
+    // admin console shows the row; this event only raises an ops alert.
+    case 'PAYMENT_NEEDS_REVIEW':
+      await alertOps('payment.needs_review', {
+        order_id: payload.order_id || null,
+        reason: payload.reason || null,
+      });
+      break;
      default: {
         await supabase.from('outbox').update({ dead_at: new Date().toISOString(), last_error: `Unknown outbox kind: ${event.kind}`, lease_until: null, lease_token: null }).eq('id', event.id);
         await alertOps('outbox.dead_letter', { kind: event.kind, effect_key: event.effect_key, error: `Unknown outbox kind: ${event.kind}` });

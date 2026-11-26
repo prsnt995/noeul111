@@ -211,7 +211,7 @@ export function CustomerAuthPage() {
   };
 
   const handleCancelOtp = async () => {
-    try { await cancelRegister(otpEmail); } catch { /* best effort */ }
+    try { await cancelRegister(otpEmail, otpCode); } catch { /* best effort */ }
     setRegisterStep('form');
     setOtpCode('');
     setErrorMsg('');

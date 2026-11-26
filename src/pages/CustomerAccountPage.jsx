@@ -35,6 +35,15 @@ export function CustomerAccountPage() {
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'wishlist' | 'profile'
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [cancellingId, setCancellingId] = useState(null);
+  const [paymentInfo, setPaymentInfo] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/content/payment_info', { cache: 'no-store' })
+      .then((r) => { if (!cancelled && r?.success) setPaymentInfo(r.data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Coupons & Reward Points State
   const [coupons, setCoupons] = useState([]);
@@ -110,7 +119,7 @@ export function CustomerAccountPage() {
     if (tabParam) setActiveTab(tabParam);
 
     setLoadingOrders(true);
-    api.get('/orders').then((res) => setOrders(res.data || [])).catch((err) => console.error('Fetch my orders error:', err)).finally(() => setLoadingOrders(false));
+    api.get('/orders', { cache: 'no-store' }).then((res) => setOrders(res.data || [])).catch((err) => console.error('Fetch my orders error:', err)).finally(() => setLoadingOrders(false));
   }, [isLoggedIn, user, setLocation, location]);
 
   // A payment can still be resolving when the customer opens My Page. Poll
@@ -118,10 +127,24 @@ export function CustomerAccountPage() {
   useEffect(() => {
     if (!orders.some(o => o.status === 'confirming')) return;
     const timer = setInterval(() => {
-      api.get('/orders').then(res => setOrders(res.data || [])).catch(() => {});
+      api.get('/orders', { cache: 'no-store' }).then(res => setOrders(res.data || [])).catch(() => {});
     }, 10000);
     return () => clearInterval(timer);
   }, [orders]);
+
+  const handleCancelOrder = async (orderNumber) => {
+    if (!window.confirm('주문을 취소하시겠습니까?')) return;
+    setCancellingId(orderNumber);
+    try {
+      await api.post(`/orders/${encodeURIComponent(orderNumber)}/cancel`, {});
+      setOrders(prev => prev.map(o => o.order_number === orderNumber ? { ...o, status: 'canceled' } : o));
+      showToast?.('주문이 취소되었습니다.', 'success');
+    } catch (err) {
+      showToast?.(err?.message || '주문 취소에 실패했습니다.', 'error');
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
@@ -532,22 +555,54 @@ export function CustomerAccountPage() {
                         >
                           <span style={{ color: '#c2410c', lineHeight: 1.5 }}>
                             <strong>결제 진행 중</strong>
-                            <span style={{ display: 'block', fontWeight: 400 }}>결제가 아직 완료되지 않았습니다. 이어서 진행해주세요.</span>
+                            <span style={{ display: 'block', fontWeight: 400 }}>
+                              {order.payment_method === 'bank_transfer'
+                                ? '계좌 입금 대기 중입니다. 아래 계좌 정보로 입금해 주세요.'
+                                : '결제가 아직 완료되지 않았습니다. 이어서 진행해주세요.'}
+                            </span>
+                            {order.payment_method === 'bank_transfer' && paymentInfo && (
+                              <span style={{ display: 'block', marginTop: '6px', fontSize: '0.8125rem', color: '#7c2d12' }}>
+                                {paymentInfo.bank_name && <span style={{ display: 'block' }}>{paymentInfo.bank_name}</span>}
+                                {paymentInfo.account_number && <span style={{ display: 'block', fontFamily: 'monospace' }}>{paymentInfo.account_number}</span>}
+                                {paymentInfo.account_holder && <span style={{ display: 'block' }}>{paymentInfo.account_holder}</span>}
+                                {paymentInfo.payment_instructions_ko && <span style={{ display: 'block', marginTop: '4px' }}>{paymentInfo.payment_instructions_ko}</span>}
+                              </span>
+                            )}
                           </span>
-                          <Link
-                            href={`/checkout/toss?order=${encodeURIComponent(order.order_number)}`}
-                            style={{
-                              flexShrink: 0,
-                              backgroundColor: '#ea580c',
-                              color: '#ffffff',
-                              padding: '6px 12px',
-                              borderRadius: '4px',
-                              fontWeight: 700,
-                              fontSize: '0.75rem',
-                            }}
-                          >
-                            결제 계속하기 →
-                          </Link>
+                          <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+                            {order.payment_method !== 'bank_transfer' && (
+                              <Link
+                                href={`/checkout/toss?order=${encodeURIComponent(order.order_number)}`}
+                                style={{
+                                  backgroundColor: '#ea580c',
+                                  color: '#ffffff',
+                                  padding: '6px 12px',
+                                  borderRadius: '4px',
+                                  fontWeight: 700,
+                                  fontSize: '0.75rem',
+                                }}
+                              >
+                                결제 계속하기 →
+                              </Link>
+                            )}
+                            <button
+                              type="button"
+                              disabled={cancellingId === order.order_number}
+                              onClick={() => handleCancelOrder(order.order_number)}
+                              style={{
+                                backgroundColor: 'transparent',
+                                color: '#9a3412',
+                                border: '1px solid #fed7aa',
+                                padding: '6px 12px',
+                                borderRadius: '4px',
+                                fontWeight: 700,
+                                fontSize: '0.75rem',
+                                cursor: cancellingId === order.order_number ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              {cancellingId === order.order_number ? '취소 중...' : '주문 취소'}
+                            </button>
+                          </div>
                         </div>
                       )}
                       {(order.status) === 'confirming' && (

@@ -85,6 +85,39 @@ export function createPaymentService({ env, store, client = createTossClient({ s
       return { orderId: current.orderId, status: current.status, balanceAmount: current.balanceAmount, isPartialCancelable: current.isPartialCancelable !== false,
         recoveryRequired: Boolean(current.recoveryRequired), canResume: current.status === 'pending_payment' && current.canResume === true && !current.recoveryRequired };
     },
+    // Admin repair path for rows left behind by a lost confirm response or a
+    // disabled recovery worker. It only re-queries the PG; it never charges or
+    // refunds. Bounded by `limit` so one click cannot fan out unbounded calls.
+    async reconcileStale({ limit = 10, olderThanMinutes = 5 } = {}) {
+      await ready();
+      if (typeof store.listStalePayments !== 'function') fail('PAYMENTS_NOT_CONFIGURED');
+      const rows = await store.listStalePayments({ limit, olderThanMinutes });
+      const results = [];
+      for (const row of rows) {
+        try {
+          const state = await this.recover(row.order_id, null, true);
+          results.push({ orderId: row.order_id, ok: true, recoveryRequired: Boolean(state.recoveryRequired) });
+        } catch (err) {
+          results.push({ orderId: row.order_id, ok: false, code: err?.code || 'PAYMENT_RECONCILIATION_REQUIRED' });
+        }
+      }
+      const recovered = results.filter(r => r.ok && !r.recoveryRequired).length;
+      return { scanned: rows.length, recovered, pending: results.length - recovered, results };
+    },
+    // Finish a captured payment that was flagged for manual review. Does not
+    // need Toss keys: the money is already captured; only stock/coupon
+    // finalization remains.
+    async resolveReview(orderId) {
+      if (!id(orderId)) fail('INVALID_ORDER_ID', 400);
+      if (typeof store.resolveReview !== 'function') fail('PAYMENTS_NOT_CONFIGURED');
+      const result = await store.resolveReview(orderId);
+      if (result?.ok === false) fail(result.reason || 'PAYMENT_REVIEW_NOT_APPLICABLE', 409);
+      return result || { ok: true };
+    },
+    async storeHealth() {
+      if (typeof store.paymentHealth !== 'function') return { confirmingStale: 0, recoveryRequired: 0, needsReview: 0 };
+      return store.paymentHealth();
+    },
     async confirm(input, userId) {
       await ready(); const { orderId, amount, paymentKey } = input;
       if (!id(orderId) || !money(amount) || !key(paymentKey)) fail('INVALID_PAYMENT', 400);

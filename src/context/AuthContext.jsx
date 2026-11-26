@@ -47,7 +47,7 @@ export function AuthProvider({ children }) {
   };
   const checkEmail = async (email) => api.post('/auth/check-email', { email });
   const resendRegisterOtp = async (email) => api.post('/auth/register/resend', { email });
-  const cancelRegister = async (email) => api.post('/auth/register/cancel', { email });
+  const cancelRegister = async (email, otp = '') => api.post('/auth/register/cancel', { email, otp });
   // Forgot-password: request always succeeds (anti-enumeration); the inbox
   // decides. Confirm exchanges the single-use token for a new password.
   const resetPassword = async email => { await api.post('/auth/request-password-reset', { email }); return true; };

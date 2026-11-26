@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import { business as verifiedBusiness } from '../../config/business.js';
+import { api } from '../../utils/api.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ChevronDown, Phone, Mail, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
 
@@ -39,6 +40,28 @@ function EmailIcon({ size = 12, color = 'currentColor' }) {
 
 export function Footer() {
   const { lang } = useLanguage();
+  const [biz, setBiz] = useState(() => ({ ...verifiedBusiness }));
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/content/business_info', { cache: 'no-store' })
+      .then((res) => {
+        if (cancelled || !res?.success || !res.data) return;
+        const d = res.data;
+        setBiz((prev) => ({
+          ...prev,
+          companyName: d.company_name || prev.companyName,
+          representative: d.ceo || prev.representative,
+          email: d.cs_email || prev.email,
+          phone: d.cs_phone ? String(d.cs_phone).replace(/[^0-9]/g, '') : prev.phone,
+          phoneFormatted: d.cs_phone || prev.phoneFormatted,
+          address: d.address || prev.address,
+          businessNumber: d.business_number || prev.businessNumber,
+          ecommerceNumber: d.ecommerce_number || prev.ecommerceNumber,
+        }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Mobile accordion states
   const [openAccordion, setOpenAccordion] = useState({
@@ -91,7 +114,7 @@ export function Footer() {
                     textDecoration: 'none',
                   }}
                 >
-                  {verifiedBusiness.brandName}
+                  {biz.brandName}
                 </Link>
                 <span
                   style={{
@@ -193,33 +216,33 @@ export function Footer() {
               >
                 <div>
                   <span style={{ color: '#636366' }}>상호: </span>
-                  <span style={{ color: '#ffffff', fontWeight: 600 }}>{verifiedBusiness.companyName}</span>
+                  <span style={{ color: '#ffffff', fontWeight: 600 }}>{biz.companyName}</span>
                 </div>
 
                 <div>
                   <span style={{ color: '#636366' }}>대표자: </span>
-                  <span style={{ color: '#d1d1d6', fontWeight: 500 }}>{verifiedBusiness.representative}</span>
+                  <span style={{ color: '#d1d1d6', fontWeight: 500 }}>{biz.representative}</span>
                 </div>
 
                 <div>
                   <span style={{ color: '#636366' }}>사업자등록번호: </span>
                   <span style={{ color: '#d1d1d6', fontFamily: 'monospace', letterSpacing: '0.02em', fontWeight: 600 }}>
-                    {verifiedBusiness.businessNumber}
+                    {biz.businessNumber}
                   </span>
                 </div>
 
                 <div>
                   <span style={{ color: '#636366' }}>법인등록번호: </span>
-                  <span style={{ color: '#d1d1d6', fontFamily: 'monospace' }}>{verifiedBusiness.corporationNumber}</span>
+                  <span style={{ color: '#d1d1d6', fontFamily: 'monospace' }}>{biz.corporationNumber}</span>
                 </div>
 
                 <div>
                   <span style={{ color: '#636366' }}>주소: </span>
-                  <span style={{ color: '#a1a1a6', wordBreak: 'keep-all' }}>{verifiedBusiness.address}</span>
+                  <span style={{ color: '#a1a1a6', wordBreak: 'keep-all' }}>{biz.address}</span>
                 </div>
 
                 <div>
-                  <span style={{ color: '#8e8e93', fontFamily: 'monospace' }}>{verifiedBusiness.ecommerceNumber}</span>
+                  <span style={{ color: '#8e8e93', fontFamily: 'monospace' }}>{biz.ecommerceNumber}</span>
                 </div>
               </div>
 
@@ -273,26 +296,26 @@ export function Footer() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                   <Phone size={13} color="#ff4d2d" />
                   <a
-                    href={`tel:${verifiedBusiness.phone}`}
+                    href={`tel:${biz.phone}`}
                     style={{ color: '#ffffff', fontWeight: 700, fontSize: '0.8125rem', textDecoration: 'none', letterSpacing: '0.02em' }}
                   >
-                    Phone: {verifiedBusiness.phoneFormatted}
+                    Phone: {biz.phoneFormatted}
                   </a>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                   <Mail size={13} color="#8e8e93" />
                   <a
-                    href={`mailto:${verifiedBusiness.email}`}
+                    href={`mailto:${biz.email}`}
                     style={{ color: '#d1d1d6', fontSize: '0.6875rem', textDecoration: 'none', fontFamily: 'monospace' }}
                   >
-                    Email: {verifiedBusiness.email}
+                    Email: {biz.email}
                   </a>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', borderTop: '1px solid #1a1a1e', paddingTop: '6px', color: '#8e8e93', fontSize: '0.6875rem' }}>
                   <Clock size={13} color="#ff4d2d" style={{ marginTop: '1px', flexShrink: 0 }} />
-                  <span>운영시간: {verifiedBusiness.businessHours}</span>
+                  <span>운영시간: {biz.businessHours}</span>
                 </div>
               </div>
 
@@ -448,7 +471,7 @@ export function Footer() {
             }}
           >
             <div>
-              © 2026 {verifiedBusiness.brandName} ({verifiedBusiness.companyName}). All rights reserved.
+              © 2026 {biz.brandName} ({biz.companyName}). All rights reserved.
             </div>
           </div>
         </div>

@@ -92,7 +92,7 @@ describe('Business disclosure', () => {
     expect(cfg.includes("ecommerceNumber: '제2026-인천남동구-1275호'")).toBe(true);
     expect(cfg.includes("ecommerceNumber: '확인 중'")).toBe(false);
     // Footer and /business-info both read the single config value.
-    expect(read('src/components/common/Footer.jsx').includes('verifiedBusiness.ecommerceNumber')).toBe(true);
+    expect(read('src/components/common/Footer.jsx').includes('biz.ecommerceNumber')).toBe(true);
     expect(read('src/pages/policy/BusinessInfoPage.jsx').includes('business.ecommerceNumber')).toBe(true);
   });
 
