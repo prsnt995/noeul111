@@ -50,7 +50,8 @@ function secretMatches(req, expected) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 const STEP_UP_TTL_MS = 10 * 60 * 1000;
-const stepUpEnforced = () => process.env.STEP_UP_ENFORCEMENT === 'true' || process.env.MFA_ENFORCEMENT === 'true' || process.env.NODE_ENV === 'production';
+// OTP step-up is fully disabled: no admin action requires an email code.
+const stepUpEnforced = () => false;
 function stepUpValid(s) {
   try {
     const tok = decryptSessionTokens(s?.encrypted_tokens);

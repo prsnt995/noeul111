@@ -1117,7 +1117,7 @@ export function registerAdminRoutes(app, ctx) {
   // Read-only schema self-diagnosis for the product surface: probes the
   // columns recent migrations add, one at a time, so the admin UI can name
   // exactly which migration the live DB is missing. Never writes.
-  app.get('/api/v1/admin/health/schema', ...needStep(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/health/schema', ...need(R.catalog), async (req, res) => {
     try {
       const probes = [
         { column: 'material_ko', migration: '202610050002_product_material.sql' },
@@ -1605,7 +1605,7 @@ export function registerAdminRoutes(app, ctx) {
   });
 
   // ---------- Categories ----------
-  app.get('/api/v1/admin/categories', ...needStep(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/categories', ...need(R.catalog), async (req, res) => {
     try {
       const { data: cats } = await database().from('categories').select('*').order('sort_order').order('id');
       const { data: counts } = await database().from('products').select('category_id');
@@ -1615,7 +1615,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORIES_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/categories', ...needStep(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/categories', ...need(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const slug = String(b.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -1671,7 +1671,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORY_CREATE_FAILED'); }
   });
 
-  app.put('/api/v1/admin/categories/:id', ...needStep(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/categories/:id', ...need(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const patch = {};
@@ -1716,7 +1716,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORY_UPDATE_FAILED'); }
   });
 
-  app.patch('/api/v1/admin/categories/reorder', ...needStep(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/categories/reorder', ...need(R.catalog), async (req, res) => {
     try {
       const ids = req.body?.orderedIds;
       if (!Array.isArray(ids)) return error(res, 400, 'IDS_REQUIRED');
@@ -1728,7 +1728,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'CATEGORY_REORDER_FAILED'); }
   });
 
-  app.delete('/api/v1/admin/categories/:id', ...needStep(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/categories/:id', ...need(R.catalog), async (req, res) => {
     try {
       const { data: refs } = await database().from('products').select('id').eq('category_id', req.params.id).limit(1);
       if ((refs || []).length) return error(res, 400, 'CATEGORY_IN_USE');
@@ -1740,7 +1740,7 @@ export function registerAdminRoutes(app, ctx) {
   });
 
   // ---------- Colors (reusable product color palette) ----------
-  app.get('/api/v1/admin/colors', ...needStep(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/colors', ...need(R.catalog), async (req, res) => {
     try {
       const { data, error: e } = await database().from('colors').select('*').eq('is_active', true).order('sort_order').order('id');
       if (e) throw e;
@@ -1748,7 +1748,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COLORS_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/colors', ...needStep(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/colors', ...need(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const name_ko = String(b.name_ko || b.name || '').trim().slice(0, 100);
@@ -1771,7 +1771,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COLOR_CREATE_FAILED'); }
   });
 
-  app.put('/api/v1/admin/colors/:id', ...needStep(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/colors/:id', ...need(R.catalog), async (req, res) => {
     try {
       const b = req.body || {};
       const patch = {};
@@ -1797,7 +1797,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COLOR_UPDATE_FAILED'); }
   });
 
-  app.delete('/api/v1/admin/colors/:id', ...needStep(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/colors/:id', ...need(R.catalog), async (req, res) => {
     try {
       const { data: color } = await database().from('colors').select('name_en,name_ko').eq('id', req.params.id).maybeSingle();
       if (!color) return error(res, 404, 'COLOR_NOT_FOUND');
@@ -1873,7 +1873,7 @@ export function registerAdminRoutes(app, ctx) {
     return { row };
   }
 
-  app.get('/api/v1/admin/coupons', ...needStep(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/coupons', ...need(R.catalog), async (req, res) => {
     try {
       const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
         pageSize: 100, maxPageSize: 200, sort: 'code', order: 'asc',
@@ -1907,7 +1907,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPONS_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/coupons', ...needStep(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/coupons', ...need(R.catalog), async (req, res) => {
     try {
       const { row, error: err } = couponFromLegacy(req.body || {}, true);
       if (err) return error(res, 400, err);
@@ -1921,7 +1921,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPON_CREATE_FAILED'); }
   });
 
-  app.put('/api/v1/admin/coupons/:id', ...needStep(R.catalog), async (req, res) => {
+  app.put('/api/v1/admin/coupons/:id', ...need(R.catalog), async (req, res) => {
     try {
       const { row, error: err } = couponFromLegacy(req.body || {}, false);
       if (err) return error(res, 400, err);
@@ -1947,7 +1947,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'COUPON_UPDATE_FAILED'); }
   });
 
-  app.delete('/api/v1/admin/coupons/:id', ...needStep(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/coupons/:id', ...need(R.catalog), async (req, res) => {
     try {
       await database().from('coupons').delete().eq('code', decodeURIComponent(req.params.id));
       await auditLog(req, 'COUPON_DELETE', { table: 'coupons', id: req.params.id });
@@ -2771,7 +2771,7 @@ export function registerAdminRoutes(app, ctx) {
   });
 
   // ---------- Reviews ----------
-  app.get('/api/v1/admin/reviews', ...needStep(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/reviews', ...need(R.catalog), async (req, res) => {
     try {
       const { status } = req.query;
       const { page, pageSize, offset, sort, order, search } = parseListQuery(req.query, {
@@ -2808,7 +2808,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'REVIEWS_UNAVAILABLE'); }
   });
 
-  app.patch('/api/v1/admin/reviews/:id/status', ...needStep(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/reviews/:id/status', ...need(R.catalog), async (req, res) => {
     try {
       await database().from('reviews').update({ is_approved: !!req.body?.is_approved }).eq('id', req.params.id);
       await auditLog(req, 'REVIEW_MODERATE', { table: 'reviews', id: req.params.id });
@@ -2816,7 +2816,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'REVIEWS_UNAVAILABLE'); }
   });
 
-  app.patch('/api/v1/admin/reviews/:id/feature', ...needStep(R.catalog), async (req, res) => {
+  app.patch('/api/v1/admin/reviews/:id/feature', ...need(R.catalog), async (req, res) => {
     try {
       await database().from('reviews').update({ is_featured: !!req.body?.is_featured }).eq('id', req.params.id);
       await auditLog(req, 'REVIEW_FEATURE', { table: 'reviews', id: req.params.id });
@@ -2824,7 +2824,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'REVIEWS_UNAVAILABLE'); }
   });
 
-  app.delete('/api/v1/admin/reviews/:id', ...needStep(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/reviews/:id', ...need(R.catalog), async (req, res) => {
     try {
       await database().from('reviews').delete().eq('id', req.params.id);
       await auditLog(req, 'REVIEW_DELETE', { table: 'reviews', id: req.params.id });
@@ -2883,7 +2883,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { return false; }
   }
 
-  app.get('/api/v1/admin/media', ...needStep(R.catalog), async (req, res) => {
+  app.get('/api/v1/admin/media', ...need(R.catalog), async (req, res) => {
     try {
       const { page, pageSize, offset } = parseListQuery(req.query, { pageSize: 200, maxPageSize: 200 });
       const search = String(req.query.search || '').toLowerCase();
@@ -2895,7 +2895,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
 
-  app.post('/api/v1/admin/media', ...needStep(R.catalog), async (req, res) => {
+  app.post('/api/v1/admin/media', ...need(R.catalog), async (req, res) => {
     try {
       const { name, url, tags } = req.body || {};
       if (!name || !url || !isHttpUrl(url)) return error(res, 400, 'NAME_URL_REQUIRED');
@@ -2910,7 +2910,7 @@ export function registerAdminRoutes(app, ctx) {
     } catch { error(res, 503, 'MEDIA_UNAVAILABLE'); }
   });
 
-  app.delete('/api/v1/admin/media/:id', ...needStep(R.catalog), async (req, res) => {
+  app.delete('/api/v1/admin/media/:id', ...need(R.catalog), async (req, res) => {
     try {
       const existing = await findDocItem(database, 'media', req.params.id);
       await deleteDocItem(database, 'media', req.params.id);

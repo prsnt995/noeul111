@@ -13,7 +13,7 @@ function cacheKey(endpoint, scope) {
 export function setCsrfToken(value) { csrfToken = value || ''; }
 export async function apiRequest(endpoint, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
-  const { scope = 'customer', cache = 'default', __stepUp, ...fetchOptions } = options;
+  const { scope = 'customer', cache = 'default', ...fetchOptions } = options;
   const headers = { ...(options.headers || {}) };
   // Admin data is volatile and polled; never serve stale cached payloads there.
   const noStore = cache === 'no-store' || (scope === 'admin' && cache !== 'force-cache');
@@ -46,22 +46,13 @@ export async function apiRequest(endpoint, options = {}) {
   }
 
   const data = await response.json().catch(() => ({}));
-  // Step-up challenge (admin sensitive actions): auto-prompt for an email OTP
-  // and retry the original request once.
-  if (!response.ok && data?.code === 'STEP_UP_REQUIRED' && scope === 'admin' && !options.__stepUp) {
-    try {
-      await apiRequest('/auth/step-up/request', { method: 'POST', scope: 'admin', __stepUp: true });
-      const code = window.prompt('관리자 인증이 필요합니다. 이메일로 전송된 6자리 코드를 입력하세요.');
-      if (code) {
-        await apiRequest('/auth/step-up/verify', { method: 'POST', scope: 'admin', __stepUp: true, body: JSON.stringify({ code: String(code).trim() }) });
-        // retry original
-        return apiRequest(endpoint, { ...options, __stepUp: true });
-      }
-    } catch (e) {
-      // fall through to throw
-    }
+  if (!response.ok) {
+    const err = new Error(data.message || data.code || 'API request failed');
+    err.status = response.status;
+    err.code = data.code || null;
+    err.data = data;
+    throw err;
   }
-  if (!response.ok) throw new Error(data.message || data.code || 'API request failed');
   if (data.csrf) csrfToken = data.csrf;
 
   if (method === 'GET' && !noStore) {
