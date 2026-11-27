@@ -61,6 +61,8 @@ export function AdminSettingsPage() {
     }
   };
 
+  const dirty = initialSettings ? JSON.stringify(settings) !== JSON.stringify(initialSettings) : false;
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -71,8 +73,6 @@ export function AdminSettingsPage() {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
-
-  const dirty = initialSettings ? JSON.stringify(settings) !== JSON.stringify(initialSettings) : false;
 
   const handleSave = async (e) => {
     e.preventDefault();
